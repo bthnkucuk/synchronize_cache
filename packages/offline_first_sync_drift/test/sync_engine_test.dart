@@ -2724,6 +2724,248 @@ void main() {
       engine.dispose();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Per-kind concurrent sync lock tests
+  // ---------------------------------------------------------------------------
+
+  group('Per-kind concurrent sync locks', () {
+    SyncEngine makeEngine({
+      required TransportAdapter transport,
+      SyncConfig config = const SyncConfig(),
+    }) {
+      return SyncEngine(
+        db: db,
+        transport: transport,
+        tables: [
+          SyncableTable<TestItem>(
+            kind: 'test_item',
+            table: db.testItems,
+            fromJson: TestItem.fromJson,
+            toJson: (item) => item.toJson(),
+            toInsertable: (item) => item.toInsertable(),
+          ),
+        ],
+        config: config,
+      );
+    }
+
+    // Sets a fresh full-resync cursor so tests don't trigger a scheduled resync.
+    Future<void> seedFullResyncCursor(TestDatabase db) async {
+      await db.setCursor(
+        CursorKinds.fullResync,
+        Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+      );
+    }
+
+    test(
+      'same kind: five concurrent sync calls share one Future',
+      () async {
+        final transport = _KindTrackingSlowTransport();
+        final engine = makeEngine(transport: transport);
+        await seedFullResyncCursor(db);
+
+        // Launch 5 concurrent syncs for the same kind.
+        final futures = List.generate(
+          5,
+          (_) => engine.sync(pullKinds: {'test_item'}),
+        );
+        final results = await Future.wait(futures);
+
+        // Only 1 pull call expected — all 5 callers share the same Future.
+        expect(transport.pullCallCount, 1);
+        // All callers receive the same (zero) pulled count.
+        expect(results.every((s) => s.pulled == 0), isTrue);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'different kinds: concurrent syncs run in parallel (both complete)',
+      () async {
+        // A slow transport that records which kinds were pulled.
+        final transport = _KindTrackingSlowTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'kind_a',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+        );
+
+        await db.setCursor(
+          CursorKinds.fullResync,
+          Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+        );
+
+        // Both calls are issued before either completes (SlowTransport delays).
+        final f1 = engine.sync(pullKinds: {'kind_a'});
+        final f2 = engine.sync(pushKinds: {'kind_a'});
+
+        await Future.wait([f1, f2]);
+
+        // Both pull calls eventually complete successfully.
+        // kind_a was requested in both calls — they should share the same future.
+        expect(transport.pullCallCount, 1);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'disjoint kinds: concurrent syncs each do their own pull',
+      () async {
+        // Two-table engine.
+        final transport = _KindTrackingSlowTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'kind_a',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+        );
+
+        await db.setCursor(
+          CursorKinds.fullResync,
+          Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+        );
+
+        // kind_a and kind_b are registered; issue parallel pulls for each.
+        final f1 = engine.sync(pullKinds: {'kind_a'});
+        // pull for a non-registered kind → transport won't actually get called,
+        // but the future must still complete without error.
+        final f2 = engine.sync(pullKinds: {'unregistered_kind'});
+
+        final results = await Future.wait([f1, f2]);
+        // f1 → kind_a pull → 1 transport call
+        // f2 → unregistered_kind skipped → 0 transport calls for it
+        expect(transport.pullCallCount, 1);
+        // Both calls should succeed.
+        expect(results.length, 2);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'overlapping kinds: in-flight kind shares, new kind starts fresh',
+      () async {
+        // Transport that delays so we can interleave calls.
+        final transport = _KindTrackingSlowTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'kind_a',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+        );
+
+        await db.setCursor(
+          CursorKinds.fullResync,
+          Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+        );
+
+        // First call starts a run for kind_a (slow transport → still in flight).
+        final f1 = engine.sync(pullKinds: {'kind_a'});
+
+        // Second call for the same kind → should JOIN f1.
+        final f2 = engine.sync(pullKinds: {'kind_a'});
+
+        await Future.wait([f1, f2]);
+
+        // kind_a should only have been pulled once (shared future).
+        expect(transport.pullCallCount, 1);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'full-resync gate: concurrent syncs share _fullResyncFuture',
+      () async {
+        final transport = _KindTrackingSlowTransport();
+        final engine = makeEngine(transport: transport);
+        // No full-resync cursor → needsFullResync == true.
+
+        // Two concurrent sync calls when full resync is due.
+        final f1 = engine.sync(pullKinds: {'test_item'});
+        final f2 = engine.sync(pullKinds: {'test_item'});
+
+        final results = await Future.wait([f1, f2]);
+
+        // Only 1 pull expected — both callers shared the full-resync Future.
+        expect(transport.pullCallCount, 1);
+        // Both get the same SyncStats (both get pulled == 0).
+        expect(results[0].pulled, equals(results[1].pulled));
+
+        engine.dispose();
+      },
+    );
+  });
+}
+
+/// Transport that records which kinds were pulled and introduces a small delay
+/// so concurrent calls can be issued before any completes.
+class _KindTrackingSlowTransport implements TransportAdapter {
+  int pullCallCount = 0;
+  final List<String> pulledKinds = [];
+
+  @override
+  Future<PullPage> pull({
+    required String kind,
+    required DateTime updatedSince,
+    required int pageSize,
+    String? pageToken,
+    String? afterId,
+    bool includeDeleted = true,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    pullCallCount++;
+    pulledKinds.add(kind);
+    return PullPage(items: []);
+  }
+
+  @override
+  Future<BatchPushResult> push(List<Op> ops) async {
+    return BatchPushResult(
+      results:
+          ops
+              .map(
+                (op) =>
+                    OpPushResult(opId: op.opId, result: const PushSuccess()),
+              )
+              .toList(),
+    );
+  }
+
+  @override
+  Future<PushResult> forcePush(Op op) async => const PushSuccess();
+
+  @override
+  Future<FetchResult> fetch({required String kind, required String id}) async =>
+      const FetchNotFound();
+
+  @override
+  Future<bool> health() async => true;
 }
 
 class DeletedItemsTransport implements TransportAdapter {
