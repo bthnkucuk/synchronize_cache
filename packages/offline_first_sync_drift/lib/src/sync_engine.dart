@@ -193,13 +193,19 @@ class SyncEngine<DB extends GeneratedDatabase> {
 
   Timer? _autoTimer;
 
-  /// Current sync Future.
-  /// Allows concurrent callers to share the same Future instead of
-  /// silently returning empty stats.
-  Future<SyncRunResult>? _syncRunFuture;
+  /// Per-kind in-flight sync Futures.
+  ///
+  /// When [sync] is called for a specific kind that already has a run in
+  /// progress, the caller joins the existing Future instead of launching
+  /// a duplicate. Different kinds are always run concurrently and
+  /// independently.
+  final Map<String, Future<SyncRunResult>> _kindRunFutures = {};
 
-  /// Current full resync Future.
-  Future<SyncStats>? _fullResyncFuture;
+  /// Current full-resync Future.
+  ///
+  /// When a full-resync is in progress all concurrent [sync] and [fullResync]
+  /// callers share this Future and receive the same result.
+  Future<SyncRunResult>? _fullResyncFuture;
 
   /// Start automatic periodic synchronization.
   ///
@@ -223,13 +229,15 @@ class SyncEngine<DB extends GeneratedDatabase> {
   /// [kinds] is a legacy alias that applies the same filter to push and pull.
   /// Use [pushKinds]/[pullKinds] for explicit behavior.
   ///
-  /// If a sync is already in progress, concurrent callers will receive
-  /// the same Future and share the result, avoiding duplicate operations.
+  /// Concurrent callers for the **same** kind share an in-flight Future and
+  /// receive the same result. Callers for **different** kinds run in parallel.
+  /// A full-resync (manual or scheduled) is still fully serialised — all
+  /// concurrent callers share a single [_fullResyncFuture].
   Future<SyncStats> sync({
     @Deprecated('Use pushKinds/pullKinds instead.') Set<String>? kinds,
     Set<String>? pushKinds,
     Set<String>? pullKinds,
-  }) {
+  }) async {
     if (kinds != null && (pushKinds != null || pullKinds != null)) {
       throw ArgumentError(
         'Do not combine legacy "kinds" with "pushKinds"/"pullKinds".',
@@ -239,11 +247,10 @@ class SyncEngine<DB extends GeneratedDatabase> {
     final targetPushKinds = pushKinds ?? kinds;
     final targetPullKinds = pullKinds ?? kinds;
 
-    final runFuture = _ensureSyncRun(
+    return (await _runSync(
       pushKinds: targetPushKinds,
       pullKinds: targetPullKinds,
-    );
-    return runFuture.then((r) => r.stats);
+    )).stats;
   }
 
   /// Perform synchronization and return structured run metadata.
@@ -259,32 +266,81 @@ class SyncEngine<DB extends GeneratedDatabase> {
     }
     final targetPushKinds = pushKinds ?? kinds;
     final targetPullKinds = pullKinds ?? kinds;
-    return _ensureSyncRun(
-      pushKinds: targetPushKinds,
-      pullKinds: targetPullKinds,
-    );
+    return _runSync(pushKinds: targetPushKinds, pullKinds: targetPullKinds);
   }
 
-  Future<SyncRunResult> _ensureSyncRun({
+  /// Core dispatch: full-resync gate → per-kind incremental.
+  Future<SyncRunResult> _runSync({
     Set<String>? pushKinds,
     Set<String>? pullKinds,
-  }) {
-    // If sync is already running, share the existing Future.
-    if (_syncRunFuture != null) return _syncRunFuture!;
+  }) async {
+    // 1. If a full resync is already in flight, share it.
+    if (_fullResyncFuture != null) return _fullResyncFuture!;
 
-    final created = _doSyncRun(pushKinds: pushKinds, pullKinds: pullKinds);
-    _syncRunFuture = created;
-    return created.whenComplete(() {
-      if (identical(_syncRunFuture, created)) {
-        _syncRunFuture = null;
+    // 2. If a full resync is due, trigger one (fullResync() manages its own
+    //    single-flight _fullResyncFuture lock).
+    final lastFullResync = await _cursorService.getLastFullResync();
+    final now = DateTime.now();
+    final needsFullResync =
+        lastFullResync == null ||
+        now.difference(lastFullResync) >= _config.fullResyncInterval;
+
+    if (needsFullResync) {
+      // Delegate to fullResync() so _fullResyncFuture is properly set and all
+      // concurrent callers hitting this branch share the same run.
+      return _ensureFullResync(
+        reason: FullResyncReason.scheduled,
+        clearData: false,
+        started: now,
+      );
+    }
+
+    // 3. Per-kind incremental sync.
+    final allKinds =
+        (pushKinds ?? const <String>{}).union(pullKinds ?? const <String>{});
+
+    final targetKinds =
+        allKinds.isEmpty ? _tables.keys.toSet() : allKinds;
+
+    final futures = targetKinds.map((kind) {
+      final pushForKind =
+          (pushKinds == null || pushKinds.contains(kind))
+              ? <String>{kind}
+              : <String>{};
+      final pullForKind =
+          (pullKinds == null || pullKinds.contains(kind))
+              ? <String>{kind}
+              : <String>{};
+
+      if (!_kindRunFutures.containsKey(kind)) {
+        // Register a cleanup before storing so the entry is always removed
+        // when the run finishes, even if it throws.
+        late final Future<SyncRunResult> guarded;
+        guarded = _doSyncRunForKind(
+          kind: kind,
+          pushKinds: pushForKind,
+          pullKinds: pullForKind,
+        ).whenComplete(() {
+          // Only remove if the map still holds this exact future, avoiding a
+          // race where a new run for the same kind has already been stored.
+          if (identical(_kindRunFutures[kind], guarded)) {
+            _kindRunFutures.remove(kind);
+          }
+        });
+        _kindRunFutures[kind] = guarded;
       }
-    });
+      return _kindRunFutures[kind]!;
+    }).toList();
+
+    final results = await Future.wait(futures);
+    return _mergeResults(results);
   }
 
-  /// Internal sync implementation.
-  Future<SyncRunResult> _doSyncRun({
-    Set<String>? pushKinds,
-    Set<String>? pullKinds,
+  /// Run push+pull for exactly one kind, without the full-resync gate.
+  Future<SyncRunResult> _doSyncRunForKind({
+    required String kind,
+    required Set<String> pushKinds,
+    required Set<String> pullKinds,
   }) async {
     final started = DateTime.now();
     var stats = const SyncStats();
@@ -302,34 +358,23 @@ class SyncEngine<DB extends GeneratedDatabase> {
     });
 
     try {
-      final lastFullResync = await _cursorService.getLastFullResync();
-      final needsFullResync =
-          lastFullResync == null ||
-          started.difference(lastFullResync) >= _config.fullResyncInterval;
-
-      if (needsFullResync) {
-        final run = await _doFullResyncRun(
-          reason: FullResyncReason.scheduled,
-          clearData: false,
-          started: started,
+      if (pushKinds.isNotEmpty) {
+        _events.add(SyncStarted(SyncPhase.push));
+        pushStats = await _pushService.pushAll(kinds: pushKinds);
+        stats = stats.copyWith(
+          pushed: pushStats.pushed,
+          conflicts: pushStats.conflicts,
+          conflictsResolved: pushStats.conflictsResolved,
+          errors: pushStats.errors,
         );
-        return run;
       }
 
-      _events.add(SyncStarted(SyncPhase.push));
-      final targetPushKinds = pushKinds ?? _tables.keys.toSet();
-      pushStats = await _pushService.pushAll(kinds: targetPushKinds);
-      stats = stats.copyWith(
-        pushed: pushStats.pushed,
-        conflicts: pushStats.conflicts,
-        conflictsResolved: pushStats.conflictsResolved,
-        errors: pushStats.errors,
-      );
-      _events.add(SyncStarted(SyncPhase.pull));
-      final targetPullKinds = pullKinds ?? _tables.keys.toSet();
-      final pulled = await _pullService.pullKinds(targetPullKinds);
-      pullStats = PullStats(pulled: pulled);
-      stats = stats.copyWith(pulled: pullStats.pulled);
+      if (pullKinds.isNotEmpty) {
+        _events.add(SyncStarted(SyncPhase.pull));
+        final pulled = await _pullService.pullKinds(pullKinds);
+        pullStats = PullStats(pulled: pulled);
+        stats = stats.copyWith(pulled: pullStats.pulled);
+      }
 
       _events.add(
         SyncCompleted(
@@ -344,8 +389,8 @@ class SyncEngine<DB extends GeneratedDatabase> {
         pull: pullStats,
         stats: stats,
         duration: DateTime.now().difference(started),
-        kindsPushed: targetPushKinds,
-        kindsPulled: targetPullKinds,
+        kindsPushed: pushKinds,
+        kindsPulled: pullKinds,
         stuckOpsCount: await _outboxService.countStuck(
           minTryCount: _config.maxOutboxTryCount,
         ),
@@ -356,7 +401,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
       rethrow;
     } catch (e, st) {
       final exception = SyncOperationException(
-        'Sync failed',
+        'Sync failed for kind=$kind',
         phase: 'sync',
         cause: e,
         stackTrace: st,
@@ -366,6 +411,59 @@ class SyncEngine<DB extends GeneratedDatabase> {
     } finally {
       await sub.cancel();
     }
+  }
+
+  /// Merge a list of per-kind [SyncRunResult]s into one aggregate result.
+  SyncRunResult _mergeResults(List<SyncRunResult> results) {
+    if (results.length == 1) return results.first;
+
+    var pushed = 0;
+    var conflicts = 0;
+    var conflictsResolved = 0;
+    var errors = 0;
+    var pulled = 0;
+    final kindsPushed = <String>{};
+    final kindsPulled = <String>{};
+    SyncErrorInfo? firstError;
+    Duration duration = Duration.zero;
+
+    for (final r in results) {
+      pushed += r.push.pushed;
+      conflicts += r.push.conflicts;
+      conflictsResolved += r.push.conflictsResolved;
+      errors += r.push.errors;
+      pulled += r.pull.pulled;
+      kindsPushed.addAll(r.kindsPushed);
+      kindsPulled.addAll(r.kindsPulled);
+      firstError ??= r.firstError;
+      if (r.duration > duration) duration = r.duration;
+    }
+
+    final mergedPushStats = PushStats(
+      pushed: pushed,
+      conflicts: conflicts,
+      conflictsResolved: conflictsResolved,
+      errors: errors,
+    );
+    final mergedPullStats = PullStats(pulled: pulled);
+    final mergedStats = SyncStats(
+      pushed: pushed,
+      pulled: pulled,
+      conflicts: conflicts,
+      conflictsResolved: conflictsResolved,
+      errors: errors,
+    );
+
+    return SyncRunResult(
+      push: mergedPushStats,
+      pull: mergedPullStats,
+      stats: mergedStats,
+      duration: duration,
+      kindsPushed: kindsPushed,
+      kindsPulled: kindsPulled,
+      stuckOpsCount: results.last.stuckOpsCount,
+      firstError: firstError,
+    );
   }
 
   /// Reactive count of pending operations (excluding stuck by default).
@@ -387,31 +485,37 @@ class SyncEngine<DB extends GeneratedDatabase> {
   ///
   /// If a full resync is already in progress, concurrent callers will
   /// receive the same Future and share the result.
-  Future<SyncStats> fullResync({bool clearData = false}) {
-    // If full resync is already running, share the existing Future
-    if (_fullResyncFuture != null) {
-      return _fullResyncFuture!;
-    }
-
-    _fullResyncFuture = _doFullResync(
+  Future<SyncStats> fullResync({bool clearData = false}) async {
+    final run = await _ensureFullResync(
       reason: FullResyncReason.manual,
       clearData: clearData,
       started: DateTime.now(),
     );
-    return _fullResyncFuture!.whenComplete(() => _fullResyncFuture = null);
+    return run.stats;
   }
 
-  Future<SyncStats> _doFullResync({
+  /// Internal single-flight wrapper around [_doFullResyncRun].
+  ///
+  /// Sets [_fullResyncFuture] so any concurrent caller (via [_runSync] or
+  /// [fullResync]) joins the in-progress run rather than starting a new one.
+  Future<SyncRunResult> _ensureFullResync({
     required FullResyncReason reason,
     required bool clearData,
     required DateTime started,
-  }) async {
-    final run = await _doFullResyncRun(
+  }) {
+    if (_fullResyncFuture != null) return _fullResyncFuture!;
+
+    final created = _doFullResyncRun(
       reason: reason,
       clearData: clearData,
       started: started,
     );
-    return run.stats;
+    _fullResyncFuture = created;
+    return created.whenComplete(() {
+      if (identical(_fullResyncFuture, created)) {
+        _fullResyncFuture = null;
+      }
+    });
   }
 
   Future<SyncRunResult> _doFullResyncRun({
