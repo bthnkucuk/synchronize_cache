@@ -93,6 +93,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
     }
 
     _initServices();
+    _registerEnqueuePushHook();
   }
 
   final DB _db;
@@ -192,6 +193,20 @@ class SyncEngine<DB extends GeneratedDatabase> {
   }
 
   Timer? _autoTimer;
+
+  /// Per-kind debounce timers driving [SyncConfig.pushOnEnqueue] auto-pushes.
+  final Map<String, Timer> _enqueuePushTimers = {};
+
+  /// Set of kinds with a pending debounced push.
+  final Set<String> _pendingPushKinds = {};
+
+  /// Stable closure registered as the database `onOutboxCommitted` hook.
+  /// Stored as a field so it can be reliably compared at dispose time.
+  late final OnOutboxCommittedCallback _enqueueHook = _scheduleEnqueuePush;
+
+  /// Whether [dispose] has been called. Guards against scheduling a push
+  /// after the engine is torn down.
+  bool _disposed = false;
 
   /// Per-kind in-flight sync Futures.
   ///
@@ -602,12 +617,64 @@ class SyncEngine<DB extends GeneratedDatabase> {
     }
   }
 
+  /// Register the post-commit outbox hook on the database mixin so that every
+  /// successful enqueue made through [SyncEntityWriter] schedules a debounced
+  /// per-kind auto-push when [SyncConfig.pushOnEnqueue] is enabled. If the
+  /// flag is disabled the hook becomes a no-op early; we still install it so
+  /// the config can be re-read at runtime via [SyncConfig.copyWith] if a
+  /// future caller wants to flip it.
+  void _registerEnqueuePushHook() {
+    _syncDb.onOutboxCommitted = _enqueueHook;
+  }
+
+  /// Schedule (or reset) a debounced per-kind push.
+  ///
+  /// Same kind with rapid successive writes resets the timer (coalesces).
+  /// Different kinds debounce independently and run in parallel via the
+  /// per-kind sync locks.
+  void _scheduleEnqueuePush(String kind) {
+    if (!_config.pushOnEnqueue) return;
+    if (_disposed) return;
+    _pendingPushKinds.add(kind);
+    _enqueuePushTimers[kind]?.cancel();
+    _enqueuePushTimers[kind] = Timer(_config.enqueuePushDebounce, () {
+      _enqueuePushTimers.remove(kind);
+      _pendingPushKinds.remove(kind);
+      if (_disposed) return;
+      // Fire-and-forget; sync() reports its own errors via the events stream.
+      // Restrict to push-only for this kind so we don't trigger an unwanted
+      // pull cycle on every write. Empty pullKinds means "no kinds to pull".
+      unawaited(
+        sync(
+          pushKinds: {kind},
+          pullKinds: const <String>{},
+        ).catchError((Object _) => const SyncStats()),
+      );
+    });
+  }
+
+  /// Cancel all pending debounced enqueue-pushes and clear pending state.
+  void _cancelEnqueuePushTimers() {
+    for (final timer in _enqueuePushTimers.values) {
+      timer.cancel();
+    }
+    _enqueuePushTimers.clear();
+    _pendingPushKinds.clear();
+  }
+
   /// Release resources.
   ///
   /// IMPORTANT: Always call this method when done using the engine
   /// to prevent memory leaks from the event stream controller.
   void dispose() {
+    _disposed = true;
     stopAuto();
+    _cancelEnqueuePushTimers();
+    // Detach the hook so a database that outlives the engine does not retain
+    // a reference to the disposed engine's closure.
+    if (identical(_syncDb.onOutboxCommitted, _enqueueHook)) {
+      _syncDb.onOutboxCommitted = null;
+    }
     _events.close();
   }
 }

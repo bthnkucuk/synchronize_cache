@@ -26,6 +26,8 @@ class SyncConfig {
     this.skipConflictingOps = false,
     this.maxOutboxTryCount = 5,
     this.retryTransportErrorsInEngine = false,
+    this.pushOnEnqueue = false,
+    this.enqueuePushDebounce = const Duration(milliseconds: 250),
   });
 
   /// Page size for pull operations.
@@ -103,6 +105,22 @@ class SyncConfig {
   /// to avoid duplicate backoff layers.
   final bool retryTransportErrorsInEngine;
 
+  /// When true, every successful outbox enqueue (insert/replace/delete)
+  /// schedules a debounced auto-push for the affected kind. Different kinds
+  /// debounce independently. Combines naturally with per-kind sync locks:
+  /// rapid writes for the same kind coalesce into one push; writes across
+  /// different kinds push in parallel.
+  ///
+  /// Default: `false` — preserves the original "push only on `sync()` /
+  /// `startAuto()` timer" behavior. Apps that want low-latency push set this
+  /// to `true`.
+  final bool pushOnEnqueue;
+
+  /// Debounce window for [pushOnEnqueue]. Ignored when `pushOnEnqueue` is
+  /// false. Reasonable values: 100ms (very eager) – 1s (heavy coalescing).
+  /// Default: 250ms.
+  final Duration enqueuePushDebounce;
+
   /// Create a copy of configuration with modified parameters.
   SyncConfig copyWith({
     int? pageSize,
@@ -123,6 +141,8 @@ class SyncConfig {
     bool? skipConflictingOps,
     int? maxOutboxTryCount,
     bool? retryTransportErrorsInEngine,
+    bool? pushOnEnqueue,
+    Duration? enqueuePushDebounce,
   }) => SyncConfig(
     pageSize: pageSize ?? this.pageSize,
     backoffMin: backoffMin ?? this.backoffMin,
@@ -143,6 +163,8 @@ class SyncConfig {
     maxOutboxTryCount: maxOutboxTryCount ?? this.maxOutboxTryCount,
     retryTransportErrorsInEngine:
         retryTransportErrorsInEngine ?? this.retryTransportErrorsInEngine,
+    pushOnEnqueue: pushOnEnqueue ?? this.pushOnEnqueue,
+    enqueuePushDebounce: enqueuePushDebounce ?? this.enqueuePushDebounce,
   );
 }
 

@@ -80,6 +80,9 @@ class SyncEntityWriter<T, DB extends GeneratedDatabase> {
       await localWrite();
       await _syncDb.enqueue(op);
     });
+    // Notify after the transaction has committed. If the transaction throws,
+    // control never reaches here, so the hook is not fired on rollback.
+    _syncDb.notifyOutboxCommitted(op.kind);
   }
 
   /// Insert [entity] into local DB and enqueue an upsert operation.
@@ -177,6 +180,7 @@ class SyncEntityWriter<T, DB extends GeneratedDatabase> {
       localTimestamp: (localTimestamp ?? _clock()).toUtc(),
     );
     await _syncDb.enqueue(op);
+    _syncDb.notifyOutboxCommitted(op.kind);
   }
 
   /// Run a custom local write and enqueue a delete operation atomically.
