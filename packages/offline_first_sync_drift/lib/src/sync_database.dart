@@ -9,6 +9,14 @@ import 'package:offline_first_sync_drift/src/tables/outbox.drift.dart';
 import 'package:offline_first_sync_drift/src/tables/outbox_meta.drift.dart';
 import 'package:offline_first_sync_drift/src/tables/sync_data_classes.dart';
 
+/// Callback invoked after a successful, durable outbox enqueue for [kind].
+///
+/// Used by [SyncEngine] to wire the optional `pushOnEnqueue` debounce. The
+/// callback is fired by [SyncEntityWriter] only after the enclosing local
+/// write/transaction (if any) has committed, so it is safe to schedule
+/// follow-up work that assumes the outbox row is durable.
+typedef OnOutboxCommittedCallback = void Function(String kind);
+
 /// Mixin for databases with synchronization support.
 ///
 /// Usage:
@@ -21,6 +29,20 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
   TableInfo<Table, SyncOutboxData>? _outboxTable;
   TableInfo<Table, SyncOutboxMetaData>? _outboxMetaTable;
   TableInfo<Table, SyncCursorData>? _cursorsTable;
+
+  /// Optional hook invoked by [SyncEntityWriter] after a successful outbox
+  /// enqueue (post-commit). Set by [SyncEngine] when `pushOnEnqueue` is
+  /// enabled; otherwise null. Internal writer paths invoke it via
+  /// [notifyOutboxCommitted]; do not call it from raw `db.enqueue(...)`.
+  OnOutboxCommittedCallback? onOutboxCommitted;
+
+  /// Internal: invoked by [SyncEntityWriter] after a durable enqueue. Safe to
+  /// call when no hook is registered.
+  void notifyOutboxCommitted(String kind) {
+    final cb = onOutboxCommitted;
+    if (cb == null) return;
+    cb(kind);
+  }
 
   /// Get outbox table.
   TableInfo<Table, SyncOutboxData> get _outbox =>

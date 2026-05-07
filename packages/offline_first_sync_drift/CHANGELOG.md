@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add opt-in `pushOnEnqueue` config (default `false`). When enabled, every
+  outbox enqueue schedules a debounced per-kind auto-push (debounce window
+  configurable via `enqueuePushDebounce`, default 250ms). Combines with the
+  per-kind sync locks: rapid writes for one kind coalesce into a single
+  push; different kinds push in parallel. Useful for apps that want
+  low-latency reads on the server side without polling.
+
 ### Changed
 
 - Per-kind sync locks: concurrent `sync()` calls with disjoint `pullKinds`/`pushKinds`
