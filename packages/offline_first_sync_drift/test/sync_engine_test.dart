@@ -3247,6 +3247,570 @@ void main() {
       },
     );
   });
+
+  group('Re-stamp baseUpdatedAt on dispatch (Round 2)', () {
+    SyncableTable<TestItem> testItemTable(TestDatabase db) =>
+        SyncableTable<TestItem>(
+          kind: 'test_item',
+          table: db.testItems,
+          fromJson: TestItem.fromJson,
+          toJson: (item) => item.toJson(),
+          toInsertable: (item) => item.toInsertable(),
+        );
+
+    test(
+      'stale outbox base + fresh local row → wire uses fresh local updatedAt',
+      () async {
+        // Bug repro. Outbox was enqueued at T_old. Round 1 wrote the server's
+        // bumped value to local in a previous push, so local now sits at
+        // T_new. The next op for the same id must dispatch with T_new, not
+        // the frozen outbox T_old (otherwise: stale-base 409).
+        final tOld = DateTime.utc(2026, 4, 1, 10);
+        final tNew = DateTime.utc(2026, 4, 1, 10, 0, 5);
+
+        final transport = MockTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+        );
+
+        // Local row sits at the fresh (Round-1-written-back) value.
+        await db
+            .into(db.testItems)
+            .insertOnConflictUpdate(
+              TestItem(
+                id: 'item-1',
+                updatedAt: tNew,
+                name: 'Local',
+              ).toInsertable(),
+            );
+
+        // Outbox op was frozen with the stale base from before Round 1's
+        // write-back — exactly the scenario tup-api saw with
+        // delta_us = 80,856,823.
+        await db.enqueue(
+          UpsertOp(
+            opId: 'stale-base-op',
+            kind: 'test_item',
+            id: 'item-1',
+            localTimestamp: tOld,
+            baseUpdatedAt: tOld,
+            payloadJson: {
+              'id': 'item-1',
+              'name': 'Local',
+              'updated_at': tOld.toIso8601String(),
+            },
+          ),
+        );
+
+        await engine.sync();
+
+        expect(transport.pushedOps, hasLength(1));
+        final dispatched = transport.pushedOps.single as UpsertOp;
+        expect(
+          dispatched.baseUpdatedAt,
+          tNew,
+          reason:
+              'Re-stamp must override frozen outbox base with the latest '
+              'local updated_at written back by Round 1.',
+        );
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'outbox base equals local base → wire matches both (non-stale baseline)',
+      () async {
+        // The non-stale case: nothing has shifted local since enqueue.
+        // Re-stamp produces the same value; wire is identical to the outbox.
+        final t = DateTime.utc(2026, 4, 2, 10);
+
+        final transport = MockTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+        );
+
+        await db
+            .into(db.testItems)
+            .insertOnConflictUpdate(
+              TestItem(
+                id: 'item-1',
+                updatedAt: t,
+                name: 'Local',
+              ).toInsertable(),
+            );
+
+        await db.enqueue(
+          UpsertOp(
+            opId: 'same-base-op',
+            kind: 'test_item',
+            id: 'item-1',
+            localTimestamp: t,
+            baseUpdatedAt: t,
+            payloadJson: {
+              'id': 'item-1',
+              'name': 'Local',
+              'updated_at': t.toIso8601String(),
+            },
+          ),
+        );
+
+        await engine.sync();
+
+        expect(transport.pushedOps, hasLength(1));
+        final dispatched = transport.pushedOps.single as UpsertOp;
+        expect(dispatched.baseUpdatedAt, t);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'local row missing → wire falls back to op.baseUpdatedAt (defensive)',
+      () async {
+        // Op has a non-null base, but local row is gone (e.g. concurrent
+        // delete or a race). Re-stamp must NOT crash; it must keep the op's
+        // existing base.
+        final tBase = DateTime.utc(2026, 4, 3, 10);
+
+        final transport = MockTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+        );
+
+        // Note: NO local row inserted for 'ghost-id'.
+        await db.enqueue(
+          UpsertOp(
+            opId: 'ghost-op',
+            kind: 'test_item',
+            id: 'ghost-id',
+            localTimestamp: tBase,
+            baseUpdatedAt: tBase,
+            payloadJson: {
+              'id': 'ghost-id',
+              'name': 'Ghost',
+              'updated_at': tBase.toIso8601String(),
+            },
+          ),
+        );
+
+        await engine.sync();
+
+        expect(transport.pushedOps, hasLength(1));
+        final dispatched = transport.pushedOps.single as UpsertOp;
+        expect(
+          dispatched.baseUpdatedAt,
+          tBase,
+          reason:
+              'When local row is missing, re-stamp must defensively keep '
+              'the op.baseUpdatedAt — not silently change it.',
+        );
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'UpsertOp with null baseUpdatedAt (first write) → wire still has null',
+      () async {
+        // First-write semantics: the consumer asked the server to reject if
+        // the row already exists. Re-stamp must NEVER fabricate a base just
+        // because a local row happens to exist.
+        final transport = MockTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+        );
+
+        // A local row DOES exist for this id — re-stamp would happily read
+        // its updatedAt, but the rule says: if op.baseUpdatedAt is null,
+        // keep it null.
+        final localStamp = DateTime.utc(2026, 4, 4, 10);
+        await db
+            .into(db.testItems)
+            .insertOnConflictUpdate(
+              TestItem(
+                id: 'first-write',
+                updatedAt: localStamp,
+                name: 'Pre-existing',
+              ).toInsertable(),
+            );
+
+        await db.enqueue(
+          UpsertOp(
+            opId: 'first-write-op',
+            kind: 'test_item',
+            id: 'first-write',
+            localTimestamp: localStamp,
+            // baseUpdatedAt deliberately omitted (null) → first-write.
+            payloadJson: {
+              'id': 'first-write',
+              'name': 'Pre-existing',
+              'updated_at': localStamp.toIso8601String(),
+            },
+          ),
+        );
+
+        await engine.sync();
+
+        expect(transport.pushedOps, hasLength(1));
+        final dispatched = transport.pushedOps.single as UpsertOp;
+        expect(
+          dispatched.baseUpdatedAt,
+          equals(null),
+          reason:
+              'Re-stamp must respect first-write semantics: never fabricate '
+              'a base for an op that did not have one.',
+        );
+        expect(dispatched.isNewRecord, isTrue);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'DeleteOp with null baseUpdatedAt → wire still has no base',
+      () async {
+        // Delete first-write semantics analogue — same rule, different op.
+        final transport = MockTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+        );
+
+        final localStamp = DateTime.utc(2026, 4, 5, 10);
+        await db
+            .into(db.testItems)
+            .insertOnConflictUpdate(
+              TestItem(
+                id: 'delete-no-base',
+                updatedAt: localStamp,
+                name: 'Doomed',
+              ).toInsertable(),
+            );
+
+        await db.enqueue(
+          DeleteOp(
+            opId: 'delete-no-base-op',
+            kind: 'test_item',
+            id: 'delete-no-base',
+            localTimestamp: localStamp,
+            // baseUpdatedAt omitted (null).
+          ),
+        );
+
+        await engine.sync();
+
+        expect(transport.pushedOps, hasLength(1));
+        final dispatched = transport.pushedOps.single as DeleteOp;
+        expect(
+          dispatched.baseUpdatedAt,
+          equals(null),
+          reason:
+              'DeleteOp with null base must stay null after re-stamp '
+              '(first-write delete semantics).',
+        );
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'DeleteOp with stale base + fresh local → wire uses fresh local',
+      () async {
+        // Symmetric to the upsert case: a delete with a frozen base must
+        // pick up the freshest local updatedAt before dispatch.
+        final tOld = DateTime.utc(2026, 4, 6, 10);
+        final tNew = DateTime.utc(2026, 4, 6, 10, 0, 7);
+
+        final transport = MockTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+        );
+
+        await db
+            .into(db.testItems)
+            .insertOnConflictUpdate(
+              TestItem(
+                id: 'delete-stale',
+                updatedAt: tNew,
+                name: 'Doomed',
+              ).toInsertable(),
+            );
+
+        await db.enqueue(
+          DeleteOp(
+            opId: 'delete-stale-op',
+            kind: 'test_item',
+            id: 'delete-stale',
+            localTimestamp: tOld,
+            baseUpdatedAt: tOld,
+          ),
+        );
+
+        await engine.sync();
+
+        expect(transport.pushedOps, hasLength(1));
+        final dispatched = transport.pushedOps.single as DeleteOp;
+        expect(dispatched.baseUpdatedAt, tNew);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'Round 1 + Round 2 happy path: write-back feeds re-stamp on next op',
+      () async {
+        // The integration test the task describes. Two ops in flight on the
+        // same id with stale bases. After op1 succeeds:
+        //   - Round 1 writes the server-bumped row (s1) to local.
+        //   - Round 2 re-stamps op2's wire base to s1 before sending.
+        // Both ops succeed end-to-end, even though their outbox bases were
+        // frozen at the same stale t0.
+        //
+        // We use _CanonicalRowPushTransport so PushSuccess.serverData is the
+        // server's bumped row (Round 1 path). We also wrap it in a recording
+        // adapter so we can inspect each op's wire base at the moment of
+        // dispatch (each batch is a separate push call).
+        final t0 = DateTime.utc(2026, 4, 7, 10);
+        final s1 = DateTime.utc(2026, 4, 7, 10, 0, 1);
+        final s2 = DateTime.utc(2026, 4, 7, 10, 0, 2);
+
+        // Two distinct server rows: op1 → s1 row, op2 → s2 row. The mock
+        // updates its row registration after op1 to model the trigger
+        // bumping the version each PUT.
+        final transport = _RoundTwoIntegrationTransport(
+          initialRow: {
+            'id': 'item-x',
+            'name': 'Initial',
+            'updated_at': s1.toIso8601String(),
+          },
+          afterEachPush: (op) {
+            // After op1 (or op2) lands, the next push for item-x sees a
+            // bumped row.
+            return {
+              'id': 'item-x',
+              'name': 'Bumped after ${op.opId}',
+              'updated_at': s2.toIso8601String(),
+            };
+          },
+        );
+
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+        );
+
+        // Seed local row at t0 so the first push's re-stamp lookup yields t0.
+        await db
+            .into(db.testItems)
+            .insertOnConflictUpdate(
+              TestItem(
+                id: 'item-x',
+                updatedAt: t0,
+                name: 'Initial',
+              ).toInsertable(),
+            );
+
+        // Two stale-base ops queued in fast succession.
+        await db.enqueue(
+          UpsertOp(
+            opId: 'op-1',
+            kind: 'test_item',
+            id: 'item-x',
+            localTimestamp: t0,
+            baseUpdatedAt: t0,
+            payloadJson: {
+              'id': 'item-x',
+              'name': 'Edit 1',
+              'updated_at': t0.toIso8601String(),
+            },
+          ),
+        );
+        await db.enqueue(
+          UpsertOp(
+            opId: 'op-2',
+            kind: 'test_item',
+            id: 'item-x',
+            localTimestamp: t0,
+            baseUpdatedAt: t0,
+            payloadJson: {
+              'id': 'item-x',
+              'name': 'Edit 2',
+              'updated_at': t0.toIso8601String(),
+            },
+          ),
+        );
+
+        // Two flush passes: outbox.take returns a batch; PushService loops
+        // until the outbox is drained. We rely on the engine's loop to
+        // process op1 (writeback s1 to local) and then op2 on the next pass
+        // (re-stamp picks up s1).
+        //
+        // To force two batches (and thus two re-stamps with different state
+        // observed for op2), set pageSize=1 via the transport's batching
+        // doesn't apply — the page size is on _config. So instead we just
+        // configure the engine accordingly.
+        engine.dispose();
+
+        final engine2 = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+          config: const SyncConfig(pageSize: 1),
+        );
+
+        await engine2.sync();
+
+        // Both ops were dispatched.
+        expect(transport.recordedOps, hasLength(2));
+
+        // op-1 should have been dispatched with the original base t0
+        // (matched local at the time, since nothing had been written back
+        // yet).
+        expect(
+          (transport.recordedOps[0] as UpsertOp).baseUpdatedAt,
+          t0,
+          reason:
+              'op-1 dispatches first; local is still at t0, re-stamp '
+              'produces t0.',
+        );
+
+        // After op-1 succeeds, Round 1 writes s1 back to local. When op-2
+        // is dispatched, re-stamp reads s1 — NOT t0.
+        expect(
+          (transport.recordedOps[1] as UpsertOp).baseUpdatedAt,
+          s1,
+          reason:
+              'op-2 is dispatched after Round 1 write-back lands s1. '
+              'Re-stamp must read s1 from local, eliminating the '
+              'stale-base 409 the live tup-api saw.',
+        );
+
+        // Outbox should be drained (both succeeded).
+        expect(await db.takeOutbox(), isEmpty);
+
+        engine2.dispose();
+      },
+    );
+
+    test(
+      'unregistered kind → re-stamp is a no-op',
+      () async {
+        // Defensive: if an op references a kind not in _tables, the engine
+        // should not crash. This lines up with _applyServerRow's same
+        // guard.
+        final transport = MockTransport();
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [testItemTable(db)],
+        );
+
+        final tBase = DateTime.utc(2026, 4, 8, 10);
+
+        // Enqueue a stranger-kind op directly into outbox — bypass enqueue
+        // helpers because they may guard kinds. Use the lowest-level path.
+        await db.enqueue(
+          UpsertOp(
+            opId: 'stranger-op',
+            kind: 'unknown_kind',
+            id: 'whatever',
+            localTimestamp: tBase,
+            baseUpdatedAt: tBase,
+            payloadJson: {'id': 'whatever'},
+          ),
+        );
+
+        // We still call sync; PushService's outbox.take filter is by kind,
+        // and the engine syncs for the registered kind. To force the stranger
+        // op into the push path, we call sync without filters — but the
+        // outbox.take in pushAll will return the stranger op too (no
+        // kind-filter case). Note: re-stamp must defensively skip it.
+        // If it panicked, this test would error.
+        await engine.sync(pushKinds: const {'unknown_kind'});
+
+        // The op was sent through (with its original base, since re-stamp
+        // skipped it).
+        expect(transport.pushedOps, hasLength(1));
+        final dispatched = transport.pushedOps.single as UpsertOp;
+        expect(dispatched.baseUpdatedAt, tBase);
+
+        engine.dispose();
+      },
+    );
+  });
+}
+
+/// Transport for the Round 1 + Round 2 integration test.
+///
+/// Each `push(ops)` call:
+///   1. Records the ops list (so the test can inspect what `_baseUpdatedAt`
+///      each op carried at dispatch time).
+///   2. Returns `PushSuccess` with the currently-registered server row for
+///      `(kind=test_item, id=item-x)`.
+///   3. Calls [afterEachPush] for the last op in the batch and uses its
+///      return value as the row served on the **next** push call. Models a
+///      backend trigger bumping `updated_at` after each successful upsert.
+class _RoundTwoIntegrationTransport implements TransportAdapter {
+  _RoundTwoIntegrationTransport({
+    required Map<String, Object?> initialRow,
+    required this.afterEachPush,
+  }) : _currentRow = initialRow;
+
+  Map<String, Object?> _currentRow;
+  final Map<String, Object?> Function(Op lastOp) afterEachPush;
+
+  final List<Op> recordedOps = [];
+
+  @override
+  Future<BatchPushResult> push(List<Op> ops) async {
+    recordedOps.addAll(ops);
+    final results = <OpPushResult>[];
+    for (final op in ops) {
+      results.add(
+        OpPushResult(
+          opId: op.opId,
+          result: PushSuccess(serverData: Map<String, Object?>.from(_currentRow)),
+        ),
+      );
+    }
+    if (ops.isNotEmpty) {
+      _currentRow = afterEachPush(ops.last);
+    }
+    return BatchPushResult(results: results);
+  }
+
+  @override
+  Future<PullPage> pull({
+    required String kind,
+    required DateTime updatedSince,
+    required int pageSize,
+    String? pageToken,
+    String? afterId,
+    bool includeDeleted = true,
+  }) async => PullPage(items: const []);
+
+  @override
+  Future<PushResult> forcePush(Op op) async => const PushSuccess();
+
+  @override
+  Future<FetchResult> fetch({required String kind, required String id}) async =>
+      const FetchNotFound();
+
+  @override
+  Future<bool> health() async => true;
 }
 
 /// Transport whose [push] returns each op as `PushSuccess` with the canonical
