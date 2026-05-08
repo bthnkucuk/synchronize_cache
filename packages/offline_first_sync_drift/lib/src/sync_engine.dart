@@ -147,9 +147,11 @@ class SyncEngine<DB extends GeneratedDatabase> {
       events: _events,
     );
     _pushService = PushService(
+      db: _db,
       outbox: _outboxService,
       transport: _transport,
       conflictService: _conflictService,
+      tables: _tables,
       config: _config,
       events: _events,
     );
