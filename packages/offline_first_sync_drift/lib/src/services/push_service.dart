@@ -78,12 +78,18 @@ class PushService {
       }
 
       while (true) {
-        final ops = await _outbox.take(
+        final outboxOps = await _outbox.take(
           limit: _config.pageSize,
           kinds: kinds,
           maxTryCountExclusive: _config.maxOutboxTryCount,
         );
-        if (ops.isEmpty) break;
+        if (outboxOps.isEmpty) break;
+
+        // Re-stamp each op's `baseUpdatedAt` from the latest local row so the
+        // wire-level `_baseUpdatedAt` reflects the server-known version Round 1
+        // wrote back after the previous successful push. Frozen outbox values
+        // would otherwise produce stale-base 409s on rapid back-to-back edits.
+        final ops = await _reStampBaseUpdatedAt(outboxOps);
 
         final result = await _pushBatch(ops);
 
@@ -201,6 +207,95 @@ class PushService {
     }
 
     return counters.toStats();
+  }
+
+  /// Re-stamp each op's [Op.baseUpdatedAt] from the latest local row's
+  /// `updated_at` so the wire-level optimistic-concurrency token reflects the
+  /// version Round 1 wrote back to local on the previous successful push.
+  ///
+  /// Three-state rule (preserves original semantics; never fabricates a base):
+  ///   1. `op.baseUpdatedAt` non-null + local row found → override with row's
+  ///      `updated_at` (the new, fresh, server-known version).
+  ///   2. `op.baseUpdatedAt` non-null + local row missing → keep
+  ///      `op.baseUpdatedAt` as-is (defensive: should not happen in practice).
+  ///   3. `op.baseUpdatedAt` null (regardless of local row) → keep null.
+  ///      First-write semantics (`isNewRecord`) — the consumer asked the server
+  ///      to reject if the row already exists. Don't lie by inventing a base.
+  ///
+  /// Force-update is **not** routed through this method: `forcePush()` is a
+  /// separate transport entrypoint used only by `ConflictService` for the
+  /// `clientWins` strategy and does not emit `_baseUpdatedAt` on the wire.
+  ///
+  /// If the kind is not registered, the op is left unchanged (mirrors the
+  /// defensive no-op in `_applyServerRow`).
+  Future<List<Op>> _reStampBaseUpdatedAt(List<Op> ops) async {
+    if (ops.isEmpty) return ops;
+    final result = <Op>[];
+    for (final op in ops) {
+      result.add(await _reStampOne(op));
+    }
+    return result;
+  }
+
+  Future<Op> _reStampOne(Op op) async {
+    // Rule 3: never fabricate a base for first-write ops.
+    if (op is UpsertOp && op.baseUpdatedAt == null) return op;
+    if (op is DeleteOp && op.baseUpdatedAt == null) return op;
+
+    final tableConfig = _tables[op.kind];
+    if (tableConfig == null) return op;
+
+    final freshUpdatedAt = await _readLocalUpdatedAt(tableConfig, op.id);
+    // Rule 2: row missing → keep op.baseUpdatedAt as-is.
+    if (freshUpdatedAt == null) return op;
+
+    // Rule 1: override with fresh local value.
+    if (op is UpsertOp) {
+      return op.copyWith(baseUpdatedAt: freshUpdatedAt);
+    }
+    if (op is DeleteOp) {
+      return DeleteOp(
+        opId: op.opId,
+        kind: op.kind,
+        id: op.id,
+        localTimestamp: op.localTimestamp,
+        baseUpdatedAt: freshUpdatedAt,
+      );
+    }
+    return op;
+  }
+
+  /// Read the local row's `updated_at` for `(kind, id)` via a generic SELECT
+  /// keyed on the registered table's primary-key column. Returns `null` if the
+  /// row is absent or the table has a composite primary key (defensive — keep
+  /// the op's existing `baseUpdatedAt` rather than guess).
+  Future<DateTime?> _readLocalUpdatedAt(
+    SyncableTable<dynamic> tableConfig,
+    String id,
+  ) async {
+    final pk = tableConfig.table.$primaryKey;
+    if (pk.length != 1) return null;
+
+    final pkColumn = pk.first.name;
+    final tableName = tableConfig.table.actualTableName;
+
+    final rows = await _db
+        .customSelect(
+          'SELECT * FROM $tableName WHERE $pkColumn = ? LIMIT 1',
+          variables: [Variable.withString(id)],
+          readsFrom: {tableConfig.table},
+        )
+        .get();
+    if (rows.isEmpty) return null;
+
+    final entity = tableConfig.table.map(rows.first.data);
+    try {
+      return tableConfig.updatedAtOf(entity).toUtc();
+    } catch (_) {
+      // SyncableTable.updatedAtOf throws StateError if it can't find a
+      // timestamp; defensively fall back to leaving the op's base alone.
+      return null;
+    }
   }
 
   /// Write the server's canonical row back to the local entity table.
