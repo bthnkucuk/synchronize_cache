@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:drift/drift.dart';
 import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
@@ -9,6 +10,7 @@ import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/services/conflict_service.dart';
 import 'package:offline_first_sync_drift/src/services/outbox_service.dart';
 import 'package:offline_first_sync_drift/src/sync_events.dart';
+import 'package:offline_first_sync_drift/src/syncable_table.dart';
 import 'package:offline_first_sync_drift/src/transport_adapter.dart';
 
 /// Push operation statistics.
@@ -41,20 +43,26 @@ class PushStats {
 /// Service for pushing local changes to the server.
 class PushService {
   PushService({
+    required GeneratedDatabase db,
     required OutboxService outbox,
     required TransportAdapter transport,
     required ConflictService<dynamic> conflictService,
+    required Map<String, SyncableTable<dynamic>> tables,
     required SyncConfig config,
     required StreamController<SyncEvent> events,
-  }) : _outbox = outbox,
+  }) : _db = db,
+       _outbox = outbox,
        _transport = transport,
        _conflictService = conflictService,
+       _tables = tables,
        _config = config,
        _events = events;
 
+  final GeneratedDatabase _db;
   final OutboxService _outbox;
   final TransportAdapter _transport;
   final ConflictService<dynamic> _conflictService;
+  final Map<String, SyncableTable<dynamic>> _tables;
   final SyncConfig _config;
   final StreamController<SyncEvent> _events;
 
@@ -91,7 +99,16 @@ class PushService {
           final op = ops.firstWhere((o) => o.opId == opResult.opId);
 
           switch (opResult.result) {
-            case PushSuccess():
+            case PushSuccess(:final serverData):
+              // Server may return the canonical row for upserts (with
+              // trigger-bumped fields like updated_at). For delete success
+              // the body is empty (HTTP 204), so serverData is null and
+              // there is nothing to write back. We mirror
+              // ConflictService._applyServerData here so the local row
+              // reflects the server-authoritative state immediately.
+              if (serverData != null) {
+                await _applyServerRow(op.kind, serverData);
+              }
               successOpIds.add(opResult.opId);
               counters.pushed++;
               batchSuccessCount++;
@@ -184,6 +201,29 @@ class PushService {
     }
 
     return counters.toStats();
+  }
+
+  /// Write the server's canonical row back to the local entity table.
+  ///
+  /// Mirrors [ConflictService._applyServerData]: convert the server JSON to
+  /// an entity via the registered [SyncableTable.fromJson], turn it into an
+  /// `Insertable` and `insertOnConflictUpdate` it. Used after a successful
+  /// push so the local row picks up server-bumped fields (`updated_at`,
+  /// trigger-derived columns, etc.) that the server returned in its response.
+  ///
+  /// If the [kind] is not registered, this is a no-op — the same defensive
+  /// stance taken by `_applyServerData`.
+  Future<void> _applyServerRow(
+    String kind,
+    Map<String, Object?> serverData,
+  ) async {
+    final tableConfig = _tables[kind];
+    if (tableConfig == null) return;
+
+    final entity = tableConfig.fromJson(serverData);
+    await _db
+        .into(tableConfig.table)
+        .insertOnConflictUpdate(tableConfig.getInsertable(entity));
   }
 
   Future<BatchPushResult> _pushBatch(List<Op> ops) async {

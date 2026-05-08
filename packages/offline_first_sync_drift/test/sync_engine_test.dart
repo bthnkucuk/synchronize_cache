@@ -2921,6 +2921,379 @@ void main() {
       },
     );
   });
+
+  group('PushSuccess server data write-back', () {
+    test(
+      'PushSuccess with serverData updates local row updatedAt to server value',
+      () async {
+        // Client pushes with one updatedAt; server returns a trigger-bumped
+        // updatedAt. After the push, the local row must reflect the server's
+        // canonical updatedAt — not the value the client sent.
+        final clientUpdatedAt = DateTime.utc(2026, 1, 1, 10);
+        final serverUpdatedAt = DateTime.utc(2026, 1, 1, 10, 0, 5);
+
+        final transport = _CanonicalRowPushTransport(
+          rowsByKindAndId: {
+            'test_item': {
+              'item-1': {
+                'id': 'item-1',
+                'name': 'Local Name',
+                'updated_at': serverUpdatedAt.toIso8601String(),
+              },
+            },
+          },
+        );
+
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'test_item',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+        );
+
+        // Seed local row at clientUpdatedAt (the value the client believed it
+        // was sending).
+        await db
+            .into(db.testItems)
+            .insertOnConflictUpdate(
+              TestItem(
+                id: 'item-1',
+                updatedAt: clientUpdatedAt,
+                name: 'Local Name',
+              ).toInsertable(),
+            );
+
+        await db.enqueue(
+          UpsertOp(
+            opId: 'writeback-op-1',
+            kind: 'test_item',
+            id: 'item-1',
+            localTimestamp: clientUpdatedAt,
+            payloadJson: {
+              'id': 'item-1',
+              'name': 'Local Name',
+              'updated_at': clientUpdatedAt.toIso8601String(),
+            },
+          ),
+        );
+
+        await engine.sync();
+
+        final stored =
+            await (db.select(db.testItems)
+                  ..where((t) => t.id.equals('item-1')))
+                .getSingle();
+        expect(
+          stored.updatedAt.toUtc(),
+          serverUpdatedAt,
+          reason:
+              'Local row should reflect the server-bumped updated_at after '
+              'a successful push (PushSuccess.serverData was previously '
+              'discarded by PushService).',
+        );
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'PushSuccess with serverData lands all server-bumped fields locally',
+      () async {
+        // The canonical row may differ from what the client sent in fields
+        // beyond updated_at — e.g. server-side normalisation. All of those
+        // must land in the local row.
+        final clientUpdatedAt = DateTime.utc(2026, 2, 1, 10);
+        final serverUpdatedAt = DateTime.utc(2026, 2, 1, 10, 0, 5);
+
+        final transport = _CanonicalRowPushTransport(
+          rowsByKindAndId: {
+            'test_item': {
+              'item-2': {
+                'id': 'item-2',
+                'name': 'Server Normalised Name',
+                'updated_at': serverUpdatedAt.toIso8601String(),
+              },
+            },
+          },
+        );
+
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'test_item',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+        );
+
+        await db
+            .into(db.testItems)
+            .insertOnConflictUpdate(
+              TestItem(
+                id: 'item-2',
+                updatedAt: clientUpdatedAt,
+                name: 'Local Original Name',
+              ).toInsertable(),
+            );
+
+        await db.enqueue(
+          UpsertOp(
+            opId: 'writeback-op-2',
+            kind: 'test_item',
+            id: 'item-2',
+            localTimestamp: clientUpdatedAt,
+            payloadJson: {
+              'id': 'item-2',
+              'name': 'Local Original Name',
+              'updated_at': clientUpdatedAt.toIso8601String(),
+            },
+          ),
+        );
+
+        await engine.sync();
+
+        final stored =
+            await (db.select(db.testItems)
+                  ..where((t) => t.id.equals('item-2')))
+                .getSingle();
+        expect(stored.name, 'Server Normalised Name');
+        expect(stored.updatedAt.toUtc(), serverUpdatedAt);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'DeleteOp PushSuccess (serverData null) does not crash and acks op',
+      () async {
+        // Delete success returns 204 with empty body → PushSuccess(serverData:
+        // null). The write-back code path must early-return (no row to apply).
+        final transport = _CanonicalRowPushTransport(rowsByKindAndId: {});
+
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'test_item',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+        );
+
+        await db.enqueue(
+          DeleteOp(
+            opId: 'delete-writeback-op',
+            kind: 'test_item',
+            id: 'item-to-delete',
+            localTimestamp: DateTime.now().toUtc(),
+          ),
+        );
+
+        await engine.sync();
+
+        // Op was acked despite no serverData on the delete success.
+        expect(await db.takeOutbox(), isEmpty);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'PushSuccess with null serverData (e.g. legacy endpoint) is a no-op',
+      () async {
+        // Some older endpoints may answer 200 with no body. The library must
+        // still ack and not throw.
+        final transport = _CanonicalRowPushTransport(rowsByKindAndId: {});
+
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'test_item',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+        );
+
+        await db.enqueue(
+          UpsertOp(
+            opId: 'no-body-upsert',
+            kind: 'test_item',
+            id: 'item-no-body',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: {
+              'id': 'item-no-body',
+              'name': 'X',
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            },
+          ),
+        );
+
+        await engine.sync();
+
+        // Op was acked; no exception thrown.
+        expect(await db.takeOutbox(), isEmpty);
+
+        engine.dispose();
+      },
+    );
+
+    test(
+      'multiple ops in one flush each get their server row written back',
+      () async {
+        // Three upserts to three different ids; each gets a distinct
+        // server-bumped updatedAt. After the flush, each local row reflects
+        // its respective server response.
+        final t0 = DateTime.utc(2026, 3, 1, 10);
+        final s1 = DateTime.utc(2026, 3, 1, 10, 0, 1);
+        final s2 = DateTime.utc(2026, 3, 1, 10, 0, 2);
+        final s3 = DateTime.utc(2026, 3, 1, 10, 0, 3);
+
+        final transport = _CanonicalRowPushTransport(
+          rowsByKindAndId: {
+            'test_item': {
+              'a': {
+                'id': 'a',
+                'name': 'A',
+                'updated_at': s1.toIso8601String(),
+              },
+              'b': {
+                'id': 'b',
+                'name': 'B',
+                'updated_at': s2.toIso8601String(),
+              },
+              'c': {
+                'id': 'c',
+                'name': 'C',
+                'updated_at': s3.toIso8601String(),
+              },
+            },
+          },
+        );
+
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'test_item',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+        );
+
+        for (final id in ['a', 'b', 'c']) {
+          await db
+              .into(db.testItems)
+              .insertOnConflictUpdate(
+                TestItem(
+                  id: id,
+                  updatedAt: t0,
+                  name: id.toUpperCase(),
+                ).toInsertable(),
+              );
+          await db.enqueue(
+            UpsertOp(
+              opId: 'op-$id',
+              kind: 'test_item',
+              id: id,
+              localTimestamp: t0,
+              payloadJson: {
+                'id': id,
+                'name': id.toUpperCase(),
+                'updated_at': t0.toIso8601String(),
+              },
+            ),
+          );
+        }
+
+        await engine.sync();
+
+        final rows = await (db.select(db.testItems)
+              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+            .get();
+        expect(rows.length, 3);
+        expect(rows[0].id, 'a');
+        expect(rows[0].updatedAt.toUtc(), s1);
+        expect(rows[1].id, 'b');
+        expect(rows[1].updatedAt.toUtc(), s2);
+        expect(rows[2].id, 'c');
+        expect(rows[2].updatedAt.toUtc(), s3);
+
+        engine.dispose();
+      },
+    );
+  });
+}
+
+/// Transport whose [push] returns each op as `PushSuccess` with the canonical
+/// row pre-registered for `(kind, id)`. Models a server that responds with the
+/// trigger-bumped row on a successful upsert (cf. tup-api PR #34) and replies
+/// with `PushSuccess(serverData: null)` for any op whose `(kind, id)` is not
+/// registered (modelling DELETE-success / no-body endpoints).
+class _CanonicalRowPushTransport implements TransportAdapter {
+  _CanonicalRowPushTransport({required this.rowsByKindAndId});
+
+  /// kind → (entityId → canonical JSON row).
+  final Map<String, Map<String, Map<String, Object?>>> rowsByKindAndId;
+
+  @override
+  Future<BatchPushResult> push(List<Op> ops) async {
+    final results = <OpPushResult>[];
+    for (final op in ops) {
+      final row = rowsByKindAndId[op.kind]?[op.id];
+      results.add(
+        OpPushResult(
+          opId: op.opId,
+          result: PushSuccess(serverData: row),
+        ),
+      );
+    }
+    return BatchPushResult(results: results);
+  }
+
+  @override
+  Future<PullPage> pull({
+    required String kind,
+    required DateTime updatedSince,
+    required int pageSize,
+    String? pageToken,
+    String? afterId,
+    bool includeDeleted = true,
+  }) async => PullPage(items: const []);
+
+  @override
+  Future<PushResult> forcePush(Op op) async => const PushSuccess();
+
+  @override
+  Future<FetchResult> fetch({required String kind, required String id}) async =>
+      const FetchNotFound();
+
+  @override
+  Future<bool> health() async => true;
 }
 
 /// Transport that records which kinds were pulled and introduces a small delay
