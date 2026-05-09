@@ -1,0 +1,20 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        enabled: false
+
+      drift_dev:analyzer:
+        enabled: true
+        options: &options
+          store_date_time_values_as_text: true
+          generate_values_in_copy_with: true
+          named_parameters: true
+          named_parameters_always_required: false
+          sqlite:
+            modules:
+              - fts5
+
+      drift_dev:modular:
+        enabled: true
+        options: *options

@@ -7,6 +7,7 @@ environment:
 workspace:
   - packages/offline_first_sync_drift
   - packages/offline_first_sync_drift_rest
+  - packages/search_engine
   - example
   - example/todo_simple/backend
   - example/todo_simple/frontend

@@ -39,3 +39,6 @@ coverage/
 
 REFACTOR.md
 REFACTOR2.md
+
+# FVM Version Cache
+.fvm/

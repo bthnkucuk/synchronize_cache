@@ -1,0 +1,34 @@
+-- Search-engine schema bundle. Host databases include this file via:
+--
+-- @DriftDatabase(
+--   include: {'package:search_engine/src/tables/search_tables.drift'},
+--   tables: [PendingSearchItems, SearchLookup, SearchIndexCursors, /* ... */],
+-- )
+--
+-- Note: drift only emits CREATE statements for tables declared via Dart
+-- `Table` classes when `m.createAll()` runs. The FTS5 virtual table below
+-- is the part drift cannot generate from a Dart Table class — including
+-- this .drift file ensures it is created during `m.createAll()`.
+--
+-- The `*_normalized` columns mirror the raw text columns with diacritics
+-- stripped + lowercased. User queries are normalized the same way before
+-- being matched against them, so `şehir`-flavoured rows stay searchable as
+-- `sehir` without losing original glyphs in highlight output (which reads
+-- the raw columns at offsets 3/4/5).
+
+import 'pending_search_items.dart';
+import 'search_lookup.dart';
+import 'search_index_cursors.dart';
+
+CREATE VIRTUAL TABLE global_search USING fts5(
+  original_id UNINDEXED,
+  kind UNINDEXED,
+  user_id UNINDEXED,
+  title,
+  description,
+  content,
+  title_normalized,
+  description_normalized,
+  content_normalized,
+  tokenize = 'trigram'
+);

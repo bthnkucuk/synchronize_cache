@@ -1,0 +1,28 @@
+name: search_engine
+description: >
+  Drift-backed full-text search engine with FTS5 indexing, pending queue,
+  cursor-based incremental indexing, and a swappable transport layer.
+version: 0.1.0
+repository: https://github.com/cherrypick-agency/synchronize_cache
+issue_tracker: https://github.com/cherrypick-agency/synchronize_cache/issues
+resolution: workspace
+
+topics:
+  - drift
+  - fts5
+  - search
+  - sqlite
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  drift: ^2.26.1
+  equatable: ^2.0.8
+  synchronized: ^3.4.0
+
+dev_dependencies:
+  build_runner: ^2.4.15
+  drift_dev: ^2.26.1
+  mocktail: ^1.0.4
+  test: ^1.25.15
