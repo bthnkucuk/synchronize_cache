@@ -14,3 +14,4 @@ export 'src/tables/search_index_cursors.dart';
 export 'src/tables/search_lookup.dart';
 export 'src/transport/drift_fts_search_transport.dart';
 export 'src/transport/search_transport.dart';
+export 'src/search_indexer.dart';

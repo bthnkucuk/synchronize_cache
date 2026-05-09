@@ -19,6 +19,7 @@ environment:
 dependencies:
   drift: ^2.26.1
   equatable: ^2.0.8
+  rxdart: ^0.28.0
   synchronized: ^3.4.0
 
 dev_dependencies:
