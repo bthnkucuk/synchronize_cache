@@ -1,0 +1,31 @@
+name: sync_socket_wake_listener
+description: >
+  Flutter helpers that wake an offline_first_sync_drift SyncEngine in response
+  to socket.io `sync:wake` events, app lifecycle changes, and network reconnects.
+version: 0.1.0
+repository: https://github.com/cherrypick-agency/synchronize_cache
+issue_tracker: https://github.com/cherrypick-agency/synchronize_cache/issues
+resolution: workspace
+
+topics:
+  - sync
+  - socket-io
+  - drift
+  - offline-first
+
+environment:
+  sdk: ^3.7.0
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  connectivity_plus: ^7.1.1
+  drift: ^2.26.1
+  offline_first_sync_drift: ^0.1.2
+  socket_io_client: ^3.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mocktail: ^1.0.4
