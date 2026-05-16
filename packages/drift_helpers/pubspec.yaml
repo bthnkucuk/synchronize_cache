@@ -1,0 +1,22 @@
+name: drift_helpers
+description: Small pure-Dart helpers (drift converters, etc.) reused across apps.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  drift: ^2.26.1
+  meta: ^1.16.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.15
+  # Pure-Dart sqlite bindings — used only by test/dao/converter_dao_smoke_test.dart
+  # to round-trip drift_helpers' TypeConverters through a real sqlite engine.
+  # NOT sqlite3_flutter_libs — keeps drift_helpers Flutter-free.
+  # Constraint matches the workspace ceiling pulled in by drift_flutter via
+  # the example apps; bumping requires unblocking drift_flutter upstream.
+  sqlite3: ^2.4.6
