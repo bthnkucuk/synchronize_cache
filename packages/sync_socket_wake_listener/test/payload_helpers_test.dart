@@ -6,7 +6,14 @@ void main() {
     test('contains all expected server-managed field names', () {
       expect(
         serverManagedFields,
-        containsAll(<String>['id', 'bundle_id', 'user_id', 'created_at', 'updated_at', 'deleted_at']),
+        containsAll(<String>[
+          'id',
+          'bundle_id',
+          'user_id',
+          'created_at',
+          'updated_at',
+          'deleted_at',
+        ]),
       );
       expect(serverManagedFields.length, equals(6));
     });
@@ -16,7 +23,7 @@ void main() {
     test('removes server-managed keys from json', () {
       final input = {
         'id': 'abc-123',
-        'bundle_id': 'app.tupandas.ainote',
+        'bundle_id': 'app.example.app',
         'user_id': 'uid-1',
         'created_at': '2024-01-01T00:00:00Z',
         'updated_at': '2024-06-01T00:00:00Z',
