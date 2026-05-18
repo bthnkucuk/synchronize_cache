@@ -95,6 +95,17 @@ abstract final class ChangedFieldsDiff {
       return true;
     }
 
+    // Special-case doubles: NaN == NaN must report true for change detection.
+    // IEEE 754 says NaN != NaN, but for diffing purposes two NaN values
+    // represent the same "missing/invalid number" state, so we treat them
+    // as equal. Without this, `identical(a, b)` at the top can return either
+    // true or false for two NaN doubles depending on whether the VM happened
+    // to canonicalize them, making diffMaps non-deterministic for NaN fields.
+    if (a is double && b is double) {
+      if (a.isNaN && b.isNaN) return true;
+      return a == b;
+    }
+
     return a == b;
   }
 }

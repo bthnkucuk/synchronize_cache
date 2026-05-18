@@ -31,21 +31,33 @@ void main() {
   );
 
   group('Pull parsing edge cases', () {
-    test('malformed JSON body on 200 surfaces as FormatException', () async {
-      final client = MockClient(
-        (req) async => http.Response('not-json{', 200),
-      );
-      final transport = buildTransport(client);
+    test(
+      'malformed JSON body on 200 surfaces as TransportException (parseError)',
+      () async {
+        // Updated expectation: parse failures on a 2xx body are now reported
+        // as TransportException (a SyncException subtype) rather than the
+        // raw dart:convert FormatException — callers can catch SyncException
+        // uniformly. parseError uses statusCode == 0 as a sentinel meaning
+        // "no status; parse failed" and preserves the raw body + cause.
+        final client = MockClient(
+          (req) async => http.Response('not-json{', 200),
+        );
+        final transport = buildTransport(client);
 
-      await expectLater(
-        transport.pull(
-          kind: 'thing',
-          updatedSince: DateTime.utc(2024),
-          pageSize: 10,
-        ),
-        throwsA(isA<FormatException>()),
-      );
-    });
+        try {
+          await transport.pull(
+            kind: 'thing',
+            updatedSince: DateTime.utc(2024),
+            pageSize: 10,
+          );
+          fail('expected TransportException');
+        } on TransportException catch (e) {
+          expect(e.statusCode, 0);
+          expect(e.responseBody, 'not-json{');
+          expect(e.cause, isA<FormatException>());
+        }
+      },
+    );
 
     test('body missing items field returns empty list', () async {
       final client = MockClient(
@@ -900,20 +912,31 @@ void main() {
   });
 
   group('Fetch parsing edge cases', () {
-    test('fetch malformed JSON body returns FetchError', () async {
-      final client = MockClient(
-        (req) async => http.Response('not-json{', 200),
-      );
-      final transport = buildTransport(client);
+    test(
+      'fetch malformed JSON body returns FetchError(TransportException), '
+      'not FetchError(NetworkException)',
+      () async {
+        // Updated expectation: malformed bodies on 200 are a server-side
+        // data-shape problem, not a network failure. They must be reported
+        // as TransportException (parseError factory), so callers debugging
+        // "why is the network flaky?" don't get a misleading signal.
+        final client = MockClient(
+          (req) async => http.Response('not-json{', 200),
+        );
+        final transport = buildTransport(client);
 
-      final res = await transport.fetch(kind: 'thing', id: 'e1');
+        final res = await transport.fetch(kind: 'thing', id: 'e1');
 
-      expect(res, isA<FetchError>());
-      expect(
-        (res as FetchError).error,
-        anyOf(isA<NetworkException>(), isA<FormatException>()),
-      );
-    });
+        expect(res, isA<FetchError>());
+        final err = (res as FetchError).error;
+        expect(err, isA<TransportException>());
+        expect(err, isNot(isA<NetworkException>()));
+        final te = err as TransportException;
+        expect(te.statusCode, 0);
+        expect(te.responseBody, 'not-json{');
+        expect(te.cause, isA<FormatException>());
+      },
+    );
 
     test('fetch 5xx returns FetchError(TransportException)', () async {
       final client = MockClient(
@@ -1016,6 +1039,46 @@ void main() {
         }
         // initial + 2 retries == 3
         expect(attempts, 3);
+      },
+    );
+
+    test(
+      'TransportException.parseError carries body, cause, and sentinel status',
+      () async {
+        // Pin the contract of the new parse-error factory so future changes
+        // can't silently flip its shape. statusCode == 0 is the agreed
+        // sentinel meaning "no HTTP status; parse failed".
+        const cause = FormatException('bad json');
+        final ex = TransportException.parseError('raw-body', cause);
+        expect(ex.statusCode, 0);
+        expect(ex.responseBody, 'raw-body');
+        expect(ex.cause, same(cause));
+        expect(ex, isA<SyncException>());
+      },
+    );
+
+    test(
+      'pull parse error is a SyncException (catchable as the unified base)',
+      () async {
+        // Parity check with httpError: both flavors of TransportException
+        // must be catchable via the SyncException base, so callers wrapping
+        // sync logic in one try/catch don't have to special-case parse
+        // failures vs HTTP failures.
+        final client = MockClient(
+          (req) async => http.Response('not-json{', 200),
+        );
+        final transport = buildTransport(client);
+
+        try {
+          await transport.pull(
+            kind: 'thing',
+            updatedSince: DateTime.utc(2024),
+            pageSize: 10,
+          );
+          fail('expected SyncException');
+        } on SyncException catch (e) {
+          expect(e, isA<TransportException>());
+        }
       },
     );
 

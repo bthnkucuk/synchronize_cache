@@ -56,6 +56,24 @@ class TransportException extends SyncException {
         responseBody: body,
       );
 
+  /// Create for a successful HTTP response whose body could not be parsed.
+  ///
+  /// The HTTP layer succeeded (status was 2xx) but the response body was
+  /// malformed — this is a server-side data-shape problem, not a network
+  /// failure. [statusCode] is set to `0` as a sentinel meaning "no status;
+  /// parse failed".
+  factory TransportException.parseError(
+    String body,
+    Object cause, [
+    StackTrace? stackTrace,
+  ]) => TransportException(
+    'Failed to parse response body: $cause',
+    statusCode: 0,
+    responseBody: body,
+    cause: cause,
+    stackTrace: stackTrace,
+  );
+
   @override
   String toString() =>
       statusCode == null

@@ -131,7 +131,12 @@ class RestTransport implements TransportAdapter {
     );
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      final body = jsonDecode(res.body) as Map<String, Object?>;
+      final Map<String, Object?> body;
+      try {
+        body = jsonDecode(res.body) as Map<String, Object?>;
+      } on FormatException catch (e, st) {
+        throw TransportException.parseError(res.body, e, st);
+      }
       final items =
           (body['items'] as List<dynamic>? ?? []).cast<Map<String, Object?>>();
       final next = body['nextPageToken'] as String?;
@@ -524,7 +529,15 @@ class RestTransport implements TransportAdapter {
       );
 
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, Object?>;
+        final Map<String, Object?> data;
+        try {
+          data = jsonDecode(res.body) as Map<String, Object?>;
+        } on FormatException catch (e, st) {
+          return FetchError(
+            TransportException.parseError(res.body, e, st),
+            st,
+          );
+        }
         final version = res.headers['etag'];
         return FetchSuccess(data: data, version: version);
       }
@@ -534,6 +547,8 @@ class RestTransport implements TransportAdapter {
       }
 
       return FetchError(TransportException.httpError(res.statusCode, res.body));
+    } on FormatException catch (e, st) {
+      return FetchError(TransportException.parseError('', e, st), st);
     } on SyncException catch (e, st) {
       return FetchError(e, st);
     } catch (e, st) {

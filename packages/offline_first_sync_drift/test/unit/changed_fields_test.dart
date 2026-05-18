@@ -317,6 +317,85 @@ void main() {
     });
   });
 
+  group('ChangedFieldsDiff NaN handling', () {
+    test('diffMaps reports no change for two NaN doubles in the same field', () {
+      // Two distinct NaN expressions; without the fix, `identical` may be
+      // false and `NaN == NaN` is always false, so this would falsely
+      // report a change.
+      final before = <String, Object?>{'score': double.nan};
+      final after = <String, Object?>{'score': double.nan + 0.0};
+
+      expect(
+        ChangedFieldsDiff.diffMaps(before, after, ignoredFields: const {}),
+        isEmpty,
+      );
+      expect(
+        ChangedFieldsDiff.diffOrNullMaps(
+          before,
+          after,
+          ignoredFields: const {},
+        ),
+        isNull,
+      );
+    });
+
+    test('diffMaps reports change when NaN flips to a real number', () {
+      final before = <String, Object?>{'score': double.nan};
+      final after = <String, Object?>{'score': 3.14};
+
+      expect(
+        ChangedFieldsDiff.diffMaps(before, after, ignoredFields: const {}),
+        equals({'score'}),
+      );
+    });
+
+    test('diffMaps reports change when a real number flips to NaN', () {
+      final before = <String, Object?>{'score': 3.14};
+      final after = <String, Object?>{'score': double.nan};
+
+      expect(
+        ChangedFieldsDiff.diffMaps(before, after, ignoredFields: const {}),
+        equals({'score'}),
+      );
+    });
+
+    test('NaN equality is honored inside nested maps and lists', () {
+      final before = <String, Object?>{
+        'nested': {
+          'value': double.nan,
+          'samples': [1.0, double.nan, 2.0],
+        },
+      };
+      final after = <String, Object?>{
+        'nested': {
+          'value': double.nan + 0.0,
+          'samples': [1.0, double.nan + 0.0, 2.0],
+        },
+      };
+
+      expect(
+        ChangedFieldsDiff.diffMaps(before, after, ignoredFields: const {}),
+        isEmpty,
+      );
+
+      // And a change inside the nested structure is still detected.
+      final afterChanged = <String, Object?>{
+        'nested': {
+          'value': double.nan,
+          'samples': [1.0, double.nan, 9.9],
+        },
+      };
+      expect(
+        ChangedFieldsDiff.diffMaps(
+          before,
+          afterChanged,
+          ignoredFields: const {},
+        ),
+        equals({'nested'}),
+      );
+    });
+  });
+
   group('ChangedFieldsDiff.defaultIgnoredFields', () {
     test('contains the expected system fields', () {
       expect(
