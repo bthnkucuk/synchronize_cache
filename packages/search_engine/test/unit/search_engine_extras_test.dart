@@ -358,6 +358,229 @@ void main() {
     });
   });
 
+  group('SearchEngine.processPendingItems edge cases', () {
+    test('forwards batchSize=0 to the queue (no validation in engine)',
+        () async {
+      when(
+        () => queue.getPendingUserItems(
+          userId: any(named: 'userId'),
+          jsonDecoder: any(named: 'jsonDecoder'),
+          limit: any(named: 'limit'),
+          maxTryCount: any(named: 'maxTryCount'),
+        ),
+      ).thenAnswer((_) async => const []);
+
+      final engine = SearchEngine(
+        transport: transport,
+        database: queue,
+        tables: const [],
+      );
+
+      await expectLater(
+        engine.processPendingItems(userId: 'u', batchSize: 0),
+        completes,
+      );
+
+      verify(
+        () => queue.getPendingUserItems(
+          userId: 'u',
+          jsonDecoder: any(named: 'jsonDecoder'),
+          limit: 0,
+          maxTryCount: any(named: 'maxTryCount'),
+        ),
+      ).called(1);
+    });
+
+    test('forwards a negative batchSize to the queue without crashing',
+        () async {
+      when(
+        () => queue.getPendingUserItems(
+          userId: any(named: 'userId'),
+          jsonDecoder: any(named: 'jsonDecoder'),
+          limit: any(named: 'limit'),
+          maxTryCount: any(named: 'maxTryCount'),
+        ),
+      ).thenAnswer((_) async => const []);
+
+      final engine = SearchEngine(
+        transport: transport,
+        database: queue,
+        tables: const [],
+      );
+
+      await expectLater(
+        engine.processPendingItems(userId: 'u', batchSize: -3),
+        completes,
+      );
+
+      verify(
+        () => queue.getPendingUserItems(
+          userId: 'u',
+          jsonDecoder: any(named: 'jsonDecoder'),
+          limit: -3,
+          maxTryCount: any(named: 'maxTryCount'),
+        ),
+      ).called(1);
+    });
+
+    test(
+        'processes every row the queue returns even if it exceeds batchSize '
+        '(engine trusts the queue)', () async {
+      when(
+        () => queue.getPendingUserItems(
+          userId: any(named: 'userId'),
+          jsonDecoder: any(named: 'jsonDecoder'),
+          limit: any(named: 'limit'),
+          maxTryCount: any(named: 'maxTryCount'),
+        ),
+      ).thenAnswer(
+        (_) async => List.generate(
+          5,
+          (i) => makeItem(id: 'r$i', kind: 'dummy', data: {'title': 't$i'}),
+        ),
+      );
+
+      final engine = SearchEngine(
+        transport: transport,
+        database: queue,
+        tables: [dummyBinding('dummy')],
+      );
+
+      await engine.processPendingItems(userId: 'u', batchSize: 2);
+
+      verify(() => transport.upsert(any())).called(5);
+      verify(
+        () => queue.deletePendingUserItem(
+          id: any(named: 'id'),
+          kind: 'dummy',
+        ),
+      ).called(5);
+    });
+
+    test('jsonDecoder failures surface through the error handler', () async {
+      Object? caught;
+      Object? caughtMsg;
+
+      when(
+        () => queue.getPendingUserItems(
+          userId: any(named: 'userId'),
+          jsonDecoder: any(named: 'jsonDecoder'),
+          limit: any(named: 'limit'),
+          maxTryCount: any(named: 'maxTryCount'),
+        ),
+      ).thenAnswer((invocation) async {
+        // Invoke the decoder to surface its failure to the engine, the way
+        // the real database mixin does.
+        final decoder = invocation.namedArguments[#jsonDecoder]
+            as FutureOr<dynamic> Function(String);
+        await decoder('not-json');
+        return const [];
+      });
+
+      final engine = SearchEngine(
+        transport: transport,
+        database: queue,
+        tables: const [],
+        jsonDecoder: (_) => throw const FormatException('boom decoding'),
+        errorHandler: (e, [st, msg]) {
+          caught = e;
+          caughtMsg = msg;
+        },
+      );
+
+      await engine.processPendingItems(userId: 'u');
+
+      expect(caught, isA<FormatException>());
+      expect(caughtMsg, contains('SearchEngine.processPendingItems'));
+    });
+
+    test(
+        'jsonDecoder returning a non-Map causes the queue to raise — engine '
+        "doesn't crash; error handler is notified", () async {
+      Object? caught;
+
+      // The real database mixin casts the decoder result to Map. Simulate
+      // that cast failure here so we exercise the engine's error path.
+      when(
+        () => queue.getPendingUserItems(
+          userId: any(named: 'userId'),
+          jsonDecoder: any(named: 'jsonDecoder'),
+          limit: any(named: 'limit'),
+          maxTryCount: any(named: 'maxTryCount'),
+        ),
+      ).thenAnswer((invocation) async {
+        final decoder = invocation.namedArguments[#jsonDecoder]
+            as FutureOr<dynamic> Function(String);
+        final decoded = await decoder('"a plain string"');
+        // ignore: unused_local_variable
+        final castFailure = decoded as Map<String, dynamic>;
+        return const [];
+      });
+
+      final engine = SearchEngine(
+        transport: transport,
+        database: queue,
+        tables: const [],
+        // Custom decoder yields a non-Map.
+        jsonDecoder: (_) => 'a plain string',
+        errorHandler: (e, [st, msg]) {
+          caught = e;
+        },
+      );
+
+      await engine.processPendingItems(userId: 'u');
+
+      expect(caught, isA<TypeError>());
+    });
+
+    test(
+        'toGlobalSearch that completes after the engine has moved on does NOT '
+        "double-upsert (engine awaits each item's enrichment)", () async {
+      // If the engine were fire-and-forget, this completer trick would result
+      // in 0 upserts (the future resolves after the engine returns). The
+      // engine in fact awaits, so the upsert lands exactly once.
+      final pending = Completer<GlobalSearch>();
+
+      when(
+        () => queue.getPendingUserItems(
+          userId: any(named: 'userId'),
+          jsonDecoder: any(named: 'jsonDecoder'),
+          limit: any(named: 'limit'),
+          maxTryCount: any(named: 'maxTryCount'),
+        ),
+      ).thenAnswer((_) async => [makeItem(id: 'slow', kind: 'lazy')]);
+
+      final engine = SearchEngine(
+        transport: transport,
+        database: queue,
+        tables: [
+          dummyBinding('lazy', parse: (_) => pending.future),
+        ],
+      );
+
+      final drain = engine.processPendingItems(userId: 'u');
+
+      // Resolve the enrichment future *after* the drain was scheduled.
+      pending.complete(
+        const GlobalSearch(
+          originalId: 'slow',
+          userId: 'u',
+          kind: 'lazy',
+          title: 'late',
+          description: '',
+          content: '',
+        ),
+      );
+
+      await drain;
+
+      verify(() => transport.upsert(any())).called(1);
+      verify(
+        () => queue.deletePendingUserItem(id: 'slow', kind: 'lazy'),
+      ).called(1);
+    });
+  });
+
   group('SearchEngine concurrency', () {
     test(
         'parallel processPendingItems calls are serialized by the internal lock',

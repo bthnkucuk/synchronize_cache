@@ -462,4 +462,136 @@ void main() {
       expect(await stream.first, isEmpty);
     });
   });
+
+  group('FTS5 query escaping + edge cases', () {
+    test('quotes inside the query are doubled and do not break the MATCH',
+        () async {
+      // Indexed body literally contains a quote character.
+      await db.upsertSearchItem(
+        makeRow(originalId: 'q1', title: 'say "hello" world'),
+      );
+
+      // User types `"hello"` (with quotes) — this would be a syntax error
+      // unless the builder doubles internal quotes.
+      final hits = await db.searchGlobal(userId: 'u', query: '"hello"');
+      expect(hits, hasLength(1));
+      expect(hits.first.originalId, equals('q1'));
+    });
+
+    test(
+        'parentheses in the query do not raise a syntax error (FTS5 treats '
+        'them as operators outside quotes, but the builder wraps the query)',
+        () async {
+      await db.upsertSearchItem(
+        makeRow(originalId: 'p1', title: 'before parens after'),
+      );
+
+      // Whether the phrase actually hits depends on FTS5's tokenizer; the
+      // crucial invariant is "no SQL syntax error".
+      await expectLater(
+        db.searchGlobal(userId: 'u', query: '(parens)'),
+        completion(isA<List<GlobalSearch>>()),
+      );
+    });
+
+    test('asterisks in the query are treated as literal text', () async {
+      await db.upsertSearchItem(
+        makeRow(originalId: 'a1', title: 'star wars'),
+      );
+
+      // `*` is a prefix operator outside quotes; inside the builder's quotes
+      // it is just an unmatched literal. Should not raise a syntax error.
+      final hits = await db.searchGlobal(userId: 'u', query: '*star*');
+      // Whether or not it matches is FTS5-dependent — what matters is that
+      // it does not raise a SQL error.
+      expect(hits, isA<List<GlobalSearch>>());
+    });
+
+    test(
+        'concurrent upsertSearchItem for the same key produces exactly one row',
+        () async {
+      final futures = <Future<void>>[
+        for (var i = 0; i < 10; i++)
+          db.upsertSearchItem(
+            makeRow(originalId: 'same', title: 'version $i'),
+          ),
+      ];
+      await Future.wait(futures);
+
+      // Search by stem common to every version.
+      final hits = await db.searchGlobal(userId: 'u', query: 'version');
+      expect(hits, hasLength(1),
+          reason: 'upsert must collapse to exactly one row');
+      expect(hits.first.originalId, equals('same'));
+    });
+
+    test('searchGlobal with kinds filter containing a single kind', () async {
+      await db.upsertSearchItem(
+        makeRow(originalId: 'a', kind: 'note', title: 'shared word'),
+      );
+      await db.upsertSearchItem(
+        makeRow(originalId: 'b', kind: 'task', title: 'shared word'),
+      );
+
+      final hits = await db.searchGlobal(
+        userId: 'u',
+        query: 'shared',
+        kinds: const {'note'},
+      );
+      expect(hits.map((e) => e.originalId), equals(['a']));
+    });
+
+    test('searchGlobal with kinds filter containing many entries', () async {
+      await db.upsertSearchItem(
+        makeRow(originalId: 'a', kind: 'note', title: 'shared word'),
+      );
+      await db.upsertSearchItem(
+        makeRow(originalId: 'b', kind: 'task', title: 'shared word'),
+      );
+      await db.upsertSearchItem(
+        makeRow(originalId: 'c', kind: 'event', title: 'shared word'),
+      );
+      await db.upsertSearchItem(
+        makeRow(originalId: 'd', kind: 'archived', title: 'shared word'),
+      );
+
+      final hits = await db.searchGlobal(
+        userId: 'u',
+        query: 'shared',
+        kinds: const {'note', 'task', 'event'},
+      );
+      expect(hits.map((e) => e.originalId), unorderedEquals(['a', 'b', 'c']));
+    });
+
+    test('searchGlobal with limit:0 returns an empty list and no SQL error',
+        () async {
+      await db.upsertSearchItem(makeRow(title: 'foxes'));
+      final hits =
+          await db.searchGlobal(userId: 'u', query: 'fox', limit: 0);
+      expect(hits, isEmpty);
+    });
+
+    test(
+        'SearchHighlightConfig.none with explicit empty snippetEllipsis still '
+        'returns the raw matched text', () async {
+      await db.upsertSearchItem(makeRow(title: 'Brown fox'));
+
+      const cfg = SearchHighlightConfig(
+        titleOpen: '',
+        titleClose: '',
+        descOpen: '',
+        descClose: '',
+        contentOpen: '',
+        contentClose: '',
+        snippetEllipsis: '',
+      );
+
+      final hits = await db.searchGlobal(
+        userId: 'u',
+        query: 'fox',
+        highlight: cfg,
+      );
+      expect(hits.first.hlTitle, equals('Brown fox'));
+    });
+  });
 }

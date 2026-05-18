@@ -497,6 +497,142 @@ void main() {
     });
   });
 
+  group('cursor edge cases', () {
+    test(
+        'rows sharing updatedAt are tie-broken lexicographically by id and '
+        'every row gets indexed', () async {
+      final ts = DateTime.utc(2026, 3, 1);
+      // Insert in non-lexicographic order to make sure the indexer's sort
+      // path is what produces the cursor advance.
+      binding.seed([
+        _Row(id: 'c', updatedAt: ts, title: 'c-title'),
+        _Row(id: 'a', updatedAt: ts, title: 'a-title'),
+        _Row(id: 'b', updatedAt: ts, title: 'b-title'),
+      ]);
+
+      final indexer = makeIndexer(batchSize: 2);
+      await indexer.start(userId: 'u');
+      await flush();
+
+      // 3 rows / batchSize 2 → expect 2 readSince calls (2 + 1).
+      expect(binding.readSinceCalls, equals(2));
+      verify(() => engine.indexNow(any())).called(3);
+
+      // The cursor lands on the last (largest id) row.
+      verify(
+        () => searchDb.writeSearchIndexCursor(
+          userId: 'u',
+          kind: 'rows',
+          updatedAt: ts,
+          lastId: 'c',
+        ),
+      ).called(1);
+
+      await indexer.stop();
+    });
+
+    test(
+        'switching users mid-flight stops the in-flight u1 batch from '
+        'advancing the u1 cursor', () async {
+      // Hold the cursor read until we release it manually — that way we can
+      // drive a second start() while the first batch is parked.
+      final firstReadStarted = Completer<void>();
+      final releaseFirstRead = Completer<void>();
+      when(
+        () => searchDb.readSearchIndexCursor(
+          userId: 'u1',
+          kind: 'rows',
+        ),
+      ).thenAnswer((_) async {
+        firstReadStarted.complete();
+        await releaseFirstRead.future;
+        return null;
+      });
+      when(
+        () => searchDb.readSearchIndexCursor(
+          userId: 'u2',
+          kind: 'rows',
+        ),
+      ).thenAnswer((_) async => null);
+
+      binding.seed([_Row(id: 'r1', updatedAt: DateTime.utc(2026))]);
+
+      final indexer = makeIndexer();
+      unawaited(indexer.start(userId: 'u1'));
+      await firstReadStarted.future;
+
+      // While u1's batch is parked on the cursor read, switch user.
+      await indexer.start(userId: 'u2');
+      releaseFirstRead.complete();
+      await flush();
+
+      // The u1 cursor must not have been written — the in-flight batch
+      // bailed at the `_userId != userId` guard after the cursor read
+      // returned.
+      verifyNever(
+        () => searchDb.writeSearchIndexCursor(
+          userId: 'u1',
+          kind: any(named: 'kind'),
+          updatedAt: any(named: 'updatedAt'),
+          lastId: any(named: 'lastId'),
+        ),
+      );
+      // u2's batch proceeds and writes its own cursor.
+      verify(
+        () => searchDb.writeSearchIndexCursor(
+          userId: 'u2',
+          kind: 'rows',
+          updatedAt: any(named: 'updatedAt'),
+          lastId: any(named: 'lastId'),
+        ),
+      ).called(1);
+
+      await indexer.stop();
+    });
+
+    test('empty tables list: start() completes without throwing', () async {
+      final indexer = SearchIndexer<GeneratedDatabase>(
+        db: db,
+        searchEngine: engine,
+        tables: const [],
+        batchSize: 100,
+        debounce: const Duration(milliseconds: 1),
+      );
+
+      await expectLater(indexer.start(userId: 'u'), completes);
+      expect(indexer.currentUserId, equals('u'));
+
+      verifyNever(() => db.tableUpdates(any()));
+      verifyNever(() => engine.indexNow(any()));
+
+      await expectLater(indexer.refreshAll(), completes);
+      await indexer.stop();
+    });
+
+    test(
+        'tableUpdates events fired before start() are ignored (no listener '
+        "exists yet) and don't crash a later start", () async {
+      // Push an emit on the broadcast controller before anyone listens.
+      tableUpdates.add(<TableUpdate>{});
+      // A bit more to be sure: drain microtasks first.
+      await Future<void>.delayed(Duration.zero);
+
+      binding.seed([
+        _Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1)),
+      ]);
+
+      final indexer = makeIndexer();
+      await expectLater(indexer.start(userId: 'u'), completes);
+      await flush();
+
+      // Initial drain still runs once, and the lost pre-start emit doesn't
+      // cause a second batch.
+      verify(() => engine.indexNow(any())).called(1);
+
+      await indexer.stop();
+    });
+  });
+
   group('error handling', () {
     test('readSince errors are swallowed (best-effort)', () async {
       final exploding = _ExplodingBinding();

@@ -157,6 +157,39 @@ void main() {
           reason: 'normalize must not mutate raw fields');
     });
 
+    test(
+        'normalize overwrites *_normalized fields cleanly when they were '
+        'already populated', () {
+      const original = GlobalSearch(
+        originalId: 'o',
+        userId: 'u',
+        kind: 'k',
+        title: 'Şehir',
+        description: 'Tğürk',
+        content: 'İçerik',
+        // Pre-populated with stale normalized values that bear no relation
+        // to the raw fields — normalize must overwrite them.
+        titleNormalized: 'STALE',
+        descriptionNormalized: 'STALE',
+        contentNormalized: 'STALE',
+      );
+
+      String stripDiacritics(String s) => s
+          .replaceAll('Ş', 's')
+          .replaceAll('ğ', 'g')
+          .replaceAll('ü', 'u')
+          .replaceAll('İ', 'i')
+          .replaceAll('ç', 'c')
+          .toLowerCase();
+
+      final out = original.normalize(stripDiacritics);
+      expect(out.titleNormalized, equals('sehir'));
+      expect(out.descriptionNormalized, equals('tgurk'));
+      expect(out.contentNormalized, equals('icerik'));
+      // Original instance untouched (it's const-equatable).
+      expect(original.titleNormalized, equals('STALE'));
+    });
+
     test('normalize is a no-op when the normalizer is null', () {
       const gs = GlobalSearch(
         originalId: 'o',
