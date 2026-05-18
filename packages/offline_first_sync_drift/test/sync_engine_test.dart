@@ -1,66 +1,10 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:test/test.dart' hide isNotNull, isNull;
 
-import 'sync_engine_test.drift.dart';
-
-// Тестовая модель
-class TestItem {
-  TestItem({
-    required this.id,
-    required this.updatedAt,
-    this.deletedAt,
-    this.deletedAtLocal,
-    required this.name,
-  });
-
-  final String id;
-  final DateTime updatedAt;
-  final DateTime? deletedAt;
-  final DateTime? deletedAtLocal;
-  final String name;
-
-  factory TestItem.fromJson(Map<String, dynamic> json) => TestItem(
-    id: json['id'] as String,
-    updatedAt: DateTime.parse(json['updated_at'] as String),
-    deletedAt:
-        json['deleted_at'] != null
-            ? DateTime.parse(json['deleted_at'] as String)
-            : null,
-    name: json['name'] as String,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'updated_at': updatedAt.toIso8601String(),
-    'deleted_at': deletedAt?.toIso8601String(),
-    'name': name,
-  };
-}
-
-// Тестовая таблица
-@UseRowClass(TestItem, generateInsertable: true)
-class TestItems extends Table with SyncColumns {
-  TextColumn get id => text()();
-  TextColumn get name => text()();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DriftDatabase(
-  include: {'package:offline_first_sync_drift/src/sync_tables.drift'},
-  tables: [TestItems],
-)
-class TestDatabase extends $TestDatabase with SyncDatabaseMixin {
-  TestDatabase() : super(NativeDatabase.memory());
-
-  @override
-  int get schemaVersion => 1;
-}
+import 'fixtures/test_database.dart';
 
 // Мок транспорта
 class MockTransport implements TransportAdapter {

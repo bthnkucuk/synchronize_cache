@@ -4,8 +4,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:test/test.dart' hide isNotNull, isNull;
 
-import 'sync_engine_test.dart';
-import 'sync_engine_test.drift.dart';
+import 'fixtures/test_database.dart';
 
 /// Counting transport that records every push() call.
 class _CountingTransport implements TransportAdapter {

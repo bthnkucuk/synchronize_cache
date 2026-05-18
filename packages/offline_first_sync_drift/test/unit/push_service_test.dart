@@ -5,8 +5,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:test/test.dart' hide isNull, isNotNull;
 
-import '../sync_engine_test.dart' show TestDatabase, TestItem;
-import '../sync_engine_test.drift.dart';
+import '../fixtures/test_database.dart';
 
 // PushService is highly coupled to drift internals (customSelect for base
 // re-stamping, insertOnConflictUpdate for server-row write-back). We use a

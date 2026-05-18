@@ -4,8 +4,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:test/test.dart' hide isNull, isNotNull;
 
-import '../sync_engine_test.dart' show TestDatabase, TestItem;
-import '../sync_engine_test.drift.dart';
+import '../fixtures/test_database.dart';
 
 // PullService tests using a real in-memory drift database. The service's
 // `_db.batch(...)` API is not feasible to mock without rebuilding much of

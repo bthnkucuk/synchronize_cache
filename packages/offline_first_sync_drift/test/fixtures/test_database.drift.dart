@@ -5,8 +5,8 @@ import 'package:offline_first_sync_drift/src/tables/cursors.drift.dart' as i1;
 import 'package:offline_first_sync_drift/src/tables/outbox_meta.drift.dart'
     as i2;
 import 'package:offline_first_sync_drift/src/tables/outbox.drift.dart' as i3;
-import 'sync_engine_test.drift.dart' as i4;
-import 'sync_engine_test.dart' as i5;
+import 'test_database.drift.dart' as i4;
+import 'test_database.dart' as i5;
 
 typedef $$TestItemsTableCreateCompanionBuilder =
     i4.TestItemsCompanion Function({

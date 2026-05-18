@@ -2,8 +2,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:test/test.dart';
 
-import '../sync_engine_test.dart';
-import '../sync_engine_test.drift.dart';
+import '../fixtures/test_database.dart';
 
 void main() {
   group('SyncCoordinator', () {
