@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart' show GeneratedDatabase;
+import 'package:fake_async/fake_async.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 import 'package:search_engine/src/models/global_search.dart';
@@ -360,39 +361,52 @@ void main() {
   group('SearchEngine concurrency', () {
     test(
         'parallel processPendingItems calls are serialized by the internal lock',
-        () async {
-      var inflight = 0;
-      var observedPeak = 0;
+        () {
+      FakeAsync().run((fake) {
+        var inflight = 0;
+        var observedPeak = 0;
 
-      when(
-        () => queue.getPendingUserItems(
-          userId: any(named: 'userId'),
-          jsonDecoder: any(named: 'jsonDecoder'),
-          limit: any(named: 'limit'),
-          maxTryCount: any(named: 'maxTryCount'),
-        ),
-      ).thenAnswer((_) async {
-        inflight++;
-        observedPeak = inflight > observedPeak ? inflight : observedPeak;
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-        inflight--;
-        return const [];
+        when(
+          () => queue.getPendingUserItems(
+            userId: any(named: 'userId'),
+            jsonDecoder: any(named: 'jsonDecoder'),
+            limit: any(named: 'limit'),
+            maxTryCount: any(named: 'maxTryCount'),
+          ),
+        ).thenAnswer((_) async {
+          inflight++;
+          observedPeak = inflight > observedPeak ? inflight : observedPeak;
+          // FakeAsync intercepts Future.delayed so this elapses synthetically
+          // when the test drives fake.elapse(...) below.
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          inflight--;
+          return const [];
+        });
+
+        final engine = SearchEngine(
+          transport: transport,
+          database: queue,
+          tables: const [],
+        );
+
+        var done = false;
+        unawaited(
+          Future.wait([
+            engine.processPendingItems(userId: 'u'),
+            engine.processPendingItems(userId: 'u'),
+            engine.processPendingItems(userId: 'u'),
+          ]).then((_) => done = true),
+        );
+
+        // Three calls × 10ms each, serialized by the lock = 30ms total.
+        fake.elapse(const Duration(milliseconds: 50));
+        fake.flushMicrotasks();
+
+        expect(done, isTrue,
+            reason: 'all three drains should have completed within 50ms');
+        expect(observedPeak, equals(1),
+            reason: 'lock should ensure no overlap between drains');
       });
-
-      final engine = SearchEngine(
-        transport: transport,
-        database: queue,
-        tables: const [],
-      );
-
-      await Future.wait([
-        engine.processPendingItems(userId: 'u'),
-        engine.processPendingItems(userId: 'u'),
-        engine.processPendingItems(userId: 'u'),
-      ]);
-
-      expect(observedPeak, equals(1),
-          reason: 'lock should ensure no overlap between drains');
     });
   });
 }

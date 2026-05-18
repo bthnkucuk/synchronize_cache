@@ -23,6 +23,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.41.9
           channel: stable
 
       - name: Install workspace dependencies
@@ -59,6 +60,10 @@ jobs:
       - name: Generate code (offline_first_sync_drift_rest)
         run: dart run build_runner build --delete-conflicting-outputs
         working-directory: packages/offline_first_sync_drift_rest
+
+      - name: Generate code (search_engine)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: packages/search_engine
 
       - name: Lint (dart analyze)
         run: dart analyze . --no-fatal-warnings
@@ -119,6 +124,14 @@ jobs:
 
       - name: Test offline_first_sync_drift_rest
         run: flutter test packages/offline_first_sync_drift_rest
+
+      - name: Test search_engine
+        run: dart test
+        working-directory: packages/search_engine
+
+      - name: Test sync_socket_wake_listener
+        run: flutter test
+        working-directory: packages/sync_socket_wake_listener
 
       - name: Test example app
         run: flutter test

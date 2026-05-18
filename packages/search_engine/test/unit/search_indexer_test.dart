@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:drift/drift.dart'
     show GeneratedDatabase, TableUpdate, TableUpdateQuery;
+import 'package:fake_async/fake_async.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 import 'package:search_engine/src/models/global_search.dart';
@@ -431,34 +432,44 @@ void main() {
   });
 
   group('reactivity', () {
-    test('subsequent tableUpdates emit re-runs the batch', () async {
-      final indexer = makeIndexer();
-      await indexer.start(userId: 'u');
-      await flush();
+    test('subsequent tableUpdates emit re-runs the batch', () {
+      FakeAsync().run((fake) {
+        final indexer = makeIndexer();
+        unawaited(indexer.start(userId: 'u'));
+        fake.flushMicrotasks();
 
-      binding.seed([
-        _Row(id: 'late', updatedAt: DateTime.utc(2026, 6)),
-      ]);
-      tableUpdates.add(<TableUpdate>{});
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      await flush();
+        binding.seed([
+          _Row(id: 'late', updatedAt: DateTime.utc(2026, 6)),
+        ]);
+        tableUpdates.add(<TableUpdate>{});
+        // Advance past the rxdart debounce window (1ms) to release the timer.
+        fake.elapse(const Duration(milliseconds: 5));
+        fake.flushMicrotasks();
 
-      verify(() => engine.indexNow(any())).called(1);
+        verify(() => engine.indexNow(any())).called(1);
 
-      await indexer.stop();
+        unawaited(indexer.stop());
+        fake.flushMicrotasks();
+      });
     });
 
-    test('emits arriving after stop are ignored', () async {
-      final indexer = makeIndexer();
-      await indexer.start(userId: 'u');
-      await indexer.stop();
+    test('emits arriving after stop are ignored', () {
+      FakeAsync().run((fake) {
+        final indexer = makeIndexer();
+        unawaited(indexer.start(userId: 'u'));
+        fake.flushMicrotasks();
+        unawaited(indexer.stop());
+        fake.flushMicrotasks();
 
-      binding.seed([_Row(id: 'late', updatedAt: DateTime.utc(2026))]);
-      tableUpdates.add(<TableUpdate>{});
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      await flush();
+        binding.seed([_Row(id: 'late', updatedAt: DateTime.utc(2026))]);
+        tableUpdates.add(<TableUpdate>{});
+        // Advance past the rxdart debounce window (1ms); even if a timer fires
+        // it should be a no-op because the subscription has been cancelled.
+        fake.elapse(const Duration(milliseconds: 5));
+        fake.flushMicrotasks();
 
-      verifyNever(() => engine.indexNow(any()));
+        verifyNever(() => engine.indexNow(any()));
+      });
     });
   });
 
