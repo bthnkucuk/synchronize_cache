@@ -210,6 +210,30 @@ void main() {
       final cur = await cursorService.get('test_item');
       expect(cur!.lastId, 'b');
       expect(cur.ts, ts2);
+
+      // First pull must not pass a pageToken; second pull must forward the
+      // nextPageToken returned from the first response. A regression that
+      // drops the token (e.g. always passes null) would fail this assertion.
+      verify(
+        () => transport.pull(
+          kind: 'test_item',
+          updatedSince: any(named: 'updatedSince'),
+          pageSize: any(named: 'pageSize'),
+          pageToken: null,
+          afterId: any(named: 'afterId'),
+          includeDeleted: any(named: 'includeDeleted'),
+        ),
+      ).called(1);
+      verify(
+        () => transport.pull(
+          kind: 'test_item',
+          updatedSince: any(named: 'updatedSince'),
+          pageSize: any(named: 'pageSize'),
+          pageToken: 'tok-1',
+          afterId: any(named: 'afterId'),
+          includeDeleted: any(named: 'includeDeleted'),
+        ),
+      ).called(1);
     });
 
     test(

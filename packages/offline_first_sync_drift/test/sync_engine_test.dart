@@ -141,13 +141,13 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await engine.sync();
 
       // Pull вызывается для каждого зарегистрированного kind
       expect(transport.pullCallCount, 1);
 
-      engine.dispose();
     });
 
     test('sync pushes outbox operations', () async {
@@ -165,6 +165,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -181,7 +182,6 @@ void main() {
       expect(transport.pushedOps.length, 1);
       expect(transport.pushedOps.first.opId, 'test-op-1');
 
-      engine.dispose();
     });
 
     test('sync pulls and inserts items', () async {
@@ -207,6 +207,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await engine.sync();
 
@@ -214,7 +215,6 @@ void main() {
       expect(items.length, 1);
       expect(items.first.name, 'Pulled Item');
 
-      engine.dispose();
     });
 
     test('sync emits SyncStarted events', () async {
@@ -232,6 +232,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -244,7 +245,6 @@ void main() {
       // Должно быть 2 SyncStarted: один для push, один для pull
       expect(events.whereType<SyncStarted>().length, 2);
 
-      engine.dispose();
     });
 
     test('sync emits SyncCompleted event', () async {
@@ -262,6 +262,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -273,7 +274,6 @@ void main() {
 
       expect(events.whereType<SyncCompleted>().length, 1);
 
-      engine.dispose();
     });
 
     test('sync updates cursor after pull', () async {
@@ -300,6 +300,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await engine.sync();
 
@@ -307,7 +308,6 @@ void main() {
       expect(cursor != null, isTrue);
       expect(cursor!.lastId, 'cursor-test-1');
 
-      engine.dispose();
     });
 
     test('sync clears outbox after successful push', () async {
@@ -325,6 +325,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -342,7 +343,6 @@ void main() {
 
       expect((await db.takeOutbox()).length, 0);
 
-      engine.dispose();
     });
 
     test('sync can filter by kinds', () async {
@@ -360,6 +360,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.setCursor(
         CursorKinds.fullResync,
@@ -373,7 +374,6 @@ void main() {
       // Should not push test_item either because legacy kinds applies to both.
       expect(transport.pushCallCount, 0);
 
-      engine.dispose();
     });
 
     test('sync supports independent pushKinds and pullKinds', () async {
@@ -391,6 +391,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -413,7 +414,6 @@ void main() {
       expect(transport.pullCallCount, 0);
       expect((await db.takeOutbox()).length, 0);
 
-      engine.dispose();
     });
 
     test('startAuto and stopAuto', () async {
@@ -431,6 +431,7 @@ void main() {
           ),
         ],
       )..startAuto(interval: const Duration(milliseconds: 100));
+      addTearDown(engine.dispose);
 
       await Future<void>.delayed(const Duration(milliseconds: 250));
 
@@ -459,10 +460,10 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await expectLater(engine.sync(), throwsA(isA<Exception>()));
 
-      engine.dispose();
     });
 
     test('sync emits error event before throwing', () async {
@@ -480,6 +481,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -495,7 +497,6 @@ void main() {
 
       expect(events.whereType<SyncErrorEvent>().length, greaterThan(0));
 
-      engine.dispose();
     });
 
     test('sync stops current run after PushError and does not spin', () async {
@@ -513,6 +514,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -530,7 +532,6 @@ void main() {
       // Item stays queued for a future sync attempt.
       expect((await db.takeOutbox()).length, 1);
 
-      engine.dispose();
     });
 
     test('push emits OperationFailedEvent on PushError', () async {
@@ -549,6 +550,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -575,7 +577,6 @@ void main() {
       expect(failedEvents.first.entityId, 'item-1');
       expect(failedEvents.first.willRetry, true);
 
-      engine.dispose();
     });
 
     test('skipConflictingOps removes unresolved conflicts from outbox', () async {
@@ -601,6 +602,7 @@ void main() {
           skipConflictingOps: true,
         ),
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -618,7 +620,6 @@ void main() {
       final remainingOps = await db.takeOutbox();
       expect(remainingOps.length, 0);
 
-      engine.dispose();
     });
 
     test(
@@ -644,6 +645,7 @@ void main() {
             retryTransportErrorsInEngine: true,
           ),
         );
+        addTearDown(engine.dispose);
 
         await db.enqueue(
           UpsertOp(
@@ -660,7 +662,6 @@ void main() {
           throwsA(isA<MaxRetriesExceededException>()),
         );
 
-        engine.dispose();
       },
     );
   });
@@ -687,6 +688,7 @@ void main() {
           retryTransportErrorsInEngine: true,
         ),
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -705,7 +707,6 @@ void main() {
       // Verify outbox is empty
       expect((await db.takeOutbox()).length, 0);
 
-      engine.dispose();
     });
 
     test('sync gives up after max retries', () async {
@@ -729,6 +730,7 @@ void main() {
           retryTransportErrorsInEngine: true,
         ),
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -747,7 +749,6 @@ void main() {
       // Verify outbox is NOT empty
       expect((await db.takeOutbox()).length, 1);
 
-      engine.dispose();
     });
   });
 
@@ -769,13 +770,13 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         await expectLater(
           () => engine.syncRun(kinds: {'test_item'}, pushKinds: {'test_item'}),
           throwsArgumentError,
         );
 
-        engine.dispose();
       },
     );
 
@@ -801,6 +802,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.setCursor(
         CursorKinds.fullResync,
@@ -828,7 +830,6 @@ void main() {
       expect(result.stuckOpsCount, 0);
       expect(result.hadErrors, isFalse);
 
-      engine.dispose();
     });
 
     test('syncRun scheduled fullResync keeps push/pull stats', () async {
@@ -852,6 +853,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -870,7 +872,6 @@ void main() {
       expect(result.stats.pushed, 1);
       expect(result.stats.pulled, 1);
 
-      engine.dispose();
     });
 
     test('syncRun captures firstError on PushError', () async {
@@ -888,6 +889,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.setCursor(
         CursorKinds.fullResync,
@@ -912,7 +914,6 @@ void main() {
       expect(result.firstError != null, isTrue);
       expect(result.hadErrors, isTrue);
 
-      engine.dispose();
     });
 
     test(
@@ -933,6 +934,7 @@ void main() {
           ],
           config: const SyncConfig(maxOutboxTryCount: 2),
         );
+        addTearDown(engine.dispose);
 
         await db.enqueue(
           UpsertOp(
@@ -958,7 +960,6 @@ void main() {
         expect(pendingAfter, 0);
         expect(pendingIncludingStuck, 1);
 
-        engine.dispose();
       },
     );
   });
@@ -1264,6 +1265,7 @@ void main() {
           conflictStrategy: ConflictStrategy.autoPreserve,
         ),
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -1288,7 +1290,6 @@ void main() {
       expect(events.whereType<DataMergedEvent>().length, 1);
       expect(events.whereType<ConflictResolvedEvent>().length, 1);
 
-      engine.dispose();
     });
 
     test('autoPreserve emits DataMergedEvent with correct fields', () async {
@@ -1319,6 +1320,7 @@ void main() {
           conflictStrategy: ConflictStrategy.autoPreserve,
         ),
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -1343,7 +1345,6 @@ void main() {
       expect(mergeEvent.entityId, 'item-1');
       expect(mergeEvent.localFields, contains('mood'));
 
-      engine.dispose();
     });
   });
 
@@ -1372,6 +1373,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.setCursor(
         'test_item',
@@ -1388,7 +1390,6 @@ void main() {
       expect(items.length, 1);
       expect(items.first.name, 'Full Resync Item');
 
-      engine.dispose();
     });
 
     test(
@@ -1408,6 +1409,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         final events = <SyncEvent>[];
         final sub = engine.events.listen(events.add);
@@ -1421,7 +1423,6 @@ void main() {
         expect(fullResyncEvents.length, 1);
         expect(fullResyncEvents.first.reason, FullResyncReason.manual);
 
-        engine.dispose();
       },
     );
 
@@ -1441,6 +1442,7 @@ void main() {
         ],
         config: const SyncConfig(fullResyncInterval: Duration(days: 7)),
       );
+      addTearDown(engine.dispose);
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -1454,7 +1456,6 @@ void main() {
       expect(fullResyncEvents.length, 1);
       expect(fullResyncEvents.first.reason, FullResyncReason.scheduled);
 
-      engine.dispose();
     });
 
     test(
@@ -1475,6 +1476,7 @@ void main() {
           ],
           config: const SyncConfig(fullResyncInterval: Duration(days: 7)),
         );
+        addTearDown(engine.dispose);
 
         await db.setCursor(
           CursorKinds.fullResync,
@@ -1492,7 +1494,6 @@ void main() {
         final fullResyncEvents = events.whereType<FullResyncStarted>().toList();
         expect(fullResyncEvents, isEmpty);
 
-        engine.dispose();
       },
     );
 
@@ -1511,6 +1512,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -1530,7 +1532,6 @@ void main() {
       final outbox = await db.takeOutbox();
       expect(outbox, isEmpty);
 
-      engine.dispose();
     });
 
     test('fullResync with clearData clears tables', () async {
@@ -1557,6 +1558,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db
           .into(db.testItems)
@@ -1579,7 +1581,6 @@ void main() {
       expect(itemsAfter.first.id, 'new-item');
       expect(itemsAfter.first.name, 'New Item After Clear');
 
-      engine.dispose();
     });
 
     test('fullResync saves lastFullResync timestamp', () async {
@@ -1597,6 +1598,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       final beforeSync = DateTime.now().toUtc();
       await engine.fullResync();
@@ -1613,7 +1615,6 @@ void main() {
         isTrue,
       );
 
-      engine.dispose();
     });
 
     test('fullResync returns SyncStats', () async {
@@ -1637,6 +1638,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -1653,7 +1655,6 @@ void main() {
       expect(stats.pushed, 1);
       expect(stats.pulled, 2);
 
-      engine.dispose();
     });
 
     test('concurrent fullResync calls are prevented', () async {
@@ -1671,6 +1672,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       final future1 = engine.fullResync();
       final future2 = engine.fullResync();
@@ -1680,7 +1682,6 @@ void main() {
       expect(results[1].pushed, 0);
       expect(results[1].pulled, 0);
 
-      engine.dispose();
     });
   });
 
@@ -1771,6 +1772,7 @@ void main() {
         ],
         config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
+      addTearDown(engine.dispose);
 
       engine.events.listen(events.add);
 
@@ -1797,7 +1799,6 @@ void main() {
       expect(items.length, 1);
       expect(items.first.name, 'Server Name');
 
-      engine.dispose();
     });
 
     test('clientWins force pushes client data', () async {
@@ -1827,6 +1828,7 @@ void main() {
         ],
         config: const SyncConfig(conflictStrategy: ConflictStrategy.clientWins),
       );
+      addTearDown(engine.dispose);
 
       engine.events.listen(events.add);
 
@@ -1849,7 +1851,6 @@ void main() {
       expect(events.whereType<ConflictDetectedEvent>().length, 1);
       expect(transport.forcePushCalled, isTrue);
 
-      engine.dispose();
     });
 
     test('lastWriteWins accepts client when local is newer', () async {
@@ -1882,6 +1883,7 @@ void main() {
           conflictStrategy: ConflictStrategy.lastWriteWins,
         ),
       );
+      addTearDown(engine.dispose);
 
       engine.events.listen(events.add);
 
@@ -1905,7 +1907,6 @@ void main() {
       expect(events.whereType<ConflictDetectedEvent>().length, 1);
       expect(transport.forcePushCalled, isTrue);
 
-      engine.dispose();
     });
 
     test('lastWriteWins accepts server when server is newer', () async {
@@ -1938,6 +1939,7 @@ void main() {
           conflictStrategy: ConflictStrategy.lastWriteWins,
         ),
       );
+      addTearDown(engine.dispose);
 
       engine.events.listen(events.add);
 
@@ -1967,7 +1969,6 @@ void main() {
       expect(items.length, 1);
       expect(items.first.name, 'New Server Name');
 
-      engine.dispose();
     });
 
     test('merge strategy merges data', () async {
@@ -2000,6 +2001,7 @@ void main() {
           mergeFunction: (local, server) => {...server, ...local},
         ),
       );
+      addTearDown(engine.dispose);
 
       engine.events.listen(events.add);
 
@@ -2022,7 +2024,6 @@ void main() {
       expect(events.whereType<ConflictDetectedEvent>().length, 1);
       expect(transport.forcePushCalled, isTrue);
 
-      engine.dispose();
     });
 
     test('manual strategy with resolver', () async {
@@ -2059,6 +2060,7 @@ void main() {
           },
         ),
       );
+      addTearDown(engine.dispose);
 
       engine.events.listen(events.add);
 
@@ -2081,7 +2083,6 @@ void main() {
       expect(resolverCalled, isTrue);
       expect(events.whereType<ConflictResolvedEvent>().length, 1);
 
-      engine.dispose();
     });
 
     test('resolver can return DiscardOperation', () async {
@@ -2114,6 +2115,7 @@ void main() {
           conflictResolver: (conflict) async => const DiscardOperation(),
         ),
       );
+      addTearDown(engine.dispose);
 
       engine.events.listen(events.add);
 
@@ -2135,7 +2137,6 @@ void main() {
 
       expect(events.whereType<ConflictResolvedEvent>().length, 1);
 
-      engine.dispose();
     });
   });
 
@@ -2177,6 +2178,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         DeleteOp(
@@ -2196,7 +2198,6 @@ void main() {
       final outbox = await db.takeOutbox();
       expect(outbox, isEmpty);
 
-      engine.dispose();
     });
   });
 
@@ -2217,6 +2218,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.enqueue(
         UpsertOp(
@@ -2237,7 +2239,6 @@ void main() {
       final outbox = await db.takeOutbox();
       expect(outbox, isEmpty);
 
-      engine.dispose();
     });
   });
 
@@ -2394,6 +2395,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await db.setCursor(
         'test_kind',
@@ -2408,7 +2410,6 @@ void main() {
       expect(cursor!.ts.millisecondsSinceEpoch, 0);
       expect(cursor.lastId, '');
 
-      engine.dispose();
     });
 
     test('getLastFullResync returns null when not set', () async {
@@ -2581,11 +2582,11 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       final outbox = engine.outbox;
       expect(outbox, isA<OutboxService>());
 
-      engine.dispose();
     });
 
     test('cursors returns CursorService', () async {
@@ -2602,11 +2603,11 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       final cursors = engine.cursors;
       expect(cursors, isA<CursorService>());
 
-      engine.dispose();
     });
   });
 
@@ -2673,6 +2674,7 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       final events = <SyncEvent>[];
       engine.events.listen(events.add);
@@ -2684,7 +2686,6 @@ void main() {
       expect(cacheUpdateEvents.first.deletes, 1);
       expect(cacheUpdateEvents.first.upserts, 1);
 
-      engine.dispose();
     });
   });
 
@@ -2718,10 +2719,10 @@ void main() {
           ),
         ],
       );
+      addTearDown(engine.dispose);
 
       await engine.sync();
 
-      engine.dispose();
     });
   });
 
@@ -2777,7 +2778,6 @@ void main() {
         // All callers receive the same (zero) pulled count.
         expect(results.every((s) => s.pulled == 0), isTrue);
 
-        engine.dispose();
       },
     );
 
@@ -2799,6 +2799,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         await db.setCursor(
           CursorKinds.fullResync,
@@ -2815,7 +2816,6 @@ void main() {
         // kind_a was requested in both calls — they should share the same future.
         expect(transport.pullCallCount, 1);
 
-        engine.dispose();
       },
     );
 
@@ -2837,6 +2837,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         await db.setCursor(
           CursorKinds.fullResync,
@@ -2856,7 +2857,6 @@ void main() {
         // Both calls should succeed.
         expect(results.length, 2);
 
-        engine.dispose();
       },
     );
 
@@ -2878,6 +2878,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         await db.setCursor(
           CursorKinds.fullResync,
@@ -2895,7 +2896,6 @@ void main() {
         // kind_a should only have been pulled once (shared future).
         expect(transport.pullCallCount, 1);
 
-        engine.dispose();
       },
     );
 
@@ -2917,7 +2917,6 @@ void main() {
         // Both get the same SyncStats (both get pulled == 0).
         expect(results[0].pulled, equals(results[1].pulled));
 
-        engine.dispose();
       },
     );
   });
@@ -2957,6 +2956,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         // Seed local row at clientUpdatedAt (the value the client believed it
         // was sending).
@@ -2999,7 +2999,6 @@ void main() {
               'discarded by PushService).',
         );
 
-        engine.dispose();
       },
     );
 
@@ -3037,6 +3036,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         await db
             .into(db.testItems)
@@ -3071,7 +3071,6 @@ void main() {
         expect(stored.name, 'Server Normalised Name');
         expect(stored.updatedAt.toUtc(), serverUpdatedAt);
 
-        engine.dispose();
       },
     );
 
@@ -3095,6 +3094,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         await db.enqueue(
           DeleteOp(
@@ -3110,7 +3110,6 @@ void main() {
         // Op was acked despite no serverData on the delete success.
         expect(await db.takeOutbox(), isEmpty);
 
-        engine.dispose();
       },
     );
 
@@ -3134,6 +3133,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         await db.enqueue(
           UpsertOp(
@@ -3154,7 +3154,6 @@ void main() {
         // Op was acked; no exception thrown.
         expect(await db.takeOutbox(), isEmpty);
 
-        engine.dispose();
       },
     );
 
@@ -3204,6 +3203,7 @@ void main() {
             ),
           ],
         );
+        addTearDown(engine.dispose);
 
         for (final id in ['a', 'b', 'c']) {
           await db
@@ -3243,7 +3243,6 @@ void main() {
         expect(rows[2].id, 'c');
         expect(rows[2].updatedAt.toUtc(), s3);
 
-        engine.dispose();
       },
     );
   });
@@ -3274,6 +3273,7 @@ void main() {
           transport: transport,
           tables: [testItemTable(db)],
         );
+        addTearDown(engine.dispose);
 
         // Local row sits at the fresh (Round-1-written-back) value.
         await db
@@ -3316,7 +3316,6 @@ void main() {
               'local updated_at written back by Round 1.',
         );
 
-        engine.dispose();
       },
     );
 
@@ -3333,6 +3332,7 @@ void main() {
           transport: transport,
           tables: [testItemTable(db)],
         );
+        addTearDown(engine.dispose);
 
         await db
             .into(db.testItems)
@@ -3365,7 +3365,6 @@ void main() {
         final dispatched = transport.pushedOps.single as UpsertOp;
         expect(dispatched.baseUpdatedAt, t);
 
-        engine.dispose();
       },
     );
 
@@ -3383,6 +3382,7 @@ void main() {
           transport: transport,
           tables: [testItemTable(db)],
         );
+        addTearDown(engine.dispose);
 
         // Note: NO local row inserted for 'ghost-id'.
         await db.enqueue(
@@ -3412,7 +3412,6 @@ void main() {
               'the op.baseUpdatedAt — not silently change it.',
         );
 
-        engine.dispose();
       },
     );
 
@@ -3428,6 +3427,7 @@ void main() {
           transport: transport,
           tables: [testItemTable(db)],
         );
+        addTearDown(engine.dispose);
 
         // A local row DOES exist for this id — re-stamp would happily read
         // its updatedAt, but the rule says: if op.baseUpdatedAt is null,
@@ -3471,7 +3471,6 @@ void main() {
         );
         expect(dispatched.isNewRecord, isTrue);
 
-        engine.dispose();
       },
     );
 
@@ -3485,6 +3484,7 @@ void main() {
           transport: transport,
           tables: [testItemTable(db)],
         );
+        addTearDown(engine.dispose);
 
         final localStamp = DateTime.utc(2026, 4, 5, 10);
         await db
@@ -3519,7 +3519,6 @@ void main() {
               '(first-write delete semantics).',
         );
 
-        engine.dispose();
       },
     );
 
@@ -3537,6 +3536,7 @@ void main() {
           transport: transport,
           tables: [testItemTable(db)],
         );
+        addTearDown(engine.dispose);
 
         await db
             .into(db.testItems)
@@ -3564,7 +3564,6 @@ void main() {
         final dispatched = transport.pushedOps.single as DeleteOp;
         expect(dispatched.baseUpdatedAt, tNew);
 
-        engine.dispose();
       },
     );
 
@@ -3611,6 +3610,7 @@ void main() {
           transport: transport,
           tables: [testItemTable(db)],
         );
+        addTearDown(engine.dispose);
 
         // Seed local row at t0 so the first push's re-stamp lookup yields t0.
         await db
@@ -3662,7 +3662,6 @@ void main() {
         // observed for op2), set pageSize=1 via the transport's batching
         // doesn't apply — the page size is on _config. So instead we just
         // configure the engine accordingly.
-        engine.dispose();
 
         final engine2 = SyncEngine(
           db: db,
@@ -3670,6 +3669,7 @@ void main() {
           tables: [testItemTable(db)],
           config: const SyncConfig(pageSize: 1),
         );
+        addTearDown(engine2.dispose);
 
         await engine2.sync();
 
@@ -3701,7 +3701,6 @@ void main() {
         // Outbox should be drained (both succeeded).
         expect(await db.takeOutbox(), isEmpty);
 
-        engine2.dispose();
       },
     );
 
@@ -3717,6 +3716,7 @@ void main() {
           transport: transport,
           tables: [testItemTable(db)],
         );
+        addTearDown(engine.dispose);
 
         final tBase = DateTime.utc(2026, 4, 8, 10);
 
@@ -3747,7 +3747,6 @@ void main() {
         final dispatched = transport.pushedOps.single as UpsertOp;
         expect(dispatched.baseUpdatedAt, tBase);
 
-        engine.dispose();
       },
     );
   });

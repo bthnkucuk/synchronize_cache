@@ -1,67 +1,12 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
-import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:offline_first_sync_drift_rest/offline_first_sync_drift_rest.dart';
 import 'package:test/test.dart';
 
+import 'helpers/test_database.dart';
 import 'helpers/test_server.dart';
-
-part 'parallel_push_test.g.dart';
-
-class TestEntity {
-  TestEntity({
-    required this.id,
-    required this.updatedAt,
-    this.deletedAt,
-    this.deletedAtLocal,
-    required this.name,
-  });
-
-  final String id;
-  final DateTime updatedAt;
-  final DateTime? deletedAt;
-  final DateTime? deletedAtLocal;
-  final String name;
-
-  factory TestEntity.fromJson(Map<String, dynamic> json) => TestEntity(
-        id: json['id'] as String,
-        updatedAt: DateTime.parse(json['updated_at'] as String),
-        deletedAt: json['deleted_at'] != null
-            ? DateTime.parse(json['deleted_at'] as String)
-            : null,
-        name: json['name'] as String? ?? '',
-      );
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'updated_at': updatedAt.toIso8601String(),
-        'deleted_at': deletedAt?.toIso8601String(),
-        'name': name,
-      };
-}
-
-@UseRowClass(TestEntity, generateInsertable: true)
-class TestEntities extends Table with SyncColumns {
-  TextColumn get id => text()();
-  TextColumn get name => text()();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DriftDatabase(
-  include: {'package:offline_first_sync_drift/src/sync_tables.drift'},
-  tables: [TestEntities],
-)
-class TestDatabase extends _$TestDatabase with SyncDatabaseMixin {
-  TestDatabase() : super(NativeDatabase.memory());
-
-  @override
-  int get schemaVersion => 1;
-}
 
 void main() {
   late TestServer server;
