@@ -138,9 +138,57 @@ jobs:
       - name: Lint (dart analyze)
         run: dart analyze . --no-fatal-warnings
 
-      - name: Test example app
+  test-example:
+    name: Test example/${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - example
+          - example/todo_simple/frontend
+          - example/todo_simple/backend
+          - example/todo_advanced/frontend
+          - example/todo_advanced/backend
+          - example/todo_simple_new/frontend
+          - example/todo_simple_new/backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Cache pub-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', '**/pubspec.yaml') }}
+          restore-keys: |
+            pub-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-
+
+      - name: Install workspace dependencies
+        run: flutter pub get
+
+      - name: Install dart_frog_cli
+        # Needed by the e2e tests in todo_simple/frontend and
+        # todo_advanced/frontend which spawn a real Dart Frog backend.
+        # `dart pub global activate` places the binary at
+        # $HOME/.pub-cache/bin which subosito/flutter-action already adds
+        # to PATH.
+        run: dart pub global activate dart_frog_cli
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: ${{ matrix.app }}
+
+      - name: Run tests
         run: flutter test
-        working-directory: example
+        working-directory: ${{ matrix.app }}
 
   coverage:
     name: Coverage badge & Codecov
