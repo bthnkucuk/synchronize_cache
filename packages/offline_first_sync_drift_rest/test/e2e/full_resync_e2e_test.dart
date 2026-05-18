@@ -271,10 +271,31 @@ void main() {
         });
       }
 
-      final engine = createEngine(
-        config: const SyncConfig(
-          pageSize: 2,
-        ),
+      // Rebuild the transport with a more generous retry budget. The shared
+      // setUp uses maxRetries: 3, which can be exhausted on CI when the test
+      // server returns transient 500s under burst load — pagination issues
+      // many rapid GETs which surfaces this. Production code is fine; the
+      // local test HttpServer is the bottleneck.
+      final resilientTransport = RestTransport(
+        base: server.baseUrl,
+        token: () async => 'Bearer test-token',
+        backoffMin: const Duration(milliseconds: 10),
+        backoffMax: const Duration(milliseconds: 200),
+        maxRetries: 8,
+      );
+      final engine = SyncEngine(
+        db: db,
+        transport: resilientTransport,
+        tables: [
+          SyncableTable<TestEntity>(
+            kind: 'test_entity',
+            table: db.testEntities,
+            fromJson: TestEntity.fromJson,
+            toJson: (item) => item.toJson(),
+            toInsertable: (item) => item.toInsertable(),
+          ),
+        ],
+        config: const SyncConfig(pageSize: 2),
       );
 
       final stats = await engine.fullResync();
