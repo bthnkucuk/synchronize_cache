@@ -183,8 +183,26 @@ jobs:
         run: dart pub global activate dart_frog_cli
 
       - name: Generate code
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+
+          echo "::group::build_runner in ${{ matrix.app }}"
+          (cd "${{ matrix.app }}" && dart run build_runner build --delete-conflicting-outputs)
+          echo "::endgroup::"
+
+          # Frontend e2e tests spawn the sibling backend via dart_frog dev.
+          # Without its generated .g.dart files the backend won't compile,
+          # dart_frog will never bind a port, and BackendServer._waitForReady
+          # times out after 36s. Generate the sibling backend's code too.
+          app="${{ matrix.app }}"
+          if [[ "$app" == */frontend ]]; then
+            sibling="${app%/frontend}/backend"
+            if [ -d "$sibling" ]; then
+              echo "::group::build_runner in $sibling (sibling backend)"
+              (cd "$sibling" && dart run build_runner build --delete-conflicting-outputs)
+              echo "::endgroup::"
+            fi
+          fi
 
       - name: Run tests
         run: flutter test
