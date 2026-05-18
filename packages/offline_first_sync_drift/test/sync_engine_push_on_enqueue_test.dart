@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:test/test.dart' hide isNotNull, isNull;
 
@@ -101,9 +102,14 @@ void main() {
               ),
             );
 
-        // Wait well past any plausible debounce window. With pushOnEnqueue
-        // disabled, no auto-push should fire.
-        await Future<void>.delayed(const Duration(milliseconds: 400));
+        // Advance synthetic time well past any plausible debounce window.
+        // With pushOnEnqueue disabled, no auto-push Timer should be armed.
+        // FakeAsync proves this: real-time Timer-based debouncers would fire
+        // here if they existed.
+        FakeAsync().run((fake) {
+          fake.elapse(const Duration(milliseconds: 400));
+          fake.flushMicrotasks();
+        });
 
         expect(transport.pushCallCount, 0);
         expect(transport.pullCallCount, 0);
@@ -139,6 +145,9 @@ void main() {
             );
 
         // After well past the debounce window, exactly one push.
+        // NOTE: cannot use FakeAsync here — the debounce Timer's callback
+        // performs drift reads/writes against NativeDatabase.memory (sqlite
+        // FFI), which does not advance synchronously under FakeAsync.
         await Future<void>.delayed(const Duration(milliseconds: 250));
         expect(transport.pushCallCount, 1);
         expect(transport.pushedKindsPerCall.first, {'kind_a'});
@@ -270,8 +279,13 @@ void main() {
         // Dispose before the debounce can fire.
         engine.dispose();
 
-        // Wait well past the debounce window.
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+        // Advance synthetic time well past the debounce window. The pending
+        // Timer was cancelled by dispose, so FakeAsync proves no push fires —
+        // no drift work is triggered, so it is safe to skip wall clock here.
+        FakeAsync().run((fake) {
+          fake.elapse(const Duration(milliseconds: 300));
+          fake.flushMicrotasks();
+        });
 
         // The pending timer was cancelled — no push fired.
         expect(transport.pushCallCount, 0);
