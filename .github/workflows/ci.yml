@@ -13,71 +13,147 @@ on:
 permissions:
   contents: write
 
+env:
+  FLUTTER_VERSION: "3.41.9"
+  # Opt every JavaScript action into Node.js 24 ahead of GitHub's forced
+  # rollout (June 2026). Removes the deprecation banner now and avoids
+  # surprises when older actions get auto-upgraded.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
-  checks:
+  test:
+    name: Test ${{ matrix.package }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: offline_first_sync_drift
+            test_cmd: flutter test --coverage
+            coverage: true
+            codegen_dir: ""
+          - package: offline_first_sync_drift_rest
+            test_cmd: flutter test
+            coverage: false
+            codegen_dir: packages/offline_first_sync_drift_rest
+          - package: search_engine
+            test_cmd: dart test
+            coverage: false
+            codegen_dir: packages/search_engine
+          - package: sync_socket_wake_listener
+            test_cmd: flutter test
+            coverage: false
+            codegen_dir: ""
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.41.9
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
+          cache: true
+
+      - name: Cache pub-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', '**/pubspec.yaml') }}
+          restore-keys: |
+            pub-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-
 
       - name: Install workspace dependencies
         run: flutter pub get
 
-      - name: Generate code (example)
+      - name: Generate code
+        if: matrix.codegen_dir != ''
         run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: example
+        working-directory: ${{ matrix.codegen_dir }}
 
-      - name: Generate code (todo_simple/frontend)
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: example/todo_simple/frontend
+      - name: Run tests
+        run: ${{ matrix.test_cmd }}
+        working-directory: packages/${{ matrix.package }}
 
-      - name: Generate code (todo_simple/backend)
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: example/todo_simple/backend
+      - name: Filter coverage (strip drift-generated files)
+        if: matrix.coverage
+        run: |
+          grep -v '\.drift\.dart' coverage/lcov.info > coverage/lcov-filtered.info || true
+          mv coverage/lcov-filtered.info coverage/lcov.info
+        working-directory: packages/${{ matrix.package }}
 
-      - name: Generate code (todo_advanced/frontend)
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: example/todo_advanced/frontend
+      - name: Upload coverage artifact
+        if: matrix.coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov-${{ matrix.package }}
+          path: packages/${{ matrix.package }}/coverage/lcov.info
+          retention-days: 7
 
-      - name: Generate code (todo_advanced/backend)
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: example/todo_advanced/backend
+  lint-and-example:
+    name: Lint + example app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - name: Generate code (todo_simple_new/frontend)
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: example/todo_simple_new/frontend
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
 
-      - name: Generate code (todo_simple_new/backend)
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: example/todo_simple_new/backend
+      - name: Cache pub-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.yaml', '**/pubspec.yaml') }}
+          restore-keys: |
+            pub-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-
 
-      - name: Generate code (offline_first_sync_drift_rest)
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: packages/offline_first_sync_drift_rest
+      - name: Install workspace dependencies
+        run: flutter pub get
 
-      - name: Generate code (search_engine)
-        run: dart run build_runner build --delete-conflicting-outputs
-        working-directory: packages/search_engine
+      - name: Generate code (example apps)
+        run: |
+          set -euo pipefail
+          for dir in \
+            example \
+            example/todo_simple/frontend \
+            example/todo_simple/backend \
+            example/todo_advanced/frontend \
+            example/todo_advanced/backend \
+            example/todo_simple_new/frontend \
+            example/todo_simple_new/backend; do
+            echo "::group::build_runner in $dir"
+            (cd "$dir" && dart run build_runner build --delete-conflicting-outputs)
+            echo "::endgroup::"
+          done
 
       - name: Lint (dart analyze)
         run: dart analyze . --no-fatal-warnings
 
-      - name: Test offline_first_sync_drift with coverage
-        run: |
-          flutter test --coverage
-          # Filter out drift-generated files from coverage
-          grep -v '\.drift\.dart' coverage/lcov.info > coverage/lcov-filtered.info || true
-          mv coverage/lcov-filtered.info coverage/lcov.info
-        working-directory: packages/offline_first_sync_drift
+      - name: Test example app
+        run: flutter test
+        working-directory: example
+
+  coverage:
+    name: Coverage badge & Codecov
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lcov-offline_first_sync_drift
+          path: packages/offline_first_sync_drift/coverage
 
       - name: Update coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           LCOV_INFO="packages/offline_first_sync_drift/coverage/lcov.info"
 
@@ -107,7 +183,6 @@ jobs:
           echo "COVERAGE_PERCENT=$percent" >> $GITHUB_ENV
 
       - name: Commit coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -116,23 +191,8 @@ jobs:
           git push
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
-          file: packages/offline_first_sync_drift/coverage/lcov.info
+          files: packages/offline_first_sync_drift/coverage/lcov.info
           flags: offline_first_sync_drift
           fail_ci_if_error: false
-
-      - name: Test offline_first_sync_drift_rest
-        run: flutter test packages/offline_first_sync_drift_rest
-
-      - name: Test search_engine
-        run: dart test
-        working-directory: packages/search_engine
-
-      - name: Test sync_socket_wake_listener
-        run: flutter test
-        working-directory: packages/sync_socket_wake_listener
-
-      - name: Test example app
-        run: flutter test
-        working-directory: example
