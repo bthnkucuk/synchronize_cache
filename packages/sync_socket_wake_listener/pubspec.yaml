@@ -21,7 +21,7 @@ dependencies:
   flutter:
     sdk: flutter
   connectivity_plus: ^7.1.1
-  drift: ^2.26.1
+  drift: ^2.33.0
   offline_first_sync_drift: ^0.1.2
   socket_io_client: ^3.1.4
 

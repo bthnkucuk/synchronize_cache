@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  drift: ^2.27.0
+  drift: ^2.33.0
   drift_flutter: ^0.3.0
   path_provider: ^2.1.5
   offline_first_sync_drift:
@@ -25,7 +25,7 @@ dev_dependencies:
     sdk: flutter
   integration_test:
     sdk: flutter
-  drift_dev: ^2.27.0
+  drift_dev: ^2.33.0
   build_runner: ^2.4.15
   json_serializable: ^6.9.4
   mocktail: ^1.0.4
