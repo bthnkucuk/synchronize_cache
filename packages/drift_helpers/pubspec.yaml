@@ -12,7 +12,7 @@ dependencies:
   meta: ^1.16.0
 
 dev_dependencies:
-  lints: ^6.0.0
+  lints: ^6.1.0
   test: ^1.25.15
   # Pure-Dart sqlite bindings — used only by test/dao/converter_dao_smoke_test.dart
   # to round-trip drift_helpers' TypeConverters through a real sqlite engine.
