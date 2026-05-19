@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 env:
-  FLUTTER_VERSION: "3.41.9"
+  FLUTTER_VERSION: "3.44.0"
   # Opt every JavaScript action into Node.js 24 ahead of GitHub's forced
   # rollout (June 2026). Removes the deprecation banner now and avoids
   # surprises when older actions get auto-upgraded.
