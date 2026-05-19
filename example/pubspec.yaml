@@ -13,7 +13,6 @@ dependencies:
   offline_first_sync_drift_rest:
     path: ../packages/offline_first_sync_drift_rest
   drift: ^2.27.0
-  sqlite3_flutter_libs: ^0.5.31
   path: ^1.9.1
   json_annotation: ^4.9.0
 

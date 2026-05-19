@@ -10,8 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   drift: ^2.27.0
-  drift_flutter: ^0.2.4
-  sqlite3_flutter_libs: ^0.5.41
+  drift_flutter: ^0.3.0
   path_provider: ^2.1.5
   offline_first_sync_drift:
     path: ../../../packages/offline_first_sync_drift

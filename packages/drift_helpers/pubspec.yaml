@@ -16,7 +16,6 @@ dev_dependencies:
   test: ^1.25.15
   # Pure-Dart sqlite bindings — used only by test/dao/converter_dao_smoke_test.dart
   # to round-trip drift_helpers' TypeConverters through a real sqlite engine.
-  # NOT sqlite3_flutter_libs — keeps drift_helpers Flutter-free.
-  # Constraint matches the workspace ceiling pulled in by drift_flutter via
-  # the example apps; bumping requires unblocking drift_flutter upstream.
-  sqlite3: ^2.4.6
+  # sqlite3 3.x bundles the native library via build hooks, so no
+  # sqlite3_flutter_libs is required on Flutter platforms either.
+  sqlite3: ^3.3.1
