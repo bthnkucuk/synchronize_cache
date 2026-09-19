@@ -11,6 +11,7 @@ import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/server_timestamp.dart';
 import 'package:offline_first_sync_drift/src/services/conflict_service.dart';
 import 'package:offline_first_sync_drift/src/services/outbox_service.dart';
+import 'package:offline_first_sync_drift/src/sync_error.dart';
 import 'package:offline_first_sync_drift/src/sync_events.dart';
 import 'package:offline_first_sync_drift/src/syncable_table.dart';
 import 'package:offline_first_sync_drift/src/transport_adapter.dart';
@@ -99,6 +100,9 @@ final class PushService {
         // Versions the server reported in this pass, per (kind, entity id).
         final serverVersions = <(String, String), DateTime>{};
         final failed = <String, String>{};
+        // Failed for reasons that say nothing about the op (offline, expired
+        // token, server down): recorded, but not counted as an attempt.
+        final postponed = <String, String>{};
         // Announced once the local database reflects them.
         final opEvents = <SyncEvent>[];
         var hadPushErrors = false;
@@ -110,14 +114,18 @@ final class PushService {
           counters.errors++;
           batchErrorCount++;
           hadPushErrors = true;
-          failed[op.opId] = error.toString();
+          // `maxOutboxTryCount` parks an op the server will never accept.
+          // Counting a failure the op is not to blame for would park every
+          // queued write of a device that was merely offline for a while.
+          final environmental = SyncErrorInfo.fromError(error).isEnvironmental;
+          (environmental ? postponed : failed)[op.opId] = error.toString();
           opEvents.add(
             OperationFailedEvent(
               opId: op.opId,
               kind: op.kind,
               entityId: op.id,
               error: error,
-              willRetry: !_config.skipConflictingOps,
+              willRetry: environmental || !_config.skipConflictingOps,
             ),
           );
         }
@@ -186,7 +194,7 @@ final class PushService {
         // One transaction per batch instead of one implicit transaction per
         // statement: the server rows, the acknowledgement and the re-base
         // land together or not at all, and table watchers fire once.
-        if (doneOpIds.isNotEmpty || failed.isNotEmpty) {
+        if (doneOpIds.isNotEmpty || failed.isNotEmpty || postponed.isNotEmpty) {
           await _db.transaction(() async {
             for (final (kind, row) in serverRows) {
               await _applyServerRow(kind, row);
@@ -194,6 +202,9 @@ final class PushService {
             await _outbox.ack(doneOpIds);
             if (failed.isNotEmpty) {
               await _outbox.recordFailures(failed);
+            }
+            if (postponed.isNotEmpty) {
+              await _outbox.recordFailures(postponed, countAttempts: false);
             }
             // Ops still queued for these entities were enqueued against the
             // version we just replaced; without this they would be rejected

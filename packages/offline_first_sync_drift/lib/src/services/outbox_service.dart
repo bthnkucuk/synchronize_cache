@@ -117,12 +117,20 @@ final class const OutboxService(final SyncDatabaseMixin _db) {
   }
 
   /// Record per-operation failures: increments tryCount and stores metadata.
+  ///
+  /// Pass `countAttempts: false` for failures that are not the operation's
+  /// fault; see [SyncDatabaseMixin.recordOutboxFailures].
   Future<void> recordFailures(
     Map<String, String> errors, {
     DateTime? triedAt,
+    bool countAttempts = true,
   }) async {
     try {
-      await _db.recordOutboxFailures(errors, triedAt: triedAt);
+      await _db.recordOutboxFailures(
+        errors,
+        triedAt: triedAt,
+        countAttempts: countAttempts,
+      );
     } catch (e, st) {
       throw DatabaseException.fromError(e, st);
     }

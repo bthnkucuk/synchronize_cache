@@ -300,15 +300,23 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
   }
 
   /// Record outbox failures: increment tryCount and store last error metadata.
+  ///
+  /// With [countAttempts] false only the metadata is stored. Use it for
+  /// failures that say nothing about the operation (no connectivity, expired
+  /// credentials, a server that is down): they must not move an operation
+  /// towards `SyncConfig.maxOutboxTryCount`, after which it is no longer sent.
   Future<void> recordOutboxFailures(
     Map<String, String> errors, {
     DateTime? triedAt,
+    bool countAttempts = true,
   }) async {
     if (errors.isEmpty) return;
     final ts = (triedAt ?? DateTime.now().toUtc()).millisecondsSinceEpoch;
 
     await transaction(() async {
-      await incrementOutboxTryCount(errors.keys);
+      if (countAttempts) {
+        await incrementOutboxTryCount(errors.keys);
+      }
 
       try {
         await batch(
