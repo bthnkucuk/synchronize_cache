@@ -52,6 +52,18 @@ final class const OutboxService(final SyncDatabaseMixin _db) {
     }
   }
 
+  /// Re-base the ops still queued for the given `(kind, entity id)`s onto the
+  /// versions the server just reported, touching only entities that have any.
+  /// See [SyncDatabaseMixin.rebaseQueuedOutboxOps].
+  Future<void> rebaseAll(Map<(String, String), DateTime> serverVersions) async {
+    if (serverVersions.isEmpty) return;
+    try {
+      await _db.rebaseQueuedOutboxOps(serverVersions);
+    } catch (e, st) {
+      throw DatabaseException.fromError(e, st);
+    }
+  }
+
   /// Acknowledge sent operations (remove from queue).
   Future<void> ack(Iterable<String> opIds) async {
     if (opIds.isEmpty) return;

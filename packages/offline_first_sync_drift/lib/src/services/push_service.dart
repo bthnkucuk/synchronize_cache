@@ -90,35 +90,62 @@ final class PushService {
 
         final result = await _pushBatch(ops);
 
-        final successOpIds = <String>[];
+        final opsById = {for (final op in ops) op.opId: op};
+        final answered = <String>{};
+        final doneOpIds = <String>{};
         final conflictOps = <Op, PushConflict>{};
+        // Canonical rows the server returned, to mirror into the local tables.
+        final serverRows = <(String, Map<String, Object?>)>[];
         // Versions the server reported in this pass, per (kind, entity id).
         final serverVersions = <(String, String), DateTime>{};
         final failed = <String, String>{};
+        // Announced once the local database reflects them.
+        final opEvents = <SyncEvent>[];
         var hadPushErrors = false;
         var batchSuccessCount = 0;
         var batchErrorCount = 0;
         var batchConflictCount = 0;
 
+        void fail(Op op, Object error) {
+          counters.errors++;
+          batchErrorCount++;
+          hadPushErrors = true;
+          failed[op.opId] = error.toString();
+          opEvents.add(
+            OperationFailedEvent(
+              opId: op.opId,
+              kind: op.kind,
+              entityId: op.id,
+              error: error,
+              willRetry: !_config.skipConflictingOps,
+            ),
+          );
+        }
+
         for (final opResult in result.results) {
-          final op = ops.firstWhere((o) => o.opId == opResult.opId);
+          final op = opsById[opResult.opId];
+          if (op == null) {
+            throw StateError(
+              'The transport returned a result for "${opResult.opId}", which '
+              'is not an operation of the pushed batch.',
+            );
+          }
+          answered.add(op.opId);
 
           switch (opResult.result) {
             case PushSuccess(:final serverData):
               // Server may return the canonical row for upserts (with
               // trigger-bumped fields like updated_at). For delete success
               // the body is empty (HTTP 204), so serverData is null and
-              // there is nothing to write back. We mirror
-              // ConflictService._applyServerData here so the local row
-              // reflects the server-authoritative state immediately.
+              // there is nothing to write back.
               if (serverData != null) {
-                await _applyServerRow(op.kind, serverData);
+                serverRows.add((op.kind, serverData));
                 _noteServerVersion(serverVersions, op, serverData);
               }
-              successOpIds.add(opResult.opId);
+              doneOpIds.add(op.opId);
               counters.pushed++;
               batchSuccessCount++;
-              _events.add(
+              opEvents.add(
                 OperationPushedEvent(
                   opId: op.opId,
                   kind: op.kind,
@@ -133,26 +160,49 @@ final class PushService {
               conflictOps[op] = conflict;
 
             case PushNotFound():
-              successOpIds.add(opResult.opId);
+              doneOpIds.add(op.opId);
               batchSuccessCount++;
 
             case final PushError error:
-              counters.errors++;
-              batchErrorCount++;
-              hadPushErrors = true;
-              failed[op.opId] = error.error.toString();
-              _events.add(
-                OperationFailedEvent(
-                  opId: op.opId,
-                  kind: op.kind,
-                  entityId: op.id,
-                  error: error.error,
-                  willRetry: !_config.skipConflictingOps,
-                ),
-              );
+              fail(op, error.error);
           }
         }
 
+        // An op the transport did not answer stays queued. Treated as
+        // anything but a failure it would be taken, pushed and ignored again
+        // for as long as the transport keeps doing that.
+        for (final op in ops) {
+          if (!answered.contains(op.opId)) {
+            fail(
+              op,
+              const TransportException(
+                'The transport returned no result for this operation; '
+                'TransportAdapter.push must answer every op it is given.',
+              ),
+            );
+          }
+        }
+
+        // One transaction per batch instead of one implicit transaction per
+        // statement: the server rows, the acknowledgement and the re-base
+        // land together or not at all, and table watchers fire once.
+        if (doneOpIds.isNotEmpty || failed.isNotEmpty) {
+          await _db.transaction(() async {
+            for (final (kind, row) in serverRows) {
+              await _applyServerRow(kind, row);
+            }
+            await _outbox.ack(doneOpIds);
+            if (failed.isNotEmpty) {
+              await _outbox.recordFailures(failed);
+            }
+            // Ops still queued for these entities were enqueued against the
+            // version we just replaced; without this they would be rejected
+            // as conflicts with our own write.
+            await _outbox.rebaseAll(serverVersions);
+          });
+        }
+
+        opEvents.forEach(_events.add);
         _events.add(
           PushBatchProcessedEvent(
             batchSize: ops.length,
@@ -162,50 +212,30 @@ final class PushService {
           ),
         );
 
-        await _outbox.ack(successOpIds);
-        if (failed.isNotEmpty) {
-          await _outbox.recordFailures(failed);
-        }
-
         var hadUnresolvedConflicts = false;
-        for (final entry in conflictOps.entries) {
-          final result = await _conflictService.resolve(entry.key, entry.value);
+        final settledConflictOpIds = <String>{};
+        final resolvedVersions = <(String, String), DateTime>{};
+        for (final MapEntry(key: op, value: conflict) in conflictOps.entries) {
+          final result = await _conflictService.resolve(op, conflict);
           if (result.resolved) {
             counters.conflictsResolved++;
-            successOpIds.add(entry.key.opId);
+            settledConflictOpIds.add(op.opId);
             final serverData = result.serverData;
             if (serverData != null) {
-              _noteServerVersion(serverVersions, entry.key, serverData);
+              _noteServerVersion(resolvedVersions, op, serverData);
             }
           } else if (_config.skipConflictingOps) {
-            successOpIds.add(entry.key.opId);
+            settledConflictOpIds.add(op.opId);
           } else {
             hadUnresolvedConflicts = true;
           }
         }
 
-        if (conflictOps.isNotEmpty) {
-          await _outbox.ack(
-            conflictOps.keys
-                .where(
-                  (op) =>
-                      successOpIds.contains(op.opId) ||
-                      _config.skipConflictingOps,
-                )
-                .map((op) => op.opId),
-          );
-        }
-
-        // Ops still queued for these entities were enqueued against the
-        // version we just replaced; without this they would be rejected as
-        // conflicts with our own write.
-        for (final MapEntry(key: (kind, id), value: version)
-            in serverVersions.entries) {
-          await _outbox.rebase(
-            kind: kind,
-            entityId: id,
-            serverVersion: version,
-          );
+        if (settledConflictOpIds.isNotEmpty) {
+          await _db.transaction(() async {
+            await _outbox.ack(settledConflictOpIds);
+            await _outbox.rebaseAll(resolvedVersions);
+          });
         }
 
         // Do not spin on the same operations in a single sync run. Failed
@@ -244,6 +274,11 @@ final class PushService {
     ];
   }
 
+  /// False on the web, where `DateTime` stops at milliseconds: the local row
+  /// cannot hold more digits than the op, so there is nothing to read.
+  static final bool _keepsMicroseconds =
+      DateTime.fromMicrosecondsSinceEpoch(1, isUtc: true).microsecond == 1;
+
   Future<List<Op>> _withPreciseBases(List<Op> ops) async => [
     for (final op in ops) await _recoverBasePrecision(op),
   ];
@@ -261,6 +296,7 @@ final class PushService {
   /// stored microseconds carry a millisecond base. When the row still holds
   /// that same version, its full-precision value is what the server has.
   Future<Op> _recoverBasePrecision(Op op) async {
+    if (!_keepsMicroseconds) return op;
     final base = _baseOf(op);
     if (base == null || base.microsecond != 0) return op;
 
