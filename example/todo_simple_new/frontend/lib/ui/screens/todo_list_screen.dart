@@ -17,10 +17,7 @@ class TodoListScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Todo Simple New'),
-        actions: const [
-          SyncStatusIndicator(),
-          SizedBox(width: 8),
-        ],
+        actions: const [SyncStatusIndicator(), SizedBox(width: 8)],
       ),
       body: StreamBuilder<List<Todo>>(
         stream: repo.watchAll(),
@@ -120,9 +117,8 @@ class TodoListScreen extends StatelessWidget {
     if (confirmed == true && context.mounted) {
       await repo.delete(todo);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Todo deleted')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Todo deleted')));
       }
     }
   }
@@ -151,8 +147,8 @@ class _EmptyState extends StatelessWidget {
           Text(
             'Tap the + button to create your first todo',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

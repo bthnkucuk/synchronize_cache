@@ -45,11 +45,10 @@ void main() {
 
       final result = stripServerManagedFields(input);
 
-      expect(result, equals({
-        'ids': 'kept',
-        'user_ids': 'kept',
-        'updated': 'kept',
-      }));
+      expect(
+        result,
+        equals({'ids': 'kept', 'user_ids': 'kept', 'updated': 'kept'}),
+      );
     });
 
     test('preserves explicit null values for non-managed keys', () {
@@ -95,10 +94,7 @@ void main() {
     });
 
     test('repeated calls are stable (idempotent)', () {
-      final input = <String, dynamic>{
-        'id': 'x',
-        'title': 't',
-      };
+      final input = <String, dynamic>{'id': 'x', 'title': 't'};
       final once = stripServerManagedFields(input);
       final twice = stripServerManagedFields(once);
       expect(twice, equals(once));

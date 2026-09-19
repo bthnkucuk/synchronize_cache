@@ -20,9 +20,7 @@ Future<Response> onRequest(RequestContext context) async {
     if (id == null || text == null) {
       return Response(
         statusCode: 400,
-        body: jsonEncode({
-          'error': 'Missing required fields: id, text',
-        }),
+        body: jsonEncode({'error': 'Missing required fields: id, text'}),
         headers: {'Content-Type': 'application/json'},
       );
     }
@@ -38,10 +36,7 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     return Response(
-      body: jsonEncode({
-        'message': 'Reminder added',
-        'todo': todo.toJson(),
-      }),
+      body: jsonEncode({'message': 'Reminder added', 'todo': todo.toJson()}),
       headers: {'Content-Type': 'application/json'},
     );
   } catch (_) {

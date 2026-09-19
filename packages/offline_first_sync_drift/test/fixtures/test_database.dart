@@ -34,13 +34,9 @@ class MockTransport implements TransportAdapter {
     pushCallCount++;
     pushedOps.addAll(ops);
     return BatchPushResult(
-      results:
-          ops
-              .map(
-                (op) =>
-                    OpPushResult(opId: op.opId, result: const PushSuccess()),
-              )
-              .toList(),
+      results: ops
+          .map((op) => OpPushResult(opId: op.opId, result: const PushSuccess()))
+          .toList(),
     );
   }
 
@@ -77,10 +73,9 @@ class TestItem {
   factory TestItem.fromJson(Map<String, dynamic> json) => TestItem(
     id: json['id'] as String,
     updatedAt: DateTime.parse(json['updated_at'] as String),
-    deletedAt:
-        json['deleted_at'] != null
-            ? DateTime.parse(json['deleted_at'] as String)
-            : null,
+    deletedAt: json['deleted_at'] != null
+        ? DateTime.parse(json['deleted_at'] as String)
+        : null,
     name: json['name'] as String,
   );
 

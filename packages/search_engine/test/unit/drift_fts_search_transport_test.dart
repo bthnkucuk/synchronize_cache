@@ -53,9 +53,8 @@ void main() {
 
     await transport.delete(originalId: 'o', kind: 'k', userId: 'u');
 
-    verify(
-      () => db.deleteSearchItem(originalId: 'o', kind: 'k', userId: 'u'),
-    ).called(1);
+    verify(() => db.deleteSearchItem(originalId: 'o', kind: 'k', userId: 'u'))
+        .called(1);
   });
 
   test('search forwards every parameter to searchGlobal', () async {

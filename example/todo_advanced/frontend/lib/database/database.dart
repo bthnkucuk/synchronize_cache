@@ -19,8 +19,7 @@ part 'database.g.dart';
   tables: [Todos],
 )
 class AppDatabase extends _$AppDatabase with SyncDatabaseMixin {
-  AppDatabase([QueryExecutor? executor])
-      : super(executor ?? _openConnection());
+  AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   /// Opens a persistent database for Flutter.
   static QueryExecutor _openConnection() {
@@ -37,8 +36,8 @@ class AppDatabase extends _$AppDatabase with SyncDatabaseMixin {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async {
-          await m.createAll();
-        },
-      );
+    onCreate: (m) async {
+      await m.createAll();
+    },
+  );
 }

@@ -45,25 +45,52 @@ Future<void> main() async {
     switch (event) {
       case SyncStarted(phase: final phase):
         stdout.writeln('Sync started: $phase');
-      case SyncProgress(phase: final phase, done: final done, total: final total):
+      case SyncProgress(
+        phase: final phase,
+        done: final done,
+        total: final total,
+      ):
         stdout.writeln('Sync progress: $phase - $done/$total');
       case SyncCompleted(took: final took):
         stdout.writeln('Sync completed in ${took.inMilliseconds}ms');
       case SyncErrorEvent(phase: final phase, error: final error):
         stdout.writeln('Sync error in $phase: $error');
-      case CacheUpdateEvent(kind: final kind, upserts: final upserts, deletes: final deletes):
-        stdout.writeln('Cache updated: $kind - $upserts upserts, $deletes deletes');
+      case CacheUpdateEvent(
+        kind: final kind,
+        upserts: final upserts,
+        deletes: final deletes,
+      ):
+        stdout.writeln(
+          'Cache updated: $kind - $upserts upserts, $deletes deletes',
+        );
       case ConflictDetectedEvent(conflict: final c, strategy: final s):
-        stdout.writeln('Conflict detected: ${c.kind}/${c.entityId}, strategy: $s');
+        stdout.writeln(
+          'Conflict detected: ${c.kind}/${c.entityId}, strategy: $s',
+        );
       case ConflictResolvedEvent(conflict: final c, resolution: final r):
-        stdout.writeln('Conflict resolved: ${c.kind}/${c.entityId}, resolution: $r');
+        stdout.writeln(
+          'Conflict resolved: ${c.kind}/${c.entityId}, resolution: $r',
+        );
       case ConflictUnresolvedEvent(conflict: final c, reason: final r):
-        stdout.writeln('Conflict unresolved: ${c.kind}/${c.entityId}, reason: $r');
-      case DataMergedEvent(kind: final k, entityId: final id, localFields: final lf, serverFields: final sf):
-        stdout.writeln('Data merged: $k/$id - local: ${lf.length}, server: ${sf.length}');
+        stdout.writeln(
+          'Conflict unresolved: ${c.kind}/${c.entityId}, reason: $r',
+        );
+      case DataMergedEvent(
+        kind: final k,
+        entityId: final id,
+        localFields: final lf,
+        serverFields: final sf,
+      ):
+        stdout.writeln(
+          'Data merged: $k/$id - local: ${lf.length}, server: ${sf.length}',
+        );
       case OperationPushedEvent(kind: final k, entityId: final id):
         stdout.writeln('Operation pushed: $k/$id');
-      case OperationFailedEvent(kind: final k, entityId: final id, error: final e):
+      case OperationFailedEvent(
+        kind: final k,
+        entityId: final id,
+        error: final e,
+      ):
         stdout.writeln('Operation failed: $k/$id - $e');
       case FullResyncStarted(reason: final r):
         stdout.writeln('Full resync started: $r');

@@ -270,25 +270,28 @@ void main() {
       }
     });
 
-    test('multiple updates to same todo before sync sends only final state', () async {
-      // Create todo
-      var todo = await repo.create(title: 'Version 1');
+    test(
+      'multiple updates to same todo before sync sends only final state',
+      () async {
+        // Create todo
+        var todo = await repo.create(title: 'Version 1');
 
-      // Update multiple times without syncing
-      todo = await repo.update(todo, title: 'Version 2');
-      todo = await repo.update(todo, title: 'Version 3');
-      todo = await repo.update(todo, title: 'Final Version');
+        // Update multiple times without syncing
+        todo = await repo.update(todo, title: 'Version 2');
+        todo = await repo.update(todo, title: 'Version 3');
+        todo = await repo.update(todo, title: 'Final Version');
 
-      // Sync
-      await syncService.sync();
+        // Sync
+        await syncService.sync();
 
-      // Verify server has final version
-      final response = await http.get(
-        Uri.parse('${server.baseUrl}/todos/${todo.id}'),
-      );
-      final serverTodo = jsonDecode(response.body) as Map<String, dynamic>;
-      expect(serverTodo['title'], 'Final Version');
-    });
+        // Verify server has final version
+        final response = await http.get(
+          Uri.parse('${server.baseUrl}/todos/${todo.id}'),
+        );
+        final serverTodo = jsonDecode(response.body) as Map<String, dynamic>;
+        expect(serverTodo['title'], 'Final Version');
+      },
+    );
 
     test('create then delete before sync results in no server data', () async {
       // Create todo
@@ -313,33 +316,36 @@ void main() {
       );
     });
 
-    test('mixed operations offline: create, update, delete different todos', () async {
-      // Create 3 todos
-      final todo1 = await repo.create(title: 'Keep and Update');
-      final todo2 = await repo.create(title: 'Keep Unchanged');
-      final todo3 = await repo.create(title: 'Will Delete');
+    test(
+      'mixed operations offline: create, update, delete different todos',
+      () async {
+        // Create 3 todos
+        final todo1 = await repo.create(title: 'Keep and Update');
+        final todo2 = await repo.create(title: 'Keep Unchanged');
+        final todo3 = await repo.create(title: 'Will Delete');
 
-      // Sync initial state
-      await syncService.sync();
+        // Sync initial state
+        await syncService.sync();
 
-      // Perform mixed operations offline
-      await repo.update(todo1, title: 'Updated Title', priority: 1);
-      await repo.delete(todo3);
+        // Perform mixed operations offline
+        await repo.update(todo1, title: 'Updated Title', priority: 1);
+        await repo.delete(todo3);
 
-      // Sync
-      final stats = await syncService.sync();
-      expect(stats.pushed, greaterThanOrEqualTo(2)); // update + delete
+        // Sync
+        final stats = await syncService.sync();
+        expect(stats.pushed, greaterThanOrEqualTo(2)); // update + delete
 
-      // Verify final states for these specific todos
-      final updatedTodo1 = await repo.getById(todo1.id);
-      final unchangedTodo2 = await repo.getById(todo2.id);
+        // Verify final states for these specific todos
+        final updatedTodo1 = await repo.getById(todo1.id);
+        final unchangedTodo2 = await repo.getById(todo2.id);
 
-      expect(updatedTodo1?.title, 'Updated Title');
-      expect(unchangedTodo2?.title, 'Keep Unchanged');
-      // Deleted todo should not appear in getAll
-      final allTodos = await repo.getAll();
-      expect(allTodos.any((t) => t.id == todo3.id), isFalse);
-    });
+        expect(updatedTodo1?.title, 'Updated Title');
+        expect(unchangedTodo2?.title, 'Keep Unchanged');
+        // Deleted todo should not appear in getAll
+        final allTodos = await repo.getAll();
+        expect(allTodos.any((t) => t.id == todo3.id), isFalse);
+      },
+    );
   });
 
   group('Data Integrity', () {
@@ -440,7 +446,10 @@ void main() {
       final todo1 = await repo.create(title: 'No Description');
 
       // Create with empty description
-      final todo2 = await repo.create(title: 'Empty Description', description: '');
+      final todo2 = await repo.create(
+        title: 'Empty Description',
+        description: '',
+      );
 
       await syncService.sync();
 
@@ -548,7 +557,11 @@ void main() {
       final getResponse = await http.get(
         Uri.parse('${server.baseUrl}/todos/${todo.id}'),
       );
-      expect(getResponse.statusCode, 200, reason: 'Todo should exist on server after sync');
+      expect(
+        getResponse.statusCode,
+        200,
+        reason: 'Todo should exist on server after sync',
+      );
 
       // Delete on server (direct HTTP)
       final deleteResponse = await http.delete(

@@ -17,10 +17,9 @@ sealed class SyncException implements Exception {
   final StackTrace? stackTrace;
 
   @override
-  String toString() =>
-      cause == null
-          ? '$runtimeType: $message'
-          : '$runtimeType: $message\nCaused by: $cause';
+  String toString() => cause == null
+      ? '$runtimeType: $message'
+      : '$runtimeType: $message\nCaused by: $cause';
 }
 
 /// Network error (server unavailable, timeout, etc.).
@@ -75,10 +74,9 @@ class TransportException extends SyncException {
   );
 
   @override
-  String toString() =>
-      statusCode == null
-          ? 'TransportException: $message'
-          : 'TransportException: $message (status: $statusCode)';
+  String toString() => statusCode == null
+      ? 'TransportException: $message'
+      : 'TransportException: $message (status: $statusCode)';
 }
 
 /// Database error.

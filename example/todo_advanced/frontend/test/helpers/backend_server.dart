@@ -28,11 +28,13 @@ class BackendServer {
     _port = await _findAvailablePort();
     final vmServicePort = await _findAvailablePort();
 
-    _process = await Process.start(
-      'dart_frog',
-      ['dev', '--port', '$_port', '--dart-vm-service-port', '$vmServicePort'],
-      workingDirectory: backendPath,
-    );
+    _process = await Process.start('dart_frog', [
+      'dev',
+      '--port',
+      '$_port',
+      '--dart-vm-service-port',
+      '$vmServicePort',
+    ], workingDirectory: backendPath);
 
     // Capture output for debugging
     _process!.stdout.transform(const SystemEncoding().decoder).listen((data) {

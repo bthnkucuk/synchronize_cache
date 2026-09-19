@@ -38,8 +38,9 @@ class SyncErrorInfo {
       }
       final isServer = code != null && code >= 500;
       return SyncErrorInfo(
-        category:
-            isServer ? SyncErrorCategory.server : SyncErrorCategory.unknown,
+        category: isServer
+            ? SyncErrorCategory.server
+            : SyncErrorCategory.unknown,
         retryable: isServer,
         statusCode: code,
         message: error.message,

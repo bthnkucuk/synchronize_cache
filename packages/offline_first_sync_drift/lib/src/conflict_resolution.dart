@@ -118,15 +118,15 @@ class Conflict {
 }
 
 /// Callback for manual conflict resolution.
-typedef ConflictResolver =
-    Future<ConflictResolution> Function(Conflict conflict);
+typedef ConflictResolver = Future<ConflictResolution> Function(
+  Conflict conflict,
+);
 
 /// Callback for data merging.
-typedef MergeFunction =
-    Map<String, Object?> Function(
-      Map<String, Object?> local,
-      Map<String, Object?> server,
-    );
+typedef MergeFunction = Map<String, Object?> Function(
+  Map<String, Object?> local,
+  Map<String, Object?> server,
+);
 
 /// Push operation result.
 sealed class PushResult {

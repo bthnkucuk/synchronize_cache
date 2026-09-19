@@ -48,45 +48,40 @@ class TestIndexerDatabase extends $TestIndexerDatabase
 SearchableTable<TestIndexerDatabase, Note> notesBinding() =>
     searchableTable<TestIndexerDatabase, Note>(
       kind: 'rows',
-      watch:
-          (db, userId) =>
-              (db.select(db.notes)
-                ..where((t) => t.userId.equals(userId))).watch(),
+      watch: (db, userId) =>
+          (db.select(db.notes)..where((t) => t.userId.equals(userId))).watch(),
       idOf: (r) => r.id,
       isDeleted: (r) => r.deleted,
       toJson: (r) => {'id': r.id, 'title': r.title},
-      updatedAtOf:
-          (r) =>
-              DateTime.fromMillisecondsSinceEpoch(r.updatedAtMs, isUtc: true),
+      updatedAtOf: (r) =>
+          DateTime.fromMillisecondsSinceEpoch(r.updatedAtMs, isUtc: true),
       readSince: (db, userId, since, lastId, limit) async {
         final sinceMs = since.toUtc().millisecondsSinceEpoch;
-        final query =
-            db.select(db.notes)
-              ..where(
-                (t) =>
-                    t.userId.equals(userId) &
-                    (t.updatedAtMs.isBiggerThanValue(sinceMs) |
-                        (t.updatedAtMs.equals(sinceMs) &
-                            (lastId == null
-                                ? const Constant(true)
-                                : t.id.isBiggerThanValue(lastId)))),
-              )
-              ..orderBy([
-                (t) => OrderingTerm(expression: t.updatedAtMs),
-                (t) => OrderingTerm(expression: t.id),
-              ])
-              ..limit(limit);
+        final query = db.select(db.notes)
+          ..where(
+            (t) =>
+                t.userId.equals(userId) &
+                (t.updatedAtMs.isBiggerThanValue(sinceMs) |
+                    (t.updatedAtMs.equals(sinceMs) &
+                        (lastId == null
+                            ? const Constant(true)
+                            : t.id.isBiggerThanValue(lastId)))),
+          )
+          ..orderBy([
+            (t) => OrderingTerm(expression: t.updatedAtMs),
+            (t) => OrderingTerm(expression: t.id),
+          ])
+          ..limit(limit);
         return query.get();
       },
-      toGlobalSearch:
-          (item) async => GlobalSearch(
-            originalId: item.id,
-            userId: item.userId,
-            kind: item.kind,
-            title: (item.data['title'] as String?) ?? '',
-            description: '',
-            content: '',
-          ),
+      toGlobalSearch: (item) async => GlobalSearch(
+        originalId: item.id,
+        userId: item.userId,
+        kind: item.kind,
+        title: (item.data['title'] as String?) ?? '',
+        description: '',
+        content: '',
+      ),
     );
 
 Future<void> insertNote(

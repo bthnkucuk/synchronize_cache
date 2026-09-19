@@ -45,10 +45,7 @@ Future<Response> _handlePut(
     // Return 201 if created, 200 if updated
     final statusCode = existing == null ? HttpStatus.created : HttpStatus.ok;
 
-    return Response.json(
-      statusCode: statusCode,
-      body: todo.toJson(),
-    );
+    return Response.json(statusCode: statusCode, body: todo.toJson());
   } catch (_) {
     return Response.json(
       statusCode: HttpStatus.badRequest,

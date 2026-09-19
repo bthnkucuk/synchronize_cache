@@ -30,7 +30,9 @@ class SyncStatusIndicator extends StatelessWidget {
                   IconButton(
                     icon: const Icon(Icons.sync),
                     onPressed: () => _sync(context, syncService),
-                    tooltip: pending > 0 ? 'Sync now ($pending pending)' : 'Sync now',
+                    tooltip: pending > 0
+                        ? 'Sync now ($pending pending)'
+                        : 'Sync now',
                   ),
               ],
             );
@@ -96,7 +98,11 @@ class _StatusBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             text,
-            style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

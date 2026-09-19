@@ -35,12 +35,12 @@ class AppDatabase extends $AppDatabase with SyncDatabaseMixin {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async {
-          await m.createAll();
-        },
-        beforeOpen: (details) async {
-          await customStatement('PRAGMA journal_mode=WAL;');
-          await customStatement('PRAGMA synchronous=NORMAL;');
-        },
-      );
+    onCreate: (m) async {
+      await m.createAll();
+    },
+    beforeOpen: (details) async {
+      await customStatement('PRAGMA journal_mode=WAL;');
+      await customStatement('PRAGMA synchronous=NORMAL;');
+    },
+  );
 }

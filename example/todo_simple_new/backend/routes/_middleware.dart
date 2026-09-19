@@ -4,9 +4,10 @@ import 'package:todo_simple_new_backend/repositories/todo_repository.dart';
 final _todoRepository = TodoRepository();
 
 Handler middleware(Handler handler) {
-  return handler.use(_corsMiddleware()).use(requestLogger()).use(
-        provider<TodoRepository>((_) => _todoRepository),
-      );
+  return handler
+      .use(_corsMiddleware())
+      .use(requestLogger())
+      .use(provider<TodoRepository>((_) => _todoRepository));
 }
 
 Middleware _corsMiddleware() {
@@ -24,6 +25,7 @@ Middleware _corsMiddleware() {
 const _corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Idempotency-Key',
+  'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, X-Idempotency-Key',
   'Access-Control-Max-Age': '86400',
 };

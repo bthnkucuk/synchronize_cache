@@ -33,19 +33,12 @@ void main() {
   group('POST /simulate/reminder', () {
     test('adds reminder to existing todo', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Original',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Original', updatedAt: now));
 
       when(() => context.request).thenReturn(
         Request.post(
           Uri.parse('http://localhost/simulate/reminder'),
-          body: jsonEncode({
-            'id': 'todo-1',
-            'text': 'Remember to check this!',
-          }),
+          body: jsonEncode({'id': 'todo-1', 'text': 'Remember to check this!'}),
         ),
       );
 
@@ -62,10 +55,7 @@ void main() {
       when(() => context.request).thenReturn(
         Request.post(
           Uri.parse('http://localhost/simulate/reminder'),
-          body: jsonEncode({
-            'id': 'non-existent',
-            'text': 'Some reminder',
-          }),
+          body: jsonEncode({'id': 'non-existent', 'text': 'Some reminder'}),
         ),
       );
 
@@ -109,27 +99,33 @@ void main() {
       final now = DateTime.now().toUtc();
       final yesterday = now.subtract(const Duration(days: 1));
 
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Overdue todo',
-        dueDate: yesterday,
-        completed: false,
-        updatedAt: now,
-      ));
-      repository.create(Todo(
-        id: 'todo-2',
-        title: 'Not overdue',
-        dueDate: now.add(const Duration(days: 1)),
-        completed: false,
-        updatedAt: now,
-      ));
-      repository.create(Todo(
-        id: 'todo-3',
-        title: 'Already completed',
-        dueDate: yesterday,
-        completed: true,
-        updatedAt: now,
-      ));
+      repository.create(
+        Todo(
+          id: 'todo-1',
+          title: 'Overdue todo',
+          dueDate: yesterday,
+          completed: false,
+          updatedAt: now,
+        ),
+      );
+      repository.create(
+        Todo(
+          id: 'todo-2',
+          title: 'Not overdue',
+          dueDate: now.add(const Duration(days: 1)),
+          completed: false,
+          updatedAt: now,
+        ),
+      );
+      repository.create(
+        Todo(
+          id: 'todo-3',
+          title: 'Already completed',
+          dueDate: yesterday,
+          completed: true,
+          updatedAt: now,
+        ),
+      );
 
       when(() => context.request).thenReturn(
         Request.post(Uri.parse('http://localhost/simulate/complete')),
@@ -149,13 +145,15 @@ void main() {
     test('returns empty list when no overdue todos', () async {
       final now = DateTime.now().toUtc();
 
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Future todo',
-        dueDate: now.add(const Duration(days: 1)),
-        completed: false,
-        updatedAt: now,
-      ));
+      repository.create(
+        Todo(
+          id: 'todo-1',
+          title: 'Future todo',
+          dueDate: now.add(const Duration(days: 1)),
+          completed: false,
+          updatedAt: now,
+        ),
+      );
 
       when(() => context.request).thenReturn(
         Request.post(Uri.parse('http://localhost/simulate/complete')),
@@ -183,20 +181,14 @@ void main() {
   group('POST /simulate/prioritize', () {
     test('changes priority of existing todo', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Test',
-        priority: 3,
-        updatedAt: now,
-      ));
+      repository.create(
+        Todo(id: 'todo-1', title: 'Test', priority: 3, updatedAt: now),
+      );
 
       when(() => context.request).thenReturn(
         Request.post(
           Uri.parse('http://localhost/simulate/prioritize'),
-          body: jsonEncode({
-            'id': 'todo-1',
-            'priority': 1,
-          }),
+          body: jsonEncode({'id': 'todo-1', 'priority': 1}),
         ),
       );
 
@@ -213,10 +205,7 @@ void main() {
       when(() => context.request).thenReturn(
         Request.post(
           Uri.parse('http://localhost/simulate/prioritize'),
-          body: jsonEncode({
-            'id': 'non-existent',
-            'priority': 1,
-          }),
+          body: jsonEncode({'id': 'non-existent', 'priority': 1}),
         ),
       );
 
@@ -230,19 +219,12 @@ void main() {
 
     test('returns 400 when priority is out of range', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Test',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Test', updatedAt: now));
 
       when(() => context.request).thenReturn(
         Request.post(
           Uri.parse('http://localhost/simulate/prioritize'),
-          body: jsonEncode({
-            'id': 'todo-1',
-            'priority': 10,
-          }),
+          body: jsonEncode({'id': 'todo-1', 'priority': 10}),
         ),
       );
 

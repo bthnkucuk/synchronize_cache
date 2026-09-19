@@ -33,11 +33,14 @@ void main() {
       expect(await parser.parse(body: '{not json'), isEmpty);
     });
 
-    test('returns empty string when the decoded payload is not a Map', () async {
-      const parser = JsonTextContentParser();
-      expect(await parser.parse(body: '[1,2,3]'), isEmpty);
-      expect(await parser.parse(body: '"plain string"'), isEmpty);
-    });
+    test(
+      'returns empty string when the decoded payload is not a Map',
+      () async {
+        const parser = JsonTextContentParser();
+        expect(await parser.parse(body: '[1,2,3]'), isEmpty);
+        expect(await parser.parse(body: '"plain string"'), isEmpty);
+      },
+    );
 
     test('falls back to empty string when the field is null', () async {
       const parser = JsonTextContentParser();

@@ -2,8 +2,10 @@ import 'dart:async' show StreamSubscription, Timer;
 import 'dart:ui' show AppLifecycleState;
 
 import 'package:drift/drift.dart' show GeneratedDatabase;
-import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver;
-import 'package:offline_first_sync_drift/offline_first_sync_drift.dart' show SyncEngine;
+import 'package:flutter/widgets.dart'
+    show WidgetsBinding, WidgetsBindingObserver;
+import 'package:offline_first_sync_drift/offline_first_sync_drift.dart'
+    show SyncEngine;
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 /// Provides the socket.io server base URL.
@@ -24,7 +26,10 @@ typedef SocketLog = void Function(String message);
 
 /// Hook called when an exception is caught inside the listener.
 typedef SocketErrorHandler = void Function(
-    Object error, StackTrace stackTrace, [String? context]);
+  Object error,
+  StackTrace stackTrace, [
+  String? context,
+]);
 
 /// Listens for `sync:wake` socket.io events and triggers a targeted pull sync.
 ///
@@ -42,7 +47,8 @@ typedef SocketErrorHandler = void Function(
 ///
 /// Config-driven: every external dependency is injected via constructor
 /// callbacks so the class is reusable across apps and easy to fake in tests.
-class SocketWakeListener<DB extends GeneratedDatabase> with WidgetsBindingObserver {
+class SocketWakeListener<DB extends GeneratedDatabase>
+    with WidgetsBindingObserver {
   SocketWakeListener({
     required this.urlProvider,
     required this.pathProvider,
@@ -188,7 +194,9 @@ class SocketWakeListener<DB extends GeneratedDatabase> with WidgetsBindingObserv
       _catchUpSync();
     });
     _socket!.onDisconnect((_) => _log('SocketWakeListener: disconnected'));
-    _socket!.onConnectError((e) => _log('SocketWakeListener: connect error $e'));
+    _socket!.onConnectError(
+      (e) => _log('SocketWakeListener: connect error $e'),
+    );
 
     _socket!.on('sync:wake', (data) {
       try {
@@ -232,7 +240,8 @@ class SocketWakeListener<DB extends GeneratedDatabase> with WidgetsBindingObserv
   void _reconnect() {
     if (!(_socket?.connected ?? false)) {
       _setupSocket().catchError(
-        (Object e, StackTrace st) => _onError(e, st, 'SocketWakeListener _reconnect'),
+        (Object e, StackTrace st) =>
+            _onError(e, st, 'SocketWakeListener _reconnect'),
       );
     }
   }

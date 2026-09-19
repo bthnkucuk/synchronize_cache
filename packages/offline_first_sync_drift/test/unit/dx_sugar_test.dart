@@ -74,14 +74,13 @@ void main() {
         table: db.testItems,
         fromJson: TestItem.fromJson,
         toJson: (e) => e.toJson(),
-        toInsertable:
-            (e) => TestItemsCompanion.insert(
-              updatedAt: e.updatedAt,
-              deletedAt: Value(e.deletedAt),
-              deletedAtLocal: Value(e.deletedAtLocal),
-              id: e.id,
-              name: e.name,
-            ),
+        toInsertable: (e) => TestItemsCompanion.insert(
+          updatedAt: e.updatedAt,
+          deletedAt: Value(e.deletedAt),
+          deletedAtLocal: Value(e.deletedAtLocal),
+          id: e.id,
+          name: e.name,
+        ),
         getId: (e) => e.id,
         getUpdatedAt: (e) => e.updatedAt,
       );
@@ -118,14 +117,13 @@ void main() {
         table: db.testItems,
         fromJson: TestItem.fromJson,
         toJson: (e) => e.toJson(),
-        toInsertable:
-            (e) => TestItemsCompanion.insert(
-              updatedAt: e.updatedAt,
-              deletedAt: Value(e.deletedAt),
-              deletedAtLocal: Value(e.deletedAtLocal),
-              id: e.id,
-              name: e.name,
-            ),
+        toInsertable: (e) => TestItemsCompanion.insert(
+          updatedAt: e.updatedAt,
+          deletedAt: Value(e.deletedAt),
+          deletedAtLocal: Value(e.deletedAtLocal),
+          id: e.id,
+          name: e.name,
+        ),
         getId: (e) => e.id,
         getUpdatedAt: (e) => e.updatedAt,
       );
@@ -172,14 +170,13 @@ void main() {
         kind: 'test_items',
         fromJson: TestItem.fromJson,
         toJson: (e) => e.toJson(),
-        toInsertable:
-            (e) => TestItemsCompanion.insert(
-              updatedAt: e.updatedAt,
-              deletedAt: Value(e.deletedAt),
-              deletedAtLocal: Value(e.deletedAtLocal),
-              id: e.id,
-              name: e.name,
-            ),
+        toInsertable: (e) => TestItemsCompanion.insert(
+          updatedAt: e.updatedAt,
+          deletedAt: Value(e.deletedAt),
+          deletedAtLocal: Value(e.deletedAtLocal),
+          id: e.id,
+          name: e.name,
+        ),
         getId: (e) => e.id,
         getUpdatedAt: (e) => e.updatedAt,
       );

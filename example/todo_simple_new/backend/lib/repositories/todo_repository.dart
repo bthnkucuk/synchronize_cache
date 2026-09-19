@@ -3,10 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../models/todo.dart';
 
 class ListResult {
-  ListResult({
-    required this.items,
-    this.nextPageToken,
-  });
+  ListResult({required this.items, this.nextPageToken});
 
   final List<Todo> items;
   final String? nextPageToken;
@@ -40,7 +37,8 @@ class TodoRepository {
 
     if (updatedSince != null) {
       items = items.where((todo) {
-        return todo.updatedAt.isAfter(updatedSince) || todo.updatedAt.isAtSameMomentAs(updatedSince);
+        return todo.updatedAt.isAfter(updatedSince) ||
+            todo.updatedAt.isAtSameMomentAs(updatedSince);
       }).toList();
     }
 
@@ -111,10 +109,14 @@ class TodoRepository {
 
     final updated = existing.copyWith(
       title: cleanData['title'] as String? ?? existing.title,
-      description: cleanData.containsKey('description') ? cleanData['description'] as String? : existing.description,
+      description: cleanData.containsKey('description')
+          ? cleanData['description'] as String?
+          : existing.description,
       completed: cleanData['completed'] as bool? ?? existing.completed,
       priority: priority ?? existing.priority,
-      dueDate: cleanData.containsKey('due_date') ? _parseDateTime(cleanData['due_date']) : existing.dueDate,
+      dueDate: cleanData.containsKey('due_date')
+          ? _parseDateTime(cleanData['due_date'])
+          : existing.dueDate,
       updatedAt: now,
     );
 

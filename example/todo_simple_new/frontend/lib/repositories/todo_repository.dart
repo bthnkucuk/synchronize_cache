@@ -6,7 +6,7 @@ import '../database/database.dart';
 
 class TodoRepository {
   TodoRepository(this._db, syncTable)
-      : _writer = SyncWriter<AppDatabase>(_db).forTable(syncTable);
+    : _writer = SyncWriter<AppDatabase>(_db).forTable(syncTable);
 
   final AppDatabase _db;
   final _uuid = const Uuid();
@@ -33,7 +33,9 @@ class TodoRepository {
   }
 
   Future<Todo?> getById(String id) {
-    return (_db.select(_db.todos)..where((t) => t.id.equals(id))).getSingleOrNull();
+    return (_db.select(
+      _db.todos,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
   Future<Todo> create({
@@ -109,8 +111,9 @@ class TodoRepository {
   }
 
   Future<int> cleanupDeleted() {
-    return (_db.delete(_db.todos)
-          ..where((t) => t.deletedAt.isNotNull() | t.deletedAtLocal.isNotNull()))
+    return (_db.delete(
+          _db.todos,
+        )..where((t) => t.deletedAt.isNotNull() | t.deletedAtLocal.isNotNull()))
         .go();
   }
 
@@ -123,9 +126,11 @@ class TodoRepository {
   }
 
   Future<List<String>> getDeletedIds() async {
-    final rows = await (_db.select(_db.todos)
-          ..where((t) => t.deletedAt.isNotNull() | t.deletedAtLocal.isNotNull()))
-        .get();
+    final rows =
+        await (_db.select(_db.todos)..where(
+              (t) => t.deletedAt.isNotNull() | t.deletedAtLocal.isNotNull(),
+            ))
+            .get();
     return rows.map((t) => t.id).toList();
   }
 

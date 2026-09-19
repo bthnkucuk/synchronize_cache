@@ -72,8 +72,7 @@ void main() {
       expect(items, isEmpty);
     });
 
-    test('upsertPendingUserItems persists a row that getPendingUserItems reads back',
-        () async {
+    test('upsertPendingUserItems persists a row that getPendingUserItems reads back', () async {
       const item = PendingSearchItem(
         userId: 'u',
         kind: 'note',
@@ -129,8 +128,10 @@ void main() {
         const PendingSearchItem(userId: 'other', kind: 'k', id: '4', data: {}),
       ]);
 
-      final scoped =
-          await db.getPendingUserItems(userId: 'u', jsonDecoder: decode);
+      final scoped = await db.getPendingUserItems(
+        userId: 'u',
+        jsonDecoder: decode,
+      );
       expect(scoped.map((e) => e.id), containsAll(['1', '2', '3']));
       expect(scoped, hasLength(3));
 
@@ -150,37 +151,40 @@ void main() {
 
       await db.deletePendingUserItem(id: '1', kind: 'a');
 
-      final items =
-          await db.getPendingUserItems(userId: 'u', jsonDecoder: decode);
+      final items = await db.getPendingUserItems(
+        userId: 'u',
+        jsonDecoder: decode,
+      );
       expect(items, hasLength(1));
       expect(items.first.kind, equals('b'));
     });
 
     test(
-        'incrementPendingTryCount + maxTryCount filter dead-letters poison rows',
-        () async {
-      await db.upsertPendingUserItems([
-        const PendingSearchItem(userId: 'u', kind: 'k', id: 'live', data: {}),
-        const PendingSearchItem(userId: 'u', kind: 'k', id: 'dead', data: {}),
-      ]);
+      'incrementPendingTryCount + maxTryCount filter dead-letters poison rows',
+      () async {
+        await db.upsertPendingUserItems([
+          const PendingSearchItem(userId: 'u', kind: 'k', id: 'live', data: {}),
+          const PendingSearchItem(userId: 'u', kind: 'k', id: 'dead', data: {}),
+        ]);
 
-      await db.incrementPendingTryCount(id: 'dead', kind: 'k');
-      await db.incrementPendingTryCount(id: 'dead', kind: 'k');
+        await db.incrementPendingTryCount(id: 'dead', kind: 'k');
+        await db.incrementPendingTryCount(id: 'dead', kind: 'k');
 
-      final visible = await db.getPendingUserItems(
-        userId: 'u',
-        jsonDecoder: decode,
-        maxTryCount: 2,
-      );
-      expect(visible.map((e) => e.id), equals(['live']));
+        final visible = await db.getPendingUserItems(
+          userId: 'u',
+          jsonDecoder: decode,
+          maxTryCount: 2,
+        );
+        expect(visible.map((e) => e.id), equals(['live']));
 
-      final dead = await db.getDeadLetterPendingItems(
-        userId: 'u',
-        minTryCount: 2,
-        jsonDecoder: decode,
-      );
-      expect(dead.map((e) => e.id), equals(['dead']));
-    });
+        final dead = await db.getDeadLetterPendingItems(
+          userId: 'u',
+          minTryCount: 2,
+          jsonDecoder: decode,
+        );
+        expect(dead.map((e) => e.id), equals(['dead']));
+      },
+    );
 
     test('resetPendingTryCount clears the counter (scoped + global)', () async {
       await db.upsertPendingUserItems([
@@ -212,80 +216,86 @@ void main() {
   });
 
   group('search_index_cursors', () {
-    test('readSearchIndexCursor returns null when no cursor is pinned',
-        () async {
-      final cursor = await db.readSearchIndexCursor(userId: 'u', kind: 'k');
-      expect(cursor, isNull);
-    });
+    test(
+      'readSearchIndexCursor returns null when no cursor is pinned',
+      () async {
+        final cursor = await db.readSearchIndexCursor(userId: 'u', kind: 'k');
+        expect(cursor, isNull);
+      },
+    );
 
-    test('writeSearchIndexCursor pins (since, lastId) and is idempotent',
-        () async {
-      final t1 = DateTime.utc(2026, 1, 1, 12);
-      await db.writeSearchIndexCursor(
-        userId: 'u',
-        kind: 'k',
-        updatedAt: t1,
-        lastId: 'a',
-      );
+    test(
+      'writeSearchIndexCursor pins (since, lastId) and is idempotent',
+      () async {
+        final t1 = DateTime.utc(2026, 1, 1, 12);
+        await db.writeSearchIndexCursor(
+          userId: 'u',
+          kind: 'k',
+          updatedAt: t1,
+          lastId: 'a',
+        );
 
-      var cursor = await db.readSearchIndexCursor(userId: 'u', kind: 'k');
-      expect(cursor, isNotNull);
-      expect(cursor!.since.toUtc(), equals(t1));
-      expect(cursor.lastId, equals('a'));
+        var cursor = await db.readSearchIndexCursor(userId: 'u', kind: 'k');
+        expect(cursor, isNotNull);
+        expect(cursor!.since.toUtc(), equals(t1));
+        expect(cursor.lastId, equals('a'));
 
-      final t2 = DateTime.utc(2026, 2, 2, 13);
-      await db.writeSearchIndexCursor(
-        userId: 'u',
-        kind: 'k',
-        updatedAt: t2,
-        lastId: 'b',
-      );
+        final t2 = DateTime.utc(2026, 2, 2, 13);
+        await db.writeSearchIndexCursor(
+          userId: 'u',
+          kind: 'k',
+          updatedAt: t2,
+          lastId: 'b',
+        );
 
-      cursor = await db.readSearchIndexCursor(userId: 'u', kind: 'k');
-      expect(cursor!.since.toUtc(), equals(t2));
-      expect(cursor.lastId, equals('b'));
-    });
+        cursor = await db.readSearchIndexCursor(userId: 'u', kind: 'k');
+        expect(cursor!.since.toUtc(), equals(t2));
+        expect(cursor.lastId, equals('b'));
+      },
+    );
 
-    test('clearSearchIndexCursors drops one or all cursors for a user',
-        () async {
-      final ts = DateTime.utc(2026);
-      await db.writeSearchIndexCursor(
-        userId: 'u',
-        kind: 'a',
-        updatedAt: ts,
-        lastId: '1',
-      );
-      await db.writeSearchIndexCursor(
-        userId: 'u',
-        kind: 'b',
-        updatedAt: ts,
-        lastId: '2',
-      );
-      await db.writeSearchIndexCursor(
-        userId: 'other',
-        kind: 'a',
-        updatedAt: ts,
-        lastId: '9',
-      );
+    test(
+      'clearSearchIndexCursors drops one or all cursors for a user',
+      () async {
+        final ts = DateTime.utc(2026);
+        await db.writeSearchIndexCursor(
+          userId: 'u',
+          kind: 'a',
+          updatedAt: ts,
+          lastId: '1',
+        );
+        await db.writeSearchIndexCursor(
+          userId: 'u',
+          kind: 'b',
+          updatedAt: ts,
+          lastId: '2',
+        );
+        await db.writeSearchIndexCursor(
+          userId: 'other',
+          kind: 'a',
+          updatedAt: ts,
+          lastId: '9',
+        );
 
-      await db.clearSearchIndexCursors(userId: 'u', kind: 'a');
-      expect(await db.readSearchIndexCursor(userId: 'u', kind: 'a'), isNull);
-      expect(
-        await db.readSearchIndexCursor(userId: 'u', kind: 'b'),
-        isNotNull,
-      );
-      expect(
-        await db.readSearchIndexCursor(userId: 'other', kind: 'a'),
-        isNotNull,
-      );
+        await db.clearSearchIndexCursors(userId: 'u', kind: 'a');
+        expect(await db.readSearchIndexCursor(userId: 'u', kind: 'a'), isNull);
+        expect(
+          await db.readSearchIndexCursor(userId: 'u', kind: 'b'),
+          isNotNull,
+        );
+        expect(
+          await db.readSearchIndexCursor(userId: 'other', kind: 'a'),
+          isNotNull,
+        );
 
-      await db.clearSearchIndexCursors(userId: 'u');
-      expect(await db.readSearchIndexCursor(userId: 'u', kind: 'b'), isNull);
-      expect(
-        await db.readSearchIndexCursor(userId: 'other', kind: 'a'),
-        isNotNull,
-      );
-    });
+        await db.clearSearchIndexCursors(userId: 'u');
+        expect(await db.readSearchIndexCursor(userId: 'u', kind: 'b'), isNull);
+        expect(
+          await db.readSearchIndexCursor(userId: 'other', kind: 'a'),
+          isNotNull,
+        );
+      },
+    );
   });
 
   group('FTS5 global_search index', () {
@@ -305,7 +315,10 @@ void main() {
       await db.upsertSearchItem(makeRow(title: 'Original title'));
       await db.upsertSearchItem(makeRow(title: 'Updated title'));
 
-      final hitsOriginal = await db.searchGlobal(userId: 'u', query: 'Original');
+      final hitsOriginal = await db.searchGlobal(
+        userId: 'u',
+        query: 'Original',
+      );
       expect(hitsOriginal, isEmpty);
 
       final hitsUpdated = await db.searchGlobal(userId: 'u', query: 'Updated');
@@ -316,10 +329,7 @@ void main() {
       await db.upsertSearchItem(makeRow(title: 'Brown fox'));
       await db.deleteSearchItem(originalId: 'r1', kind: 'k', userId: 'u');
 
-      expect(
-        await db.searchGlobal(userId: 'u', query: 'fox'),
-        isEmpty,
-      );
+      expect(await db.searchGlobal(userId: 'u', query: 'fox'), isEmpty);
     });
 
     test('deleteSearchItem on an unknown row is a no-op', () async {
@@ -368,10 +378,7 @@ void main() {
       await db.upsertSearchItem(makeRow(title: 'foxes'));
 
       expect(await db.searchGlobal(userId: 'u', query: '\n\t '), isEmpty);
-      expect(
-        await db.searchGlobal(userId: 'u', query: 'fox'),
-        hasLength(1),
-      );
+      expect(await db.searchGlobal(userId: 'u', query: 'fox'), hasLength(1));
     });
 
     test('searchGlobal honours offset and limit', () async {
@@ -401,38 +408,39 @@ void main() {
       );
     });
 
-    test('SearchHighlightConfig.none returns raw text in highlight columns',
-        () async {
-      await db.upsertSearchItem(makeRow(title: 'Brown fox'));
+    test(
+      'SearchHighlightConfig.none returns raw text in highlight columns',
+      () async {
+        await db.upsertSearchItem(makeRow(title: 'Brown fox'));
 
-      final hits = await db.searchGlobal(
-        userId: 'u',
-        query: 'fox',
-        highlight: SearchHighlightConfig.none,
-      );
-      expect(hits.first.hlTitle, equals('Brown fox'));
-    });
+        final hits = await db.searchGlobal(
+          userId: 'u',
+          query: 'fox',
+          highlight: SearchHighlightConfig.none,
+        );
+        expect(hits.first.hlTitle, equals('Brown fox'));
+      },
+    );
 
-    test('searchGlobal uses normalized columns when a normalizer is supplied',
-        () async {
-      String stripDiacritics(String s) =>
-          s.replaceAll('ş', 's').replaceAll('Ş', 's').toLowerCase();
+    test(
+      'searchGlobal uses normalized columns when a normalizer is supplied',
+      () async {
+        String stripDiacritics(String s) =>
+            s.replaceAll('ş', 's').replaceAll('Ş', 's').toLowerCase();
 
-      await db.upsertSearchItem(
-        makeRow(
-          title: 'şehir',
-          titleNormalized: stripDiacritics('şehir'),
-        ),
-      );
+        await db.upsertSearchItem(
+          makeRow(title: 'şehir', titleNormalized: stripDiacritics('şehir')),
+        );
 
-      final ascii = await db.searchGlobal(
-        userId: 'u',
-        query: 'sehir',
-        normalizer: stripDiacritics,
-      );
-      expect(ascii, hasLength(1));
-      expect(ascii.first.title, equals('şehir'));
-    });
+        final ascii = await db.searchGlobal(
+          userId: 'u',
+          query: 'sehir',
+          normalizer: stripDiacritics,
+        );
+        expect(ascii, hasLength(1));
+        expect(ascii.first.title, equals('şehir'));
+      },
+    );
 
     test('watchSearchGlobal emits a fresh page on every mutation', () async {
       final stream = db.watchSearchGlobal(userId: 'u', query: 'fox');
@@ -442,9 +450,7 @@ void main() {
       await pumpEventQueue();
       await db.upsertSearchItem(makeRow(title: 'fox 1'));
       await pumpEventQueue();
-      await db.upsertSearchItem(
-        makeRow(originalId: 'r2', title: 'fox 2'),
-      );
+      await db.upsertSearchItem(makeRow(originalId: 'r2', title: 'fox 2'));
       await pumpEventQueue();
       await db.deleteSearchItem(originalId: 'r1', kind: 'k', userId: 'u');
       await pumpEventQueue();
@@ -456,48 +462,51 @@ void main() {
       expect(emitted, contains(2));
     });
 
-    test('watchSearchGlobal returns an empty stream for blank queries',
-        () async {
-      final stream = db.watchSearchGlobal(userId: 'u', query: '');
-      expect(await stream.first, isEmpty);
-    });
+    test(
+      'watchSearchGlobal returns an empty stream for blank queries',
+      () async {
+        final stream = db.watchSearchGlobal(userId: 'u', query: '');
+        expect(await stream.first, isEmpty);
+      },
+    );
   });
 
   group('FTS5 query escaping + edge cases', () {
-    test('quotes inside the query are doubled and do not break the MATCH',
-        () async {
-      // Indexed body literally contains a quote character.
-      await db.upsertSearchItem(
-        makeRow(originalId: 'q1', title: 'say "hello" world'),
-      );
+    test(
+      'quotes inside the query are doubled and do not break the MATCH',
+      () async {
+        // Indexed body literally contains a quote character.
+        await db.upsertSearchItem(
+          makeRow(originalId: 'q1', title: 'say "hello" world'),
+        );
 
-      // User types `"hello"` (with quotes) — this would be a syntax error
-      // unless the builder doubles internal quotes.
-      final hits = await db.searchGlobal(userId: 'u', query: '"hello"');
-      expect(hits, hasLength(1));
-      expect(hits.first.originalId, equals('q1'));
-    });
+        // User types `"hello"` (with quotes) — this would be a syntax error
+        // unless the builder doubles internal quotes.
+        final hits = await db.searchGlobal(userId: 'u', query: '"hello"');
+        expect(hits, hasLength(1));
+        expect(hits.first.originalId, equals('q1'));
+      },
+    );
 
     test(
-        'parentheses in the query do not raise a syntax error (FTS5 treats '
-        'them as operators outside quotes, but the builder wraps the query)',
-        () async {
-      await db.upsertSearchItem(
-        makeRow(originalId: 'p1', title: 'before parens after'),
-      );
+      'parentheses in the query do not raise a syntax error (FTS5 treats '
+      'them as operators outside quotes, but the builder wraps the query)',
+      () async {
+        await db.upsertSearchItem(
+          makeRow(originalId: 'p1', title: 'before parens after'),
+        );
 
-      // Whether the phrase actually hits depends on FTS5's tokenizer; the
-      // crucial invariant is "no SQL syntax error".
-      await expectLater(
-        db.searchGlobal(userId: 'u', query: '(parens)'),
-        completion(isA<List<GlobalSearch>>()),
-      );
-    });
+        // Whether the phrase actually hits depends on FTS5's tokenizer; the
+        // crucial invariant is "no SQL syntax error".
+        await expectLater(
+          db.searchGlobal(userId: 'u', query: '(parens)'),
+          completion(isA<List<GlobalSearch>>()),
+        );
+      },
+    );
 
     test('asterisks in the query are treated as literal text', () async {
-      await db.upsertSearchItem(
-        makeRow(originalId: 'a1', title: 'star wars'),
-      );
+      await db.upsertSearchItem(makeRow(originalId: 'a1', title: 'star wars'));
 
       // `*` is a prefix operator outside quotes; inside the builder's quotes
       // it is just an unmatched literal. Should not raise a syntax error.
@@ -508,22 +517,26 @@ void main() {
     });
 
     test(
-        'concurrent upsertSearchItem for the same key produces exactly one row',
-        () async {
-      final futures = <Future<void>>[
-        for (var i = 0; i < 10; i++)
-          db.upsertSearchItem(
-            makeRow(originalId: 'same', title: 'version $i'),
-          ),
-      ];
-      await Future.wait(futures);
+      'concurrent upsertSearchItem for the same key produces exactly one row',
+      () async {
+        final futures = <Future<void>>[
+          for (var i = 0; i < 10; i++)
+            db.upsertSearchItem(
+              makeRow(originalId: 'same', title: 'version $i'),
+            ),
+        ];
+        await Future.wait(futures);
 
-      // Search by stem common to every version.
-      final hits = await db.searchGlobal(userId: 'u', query: 'version');
-      expect(hits, hasLength(1),
-          reason: 'upsert must collapse to exactly one row');
-      expect(hits.first.originalId, equals('same'));
-    });
+        // Search by stem common to every version.
+        final hits = await db.searchGlobal(userId: 'u', query: 'version');
+        expect(
+          hits,
+          hasLength(1),
+          reason: 'upsert must collapse to exactly one row',
+        );
+        expect(hits.first.originalId, equals('same'));
+      },
+    );
 
     test('searchGlobal with kinds filter containing a single kind', () async {
       await db.upsertSearchItem(
@@ -563,16 +576,16 @@ void main() {
       expect(hits.map((e) => e.originalId), unorderedEquals(['a', 'b', 'c']));
     });
 
-    test('searchGlobal with limit:0 returns an empty list and no SQL error',
-        () async {
-      await db.upsertSearchItem(makeRow(title: 'foxes'));
-      final hits =
-          await db.searchGlobal(userId: 'u', query: 'fox', limit: 0);
-      expect(hits, isEmpty);
-    });
-
     test(
-        'SearchHighlightConfig.none with explicit empty snippetEllipsis still '
+      'searchGlobal with limit:0 returns an empty list and no SQL error',
+      () async {
+        await db.upsertSearchItem(makeRow(title: 'foxes'));
+        final hits = await db.searchGlobal(userId: 'u', query: 'fox', limit: 0);
+        expect(hits, isEmpty);
+      },
+    );
+
+    test('SearchHighlightConfig.none with explicit empty snippetEllipsis still '
         'returns the raw matched text', () async {
       await db.upsertSearchItem(makeRow(title: 'Brown fox'));
 

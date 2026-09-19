@@ -22,13 +22,17 @@ class BackendServer {
     _port = await _findAvailablePort();
     final vmServicePort = await _findAvailablePort();
 
-    _process = await Process.start(
-      'dart_frog',
-      ['dev', '--port', '$_port', '--dart-vm-service-port', '$vmServicePort'],
-      workingDirectory: backendPath,
-    );
+    _process = await Process.start('dart_frog', [
+      'dev',
+      '--port',
+      '$_port',
+      '--dart-vm-service-port',
+      '$vmServicePort',
+    ], workingDirectory: backendPath);
 
-    _process!.stdout.transform(const SystemEncoding().decoder).listen(_output.add);
+    _process!.stdout
+        .transform(const SystemEncoding().decoder)
+        .listen(_output.add);
     _process!.stderr
         .transform(const SystemEncoding().decoder)
         .listen((data) => _output.add('[STDERR] $data'));
@@ -47,7 +51,9 @@ class BackendServer {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
     for (var i = 0; i < 30; i++) {
       try {
-        final request = await client.getUrl(Uri.parse('http://localhost:$_port/health'));
+        final request = await client.getUrl(
+          Uri.parse('http://localhost:$_port/health'),
+        );
         final response = await request.close();
         await response.drain<void>();
         if (response.statusCode == 200) {

@@ -28,9 +28,8 @@ void main() {
 
   group('GET /todos', () {
     test('returns empty list when no todos', () async {
-      when(() => context.request).thenReturn(
-        Request.get(Uri.parse('http://localhost/todos')),
-      );
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos')));
 
       final response = await todos_index.onRequest(context);
       final body = jsonDecode(await response.body()) as Map<String, dynamic>;
@@ -48,9 +47,8 @@ void main() {
         Todo(id: '2', title: 'Todo 2', updatedAt: now),
       ]);
 
-      when(() => context.request).thenReturn(
-        Request.get(Uri.parse('http://localhost/todos')),
-      );
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos')));
 
       final response = await todos_index.onRequest(context);
       final body = jsonDecode(await response.body()) as Map<String, dynamic>;
@@ -91,9 +89,8 @@ void main() {
       ]);
 
       // First page
-      when(() => context.request).thenReturn(
-        Request.get(Uri.parse('http://localhost/todos?limit=2')),
-      );
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos?limit=2')));
 
       var response = await todos_index.onRequest(context);
       var body = jsonDecode(await response.body()) as Map<String, dynamic>;
@@ -178,9 +175,8 @@ void main() {
       final now = DateTime.now().toUtc();
       repo.seed([Todo(id: 'test-1', title: 'Test', updatedAt: now)]);
 
-      when(() => context.request).thenReturn(
-        Request.get(Uri.parse('http://localhost/todos/test-1')),
-      );
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos/test-1')));
 
       final response = await todos_id.onRequest(context, 'test-1');
       final body = jsonDecode(await response.body()) as Map<String, dynamic>;
@@ -262,9 +258,9 @@ void main() {
       final now = DateTime.now().toUtc();
       repo.seed([Todo(id: 'test-1', title: 'To Delete', updatedAt: now)]);
 
-      when(() => context.request).thenReturn(
-        Request.delete(Uri.parse('http://localhost/todos/test-1')),
-      );
+      when(
+        () => context.request,
+      ).thenReturn(Request.delete(Uri.parse('http://localhost/todos/test-1')));
 
       final response = await todos_id.onRequest(context, 'test-1');
 

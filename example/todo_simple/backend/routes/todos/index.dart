@@ -58,10 +58,7 @@ Future<Response> _handleCreate(
     final body = await context.request.json() as Map<String, dynamic>;
     final todo = repo.create(body);
 
-    return Response.json(
-      statusCode: HttpStatus.created,
-      body: todo.toJson(),
-    );
+    return Response.json(statusCode: HttpStatus.created, body: todo.toJson());
   } catch (_) {
     return Response.json(
       statusCode: HttpStatus.badRequest,

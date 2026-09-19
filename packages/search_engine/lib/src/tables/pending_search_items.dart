@@ -3,7 +3,9 @@ import 'package:drift/drift.dart';
 /// Queue of search-index updates waiting to be parsed into the FTS5
 /// `global_search` virtual table.
 @DataClassName('PendingSearchItemRow')
-@TableIndex.sql('CREATE INDEX idx_pending_search_items_user_id ON pending_search_items(user_id)')
+@TableIndex.sql(
+  'CREATE INDEX idx_pending_search_items_user_id ON pending_search_items(user_id)',
+)
 class PendingSearchItems extends Table {
   TextColumn get userId => text()();
   TextColumn get kind => text()();

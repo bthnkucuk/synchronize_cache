@@ -130,8 +130,9 @@ void main() {
     // =========================================================================
 
     group('App Launch', () {
-      testWidgets('launches and shows UI when server unavailable',
-          (tester) async {
+      testWidgets('launches and shows UI when server unavailable', (
+        tester,
+      ) async {
         // ARRANGE & ACT
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
@@ -224,8 +225,9 @@ void main() {
         expect(find.text('To be deleted'), findsNothing);
       });
 
-      testWidgets('TOGGLE: completion state changes immediately',
-          (tester) async {
+      testWidgets('TOGGLE: completion state changes immediately', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -261,8 +263,9 @@ void main() {
     // =========================================================================
 
     group('Sync Error Handling', () {
-      testWidgets('shows error status after failed sync attempt',
-          (tester) async {
+      testWidgets('shows error status after failed sync attempt', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -280,8 +283,7 @@ void main() {
         expect(syncService.status, SyncStatus.error);
       });
 
-      testWidgets('sync button remains functional after error',
-          (tester) async {
+      testWidgets('sync button remains functional after error', (tester) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -301,8 +303,9 @@ void main() {
         expect(find.byIcon(Icons.sync), findsOneWidget);
       });
 
-      testWidgets('status transitions correctly: idle → syncing → error',
-          (tester) async {
+      testWidgets('status transitions correctly: idle → syncing → error', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -360,8 +363,9 @@ void main() {
         expect(await syncService.getPendingCount(), 3);
       });
 
-      testWidgets('chained operations (create → edit → toggle) persist',
-          (tester) async {
+      testWidgets('chained operations (create → edit → toggle) persist', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 

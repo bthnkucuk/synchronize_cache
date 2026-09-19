@@ -119,9 +119,7 @@ void main() {
     });
 
     group('Sync Error Handling', () {
-      test(
-        'sync sets status to error when server unavailable',
-        () async {
+      test('sync sets status to error when server unavailable', () async {
         // Create SyncService with invalid URL and no retries for fast failure
         final offlineDb = AppDatabase(NativeDatabase.memory());
         final offlineSync = SyncService(
@@ -132,10 +130,7 @@ void main() {
         );
 
         // Attempt sync - should fail and throw
-        await expectLater(
-          () => offlineSync.sync(),
-          throwsA(anything),
-        );
+        await expectLater(() => offlineSync.sync(), throwsA(anything));
 
         // Status should be error
         expect(offlineSync.status, SyncStatus.error);

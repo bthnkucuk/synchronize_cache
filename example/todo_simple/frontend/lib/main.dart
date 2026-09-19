@@ -28,7 +28,11 @@ void main() async {
   // Create services
   final todoSync = todoSyncTable(db);
   final todoRepo = TodoRepository(db, todoSync);
-  final syncService = SyncService(db: db, baseUrl: kBackendUrl, todoSync: todoSync);
+  final syncService = SyncService(
+    db: db,
+    baseUrl: kBackendUrl,
+    todoSync: todoSync,
+  );
 
   runApp(
     MultiProvider(

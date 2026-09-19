@@ -84,9 +84,9 @@ class RestTransport implements TransportAdapter {
   /// Batch endpoint path (relative to [base]).
   final String batchPath;
 
-  Uri _url(String path, [Map<String, String>? q]) => Uri.parse(
-    '${base.toString().replaceAll(RegExp(r"/+$"), '')}/$path',
-  ).replace(queryParameters: q);
+  Uri _url(String path, [Map<String, String>? q]) =>
+      Uri.parse('${base.toString().replaceAll(RegExp(r"/+$"), '')}/$path')
+          .replace(queryParameters: q);
 
   Map<String, String> _headers(String auth, {String? version}) {
     final headers = {
@@ -137,8 +137,8 @@ class RestTransport implements TransportAdapter {
       } on FormatException catch (e, st) {
         throw TransportException.parseError(res.body, e, st);
       }
-      final items =
-          (body['items'] as List<dynamic>? ?? []).cast<Map<String, Object?>>();
+      final items = (body['items'] as List<dynamic>? ?? [])
+          .cast<Map<String, Object?>>();
       final next = body['nextPageToken'] as String?;
       return PullPage(items: items, nextPageToken: next);
     }
@@ -168,10 +168,9 @@ class RestTransport implements TransportAdapter {
     if (pushConcurrency > 1) {
       // Parallel push in chunks
       for (var i = 0; i < ops.length; i += pushConcurrency) {
-        final end =
-            (i + pushConcurrency < ops.length)
-                ? i + pushConcurrency
-                : ops.length;
+        final end = (i + pushConcurrency < ops.length)
+            ? i + pushConcurrency
+            : ops.length;
         final chunk = ops.sublist(i, end);
 
         final chunkResults = await Future.wait(
@@ -206,10 +205,9 @@ class RestTransport implements TransportAdapter {
     if (pushConcurrency > 1) {
       // Process chunks in parallel
       for (var i = 0; i < chunks.length; i += pushConcurrency) {
-        final end =
-            (i + pushConcurrency < chunks.length)
-                ? i + pushConcurrency
-                : chunks.length;
+        final end = (i + pushConcurrency < chunks.length)
+            ? i + pushConcurrency
+            : chunks.length;
         final batchGroup = chunks.sublist(i, end);
 
         final groupResults = await Future.wait(
@@ -234,36 +232,36 @@ class RestTransport implements TransportAdapter {
   Future<BatchPushResult> _pushBatchChunk(List<Op> chunk, String auth) async {
     try {
       final payload = {
-        'ops':
-            chunk.map((op) {
-              final map = <String, Object?>{
-                'opId': op.opId,
-                'kind': op.kind,
-                'id': op.id,
-                'type': op is UpsertOp ? 'upsert' : 'delete',
-              };
+        'ops': chunk.map((op) {
+          final map = <String, Object?>{
+            'opId': op.opId,
+            'kind': op.kind,
+            'id': op.id,
+            'type': op is UpsertOp ? 'upsert' : 'delete',
+          };
 
-              if (op is UpsertOp) {
-                map['payload'] = op.payloadJson;
-                if (op.baseUpdatedAt != null) {
-                  map['baseUpdatedAt'] =
-                      op.baseUpdatedAt!.toUtc().toIso8601String();
-                }
-              } else if (op is DeleteOp) {
-                if (op.baseUpdatedAt != null) {
-                  map['baseUpdatedAt'] =
-                      op.baseUpdatedAt!.toUtc().toIso8601String();
-                }
-              }
-              return map;
-            }).toList(),
+          if (op is UpsertOp) {
+            map['payload'] = op.payloadJson;
+            if (op.baseUpdatedAt != null) {
+              map['baseUpdatedAt'] = op.baseUpdatedAt!
+                  .toUtc()
+                  .toIso8601String();
+            }
+          } else if (op is DeleteOp) {
+            if (op.baseUpdatedAt != null) {
+              map['baseUpdatedAt'] = op.baseUpdatedAt!
+                  .toUtc()
+                  .toIso8601String();
+            }
+          }
+          return map;
+        }).toList(),
       };
 
       final res = await _withRetry(() async {
-        final req =
-            http.Request('POST', _url(batchPath))
-              ..headers.addAll(_headers(auth))
-              ..body = jsonEncode(payload);
+        final req = http.Request('POST', _url(batchPath))
+          ..headers.addAll(_headers(auth))
+          ..body = jsonEncode(payload);
         return http.Response.fromStream(await client.send(req));
       });
 
@@ -280,21 +278,20 @@ class RestTransport implements TransportAdapter {
         }
 
         // Build final list while preserving original op order within chunk
-        final results =
-            chunk.map((op) {
-              if (resultsMap.containsKey(op.opId)) {
-                return resultsMap[op.opId]!;
-              }
-              // If server did not return a result for this operation
-              return OpPushResult(
-                opId: op.opId,
-                result: PushError(
-                  http.ClientException(
-                    'No result for op ${op.opId} in batch response',
-                  ),
-                ),
-              );
-            }).toList();
+        final results = chunk.map((op) {
+          if (resultsMap.containsKey(op.opId)) {
+            return resultsMap[op.opId]!;
+          }
+          // If server did not return a result for this operation
+          return OpPushResult(
+            opId: op.opId,
+            result: PushError(
+              http.ClientException(
+                'No result for op ${op.opId} in batch response',
+              ),
+            ),
+          );
+        }).toList();
 
         return BatchPushResult(results: results);
       }
@@ -372,10 +369,9 @@ class RestTransport implements TransportAdapter {
     }
 
     final res = await _withRetry(() async {
-      final req =
-          http.Request(method, uri)
-            ..headers.addAll(headers)
-            ..body = jsonEncode(payload);
+      final req = http.Request(method, uri)
+        ..headers.addAll(headers)
+        ..body = jsonEncode(payload);
       return http.Response.fromStream(await client.send(req));
     });
 
@@ -403,8 +399,9 @@ class RestTransport implements TransportAdapter {
       };
     }
 
-    final deleteUri =
-        queryParams != null ? uri.replace(queryParameters: queryParams) : uri;
+    final deleteUri = queryParams != null
+        ? uri.replace(queryParameters: queryParams)
+        : uri;
 
     final res = await _withRetry(() async {
       final req = http.Request('DELETE', deleteUri)..headers.addAll(headers);
@@ -488,8 +485,9 @@ class RestTransport implements TransportAdapter {
           serverData[SyncFields.updatedAt] ??
           serverData[SyncFields.updatedAtSnake];
       if (ts != null) {
-        serverTimestamp =
-            ts is DateTime ? ts : DateTime.parse(ts.toString()).toUtc();
+        serverTimestamp = ts is DateTime
+            ? ts
+            : DateTime.parse(ts.toString()).toUtc();
       }
 
       serverVersion =
@@ -533,10 +531,7 @@ class RestTransport implements TransportAdapter {
         try {
           data = jsonDecode(res.body) as Map<String, Object?>;
         } on FormatException catch (e, st) {
-          return FetchError(
-            TransportException.parseError(res.body, e, st),
-            st,
-          );
+          return FetchError(TransportException.parseError(res.body, e, st), st);
         }
         final version = res.headers['etag'];
         return FetchSuccess(data: data, version: version);

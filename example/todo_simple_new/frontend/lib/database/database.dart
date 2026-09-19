@@ -29,13 +29,13 @@ class AppDatabase extends _$AppDatabase with SyncDatabaseMixin {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async {
-          await m.createAll();
-        },
-        onUpgrade: (m, from, to) async {
-          if (from < 2) {
-            await m.createTable(syncOutboxMeta);
-          }
-        },
-      );
+    onCreate: (m) async {
+      await m.createAll();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.createTable(syncOutboxMeta);
+      }
+    },
+  );
 }

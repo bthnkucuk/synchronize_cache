@@ -30,8 +30,9 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.todo?.title ?? '');
-    _descriptionController =
-        TextEditingController(text: widget.todo?.description ?? '');
+    _descriptionController = TextEditingController(
+      text: widget.todo?.description ?? '',
+    );
     _priority = widget.todo?.priority ?? 3;
     _completed = widget.todo?.completed ?? false;
     _dueDate = widget.todo?.dueDate;
@@ -192,10 +193,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
 }
 
 class _PrioritySelector extends StatelessWidget {
-  const _PrioritySelector({
-    required this.value,
-    required this.onChanged,
-  });
+  const _PrioritySelector({required this.value, required this.onChanged});
 
   final int value;
   final ValueChanged<int> onChanged;
@@ -205,10 +203,7 @@ class _PrioritySelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Priority',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
+        Text('Priority', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 8),
         SegmentedButton<int>(
           segments: const [
@@ -224,9 +219,8 @@ class _PrioritySelector extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           '1 = Highest priority, 5 = Lowest priority',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -234,10 +228,7 @@ class _PrioritySelector extends StatelessWidget {
 }
 
 class _DueDatePicker extends StatelessWidget {
-  const _DueDatePicker({
-    required this.value,
-    required this.onChanged,
-  });
+  const _DueDatePicker({required this.value, required this.onChanged});
 
   final DateTime? value;
   final ValueChanged<DateTime?> onChanged;

@@ -194,8 +194,9 @@ void main() {
     // =========================================================================
 
     group('Basic Operations', () {
-      testWidgets('CREATE: todos created offline sync on recovery',
-          (tester) async {
+      testWidgets('CREATE: todos created offline sync on recovery', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -234,8 +235,9 @@ void main() {
         expect(find.text(offline2), findsOneWidget);
       });
 
-      testWidgets('UPDATE: edits made offline sync on recovery',
-          (tester) async {
+      testWidgets('UPDATE: edits made offline sync on recovery', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -276,8 +278,9 @@ void main() {
         await syncAndVerify(expectedPushed: 1);
       });
 
-      testWidgets('TOGGLE: completion changes sync on recovery',
-          (tester) async {
+      testWidgets('TOGGLE: completion changes sync on recovery', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -301,8 +304,9 @@ void main() {
         expect(syncedCheckbox.value, isTrue);
       });
 
-      testWidgets('PRIORITY: priority changes sync on recovery',
-          (tester) async {
+      testWidgets('PRIORITY: priority changes sync on recovery', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -373,8 +377,9 @@ void main() {
         expect(find.text(todo4), findsOneWidget);
       });
 
-      testWidgets('mixed operations with priority in offline period',
-          (tester) async {
+      testWidgets('mixed operations with priority in offline period', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -425,8 +430,9 @@ void main() {
     // =========================================================================
 
     group('UI State', () {
-      testWidgets('status indicator shows Online after recovery',
-          (tester) async {
+      testWidgets('status indicator shows Online after recovery', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -440,8 +446,9 @@ void main() {
         expect(find.text('Online'), findsOneWidget);
       });
 
-      testWidgets('todos with priority visible immediately (optimistic UI)',
-          (tester) async {
+      testWidgets('todos with priority visible immediately (optimistic UI)', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
