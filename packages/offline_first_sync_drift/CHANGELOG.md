@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-19
+
+### Added
+
+- Indexes on `sync_outbox`: `(kind, ts)`, `(ts)` and `(kind, entity_id)`.
+  The engine reads the queue once per batch and updates it once per pushed
+  op; without an index each of those statements scanned — and sorted — the
+  whole queue, so draining N ops cost N². With 20 000 queued ops, taking a
+  batch drops from 9.4 ms to 0.09 ms and re-basing an entity from 6.3 ms to
+  0.16 ms (native SQLite).
+  **What you need to do:** re-run `build_runner`, so your generated database
+  lists the indexes and new installations create them. Databases that already
+  exist need no migration: `SyncEngine` creates the indexes before its first
+  sync. They are declared `IF NOT EXISTS`, so a `Migrator.createIndex` for
+  them in your own migration is harmless too. If you verify your schema after
+  migrations (`validateDatabaseSchema`), call the new
+  `SyncDatabaseMixin.ensureSyncIndexes()` in `onUpgrade`.
+- `SyncDatabaseMixin.ensureSyncIndexes()`: creates the outbox indexes on a
+  database that does not have them; safe to call at any time.
+- `SyncDatabaseMixin.rebaseQueuedOutboxOps` / `OutboxService.rebaseAll`:
+  `rebaseOutboxOps` for many entities at once; only the ones that still have
+  ops queued are touched.
+- `parseServerTimestamp` is public: how the engine reads a server timestamp
+  (a value without a zone designator is UTC), for transports to use.
+
+### Changed
+
+- `PushService` applies a pushed batch to the local database in **one
+  transaction**: the rows the server returned, the acknowledgement, the
+  failure counters and the re-base of what is still queued. It used to be one
+  implicit transaction per statement (52 commits for a batch of 25), and a
+  crash in between left rows written back whose ops were still queued.
+  `OperationPushedEvent`, `OperationFailedEvent` and `PushBatchProcessedEvent`
+  are emitted after that transaction, so a listener sees the outbox and the
+  local rows as the event describes them. After a batch only the entities
+  that still have ops queued are re-based (one lookup instead of one `UPDATE`
+  per pushed op).
+- `recordOutboxFailures` writes the metadata of all failed ops in one batched
+  statement.
+- `SyncEntityWriter.replaceAndEnqueueDiff` calls your `toJson` once per
+  entity (it serialized the new entity twice), and payloads are no longer
+  wrapped in a `CastMap`.
+- On the web the push no longer reads the local row of every op: it was
+  looking for sub-millisecond digits a browser `DateTime` cannot hold.
+
+### Fixed
+
+- A pull no longer ends at an empty page that names a next page. Servers that
+  filter after paginating (row-level permissions, a DynamoDB
+  `FilterExpression`) return such pages; the rows behind them were never
+  downloaded, and since the cursor did not move every later sync stopped at
+  the same place. The token is followed; a token that repeats, or more than
+  32 empty pages in a row, ends the pull.
+- A transport that returns no result for an op it was given no longer keeps
+  `pushAll` pushing that op in a loop: the op counts as failed
+  (`TransportException`, `tryCount` + 1) and the push ends. A result for an
+  op that was not part of the batch still throws, now naming the op id.
+
 ## [0.2.0] - 2026-09-19
 
 ### Breaking
