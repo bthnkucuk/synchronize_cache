@@ -1,58 +1,54 @@
 import 'package:json_annotation/json_annotation.dart';
 import 'package:todo_advanced_backend/models/sync_record.dart';
 
-part 'todo.g.dart';
+part 'note.g.dart';
 
-/// Todo model for the backend.
+/// Note model for the backend — the example's second synced kind.
+///
+/// Notes exist so the app can show that a single sync engine carries more
+/// than one table, and that each kind can use its own conflict strategy
+/// (todos ask the user, notes merge automatically).
 ///
 /// Uses snake_case for JSON serialization.
 @JsonSerializable(fieldRename: FieldRename.snake)
-class Todo implements SyncRecord {
-  Todo({
+class Note implements SyncRecord {
+  Note({
     required this.id,
     required this.title,
-    this.description,
-    this.completed = false,
-    this.priority = 3,
-    this.dueDate,
+    this.body,
+    this.pinned = false,
     required this.updatedAt,
     this.deletedAt,
   });
 
+  factory Note.fromJson(Map<String, dynamic> json) => _$NoteFromJson(json);
+
   @override
   final String id;
   final String title;
-  final String? description;
-  final bool completed;
-  final int priority;
-  final DateTime? dueDate;
+  final String? body;
+  final bool pinned;
   @override
   final DateTime updatedAt;
   @override
   final DateTime? deletedAt;
 
-  factory Todo.fromJson(Map<String, dynamic> json) => _$TodoFromJson(json);
-
   @override
-  Map<String, dynamic> toJson() => _$TodoToJson(this);
+  Map<String, dynamic> toJson() => _$NoteToJson(this);
 
-  Todo copyWith({
+  Note copyWith({
     String? id,
     String? title,
-    String? description,
-    bool? completed,
-    int? priority,
-    DateTime? dueDate,
+    String? body,
+    bool? pinned,
     DateTime? updatedAt,
     DateTime? deletedAt,
   }) {
-    return Todo(
+    return Note(
       id: id ?? this.id,
       title: title ?? this.title,
-      description: description ?? this.description,
-      completed: completed ?? this.completed,
-      priority: priority ?? this.priority,
-      dueDate: dueDate ?? this.dueDate,
+      body: body ?? this.body,
+      pinned: pinned ?? this.pinned,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
     );

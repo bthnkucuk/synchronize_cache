@@ -9,8 +9,11 @@ environment:
 
 dependencies:
   dart_frog: ^1.2.6
+  # `GET /ws`: the live change feed that wakes other app instances.
+  dart_frog_web_socket: ^1.0.3
   json_annotation: ^4.12.0
   uuid: ^4.6.0
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   dart_frog_test: ^0.1.2
