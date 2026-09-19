@@ -278,11 +278,13 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     if (opIds.isEmpty) return;
     final ids = opIds.toList();
     final placeholders = List.filled(ids.length, '?').join(', ');
-    await customStatement(
+    await _write(
       'UPDATE ${TableNames.syncOutbox} '
       'SET ${TableColumns.tryCount} = ${TableColumns.tryCount} + 1 '
       'WHERE ${TableColumns.opId} IN ($placeholders)',
       ids,
+      _outbox,
+      UpdateKind.update,
     );
   }
 
@@ -291,11 +293,13 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     if (opIds.isEmpty) return;
     final ids = opIds.toList();
     final placeholders = List.filled(ids.length, '?').join(', ');
-    await customStatement(
+    await _write(
       'UPDATE ${TableNames.syncOutbox} '
       'SET ${TableColumns.tryCount} = 0 '
       'WHERE ${TableColumns.opId} IN ($placeholders)',
       ids,
+      _outbox,
+      UpdateKind.update,
     );
   }
 
@@ -340,10 +344,12 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     if (opIds.isEmpty) return;
     final ids = opIds.toList();
     final placeholders = List.filled(ids.length, '?').join(', ');
-    await customStatement(
+    await _write(
       'DELETE FROM ${TableNames.syncOutboxMeta} '
       'WHERE ${TableColumns.opId} IN ($placeholders)',
       ids,
+      _outboxMeta,
+      UpdateKind.delete,
     );
   }
 
@@ -534,17 +540,22 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     final ids = opIds.toList();
     final placeholders = List.filled(ids.length, '?').join(', ');
 
-    await customStatement(
-      'DELETE FROM ${TableNames.syncOutbox} WHERE ${TableColumns.opId} IN ($placeholders)',
+    await _write(
+      'DELETE FROM ${TableNames.syncOutbox} '
+      'WHERE ${TableColumns.opId} IN ($placeholders)',
       ids,
+      _outbox,
+      UpdateKind.delete,
     );
 
     // Best-effort cleanup for metadata.
     try {
-      await customStatement(
+      await _write(
         'DELETE FROM ${TableNames.syncOutboxMeta} '
         'WHERE ${TableColumns.opId} IN ($placeholders)',
         ids,
+        _outboxMeta,
+        UpdateKind.delete,
       );
     } catch (_) {}
   }
@@ -589,6 +600,7 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     return customUpdate(
       'DELETE FROM ${TableNames.syncOutbox} WHERE ${TableColumns.ts} <= ?',
       variables: [Variable.withInt(th)],
+      updates: {_outbox},
       updateKind: UpdateKind.delete,
     );
   }
@@ -598,9 +610,12 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     if (kinds.isEmpty) return;
 
     final placeholders = List.filled(kinds.length, '?').join(', ');
-    await customStatement(
-      'DELETE FROM ${TableNames.syncCursors} WHERE ${TableColumns.kind} IN ($placeholders)',
+    await _write(
+      'DELETE FROM ${TableNames.syncCursors} '
+      'WHERE ${TableColumns.kind} IN ($placeholders)',
       kinds.toList(),
+      _cursors,
+      UpdateKind.delete,
     );
   }
 
@@ -608,7 +623,35 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
   /// [tableNames] - table names to clear.
   Future<void> clearSyncableTables(List<String> tableNames) async {
     for (final tableName in tableNames) {
-      await customStatement('DELETE FROM "$tableName"');
+      final table = allTables
+          .where((t) => t.actualTableName == tableName)
+          .firstOrNull;
+      await customUpdate(
+        'DELETE FROM "$tableName"',
+        // Without this the app's `watch()` queries keep showing the rows
+        // that were just wiped — for good when the pull brings nothing.
+        updates: {?table},
+        updateKind: UpdateKind.delete,
+      );
     }
   }
+
+  /// A raw write that tells drift which table it changed.
+  ///
+  /// `customStatement` runs the SQL but reports nothing, so stream queries
+  /// on that table (`watchOutboxCount`, an app's own `watch()` on the outbox
+  /// for per-item sync states, …) were never re-run: after a successful sync
+  /// the pending count and everything derived from it stayed as they were
+  /// until the app restarted.
+  Future<int> _write(
+    String sql,
+    List<String> args,
+    TableInfo<Table, Object?> table,
+    UpdateKind kind,
+  ) => customUpdate(
+    sql,
+    variables: [for (final arg in args) Variable.withString(arg)],
+    updates: {table},
+    updateKind: kind,
+  );
 }
