@@ -27,7 +27,8 @@ void main() {
   });
 
   test('GET /todos returns empty list', () async {
-    when(() => context.request).thenReturn(Request.get(Uri.parse('http://localhost/todos')));
+    when(() => context.request)
+        .thenReturn(Request.get(Uri.parse('http://localhost/todos')));
     final response = await todos_index.onRequest(context);
     final body = jsonDecode(await response.body()) as Map<String, dynamic>;
     expect(response.statusCode, HttpStatus.ok);
@@ -50,7 +51,8 @@ void main() {
   });
 
   test('GET /todos/:id returns 404 for unknown id', () async {
-    when(() => context.request).thenReturn(Request.get(Uri.parse('http://localhost/todos/missing')));
+    when(() => context.request)
+        .thenReturn(Request.get(Uri.parse('http://localhost/todos/missing')));
     final response = await todos_id.onRequest(context, 'missing');
     expect(response.statusCode, HttpStatus.notFound);
   });

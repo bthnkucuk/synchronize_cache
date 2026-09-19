@@ -73,14 +73,14 @@ class Todo {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        title,
-        description,
-        completed,
-        priority,
-        dueDate,
-        updatedAt,
-        deletedAt,
-        deletedAtLocal,
-      );
+    id,
+    title,
+    description,
+    completed,
+    priority,
+    dueDate,
+    updatedAt,
+    deletedAt,
+    deletedAtLocal,
+  );
 }

@@ -4,10 +4,7 @@ import '../models/todo.dart';
 
 /// Result of a paginated list query.
 class ListResult {
-  ListResult({
-    required this.items,
-    this.nextPageToken,
-  });
+  ListResult({required this.items, this.nextPageToken});
 
   final List<Todo> items;
   final String? nextPageToken;
@@ -170,10 +167,7 @@ class TodoRepository {
     if (existing == null) return null;
 
     final now = _now();
-    final deleted = existing.copyWith(
-      deletedAt: now,
-      updatedAt: now,
-    );
+    final deleted = existing.copyWith(deletedAt: now, updatedAt: now);
     _storage[id] = deleted;
     return deleted;
   }

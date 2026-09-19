@@ -66,18 +66,20 @@ void main() {
 
     // Create ops in DB
     for (var i = 0; i < opCount; i++) {
-      await db.enqueue(UpsertOp(
-        opId: 'op-$i',
-        kind: 'test_entity',
-        id: 'entity-$i',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-$i', 'name': 'Item $i'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-$i',
+          kind: 'test_entity',
+          id: 'entity-$i',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: {'id': 'entity-$i', 'name': 'Item $i'},
+        ),
+      );
     }
 
     // --- Run 1: Sequential (concurrency = 1) ---
     server.delayNextRequests(requestDelay, count: opCount);
-    
+
     final engine1 = createEngine(1);
     final stopwatch1 = Stopwatch()..start();
     await engine1.sync(); // Will trigger push
@@ -90,22 +92,27 @@ void main() {
       'Sequential time: ${stopwatch1.elapsedMilliseconds}ms',
       name: 'ParallelPushTest',
     );
-    expect(stopwatch1.elapsedMilliseconds, greaterThanOrEqualTo(opCount * requestDelay.inMilliseconds));
+    expect(
+      stopwatch1.elapsedMilliseconds,
+      greaterThanOrEqualTo(opCount * requestDelay.inMilliseconds),
+    );
 
     // Reset server stats and DB outbox for next run
     server
       ..clear()
       ..conflictCheckEnabled = false;
-    
+
     // Re-enqueue ops since they were acked
     for (var i = 0; i < opCount; i++) {
-      await db.enqueue(UpsertOp(
-        opId: 'op-$i',
-        kind: 'test_entity',
-        id: 'entity-$i',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-$i', 'name': 'Item $i'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-$i',
+          kind: 'test_entity',
+          id: 'entity-$i',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: {'id': 'entity-$i', 'name': 'Item $i'},
+        ),
+      );
     }
 
     // --- Run 2: Parallel (concurrency = 5) ---
@@ -123,13 +130,15 @@ void main() {
       'Parallel time: ${stopwatch2.elapsedMilliseconds}ms',
       name: 'ParallelPushTest',
     );
-    
+
     // Check that parallel is significantly faster
     // Ideally it should be close to 1/5th of the time, but let's be conservative and say it should be at least 2x faster
-    expect(stopwatch2.elapsedMilliseconds, lessThan(stopwatch1.elapsedMilliseconds * 0.6));
-    
+    expect(
+      stopwatch2.elapsedMilliseconds,
+      lessThan(stopwatch1.elapsedMilliseconds * 0.6),
+    );
+
     // Verify all requests reached server
     expect(server.requestCounts['PUT'], opCount);
   });
 }
-

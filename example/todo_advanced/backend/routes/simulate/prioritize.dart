@@ -20,9 +20,7 @@ Future<Response> onRequest(RequestContext context) async {
     if (id == null || priority == null) {
       return Response(
         statusCode: 400,
-        body: jsonEncode({
-          'error': 'Missing required fields: id, priority',
-        }),
+        body: jsonEncode({'error': 'Missing required fields: id, priority'}),
         headers: {'Content-Type': 'application/json'},
       );
     }
@@ -30,9 +28,7 @@ Future<Response> onRequest(RequestContext context) async {
     if (priority < 1 || priority > 5) {
       return Response(
         statusCode: 400,
-        body: jsonEncode({
-          'error': 'Priority must be between 1 and 5',
-        }),
+        body: jsonEncode({'error': 'Priority must be between 1 and 5'}),
         headers: {'Content-Type': 'application/json'},
       );
     }
@@ -48,10 +44,7 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     return Response(
-      body: jsonEncode({
-        'message': 'Priority changed',
-        'todo': todo.toJson(),
-      }),
+      body: jsonEncode({'message': 'Priority changed', 'todo': todo.toJson()}),
       headers: {'Content-Type': 'application/json'},
     );
   } catch (_) {

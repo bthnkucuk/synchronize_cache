@@ -21,45 +21,41 @@ UpsertOp _upsert({
   Map<String, Object?>? payload,
   DateTime? localTimestamp,
   Set<String>? changedFields,
-}) =>
-    UpsertOp(
-      opId: 'op-$id',
-      kind: kind,
-      id: id,
-      localTimestamp: localTimestamp ?? DateTime.utc(2024, 6, 1, 12),
-      payloadJson: payload ??
-          <String, Object?>{
-            'id': id,
-            'updated_at': '2024-06-01T12:00:00.000Z',
-            'name': 'Local',
-          },
-      changedFields: changedFields,
-    );
+}) => UpsertOp(
+  opId: 'op-$id',
+  kind: kind,
+  id: id,
+  localTimestamp: localTimestamp ?? DateTime.utc(2024, 6, 1, 12),
+  payloadJson:
+      payload ??
+      <String, Object?>{
+        'id': id,
+        'updated_at': '2024-06-01T12:00:00.000Z',
+        'name': 'Local',
+      },
+  changedFields: changedFields,
+);
 
-DeleteOp _delete({
-  String id = 'item-1',
-  String kind = 'test_item',
-}) =>
-    DeleteOp(
-      opId: 'op-del-$id',
-      kind: kind,
-      id: id,
-      localTimestamp: DateTime.utc(2024, 6, 1),
-    );
+DeleteOp _delete({String id = 'item-1', String kind = 'test_item'}) => DeleteOp(
+  opId: 'op-del-$id',
+  kind: kind,
+  id: id,
+  localTimestamp: DateTime.utc(2024, 6, 1),
+);
 
 PushConflict _conflict({
   Map<String, Object?>? serverData,
   DateTime? serverTimestamp,
-}) =>
-    PushConflict(
-      serverData: serverData ??
-          {
-            'id': 'item-1',
-            'updated_at': '2024-06-02T10:00:00.000Z',
-            'name': 'Server',
-          },
-      serverTimestamp: serverTimestamp ?? DateTime.utc(2024, 6, 2, 10),
-    );
+}) => PushConflict(
+  serverData:
+      serverData ??
+      {
+        'id': 'item-1',
+        'updated_at': '2024-06-02T10:00:00.000Z',
+        'name': 'Server',
+      },
+  serverTimestamp: serverTimestamp ?? DateTime.utc(2024, 6, 2, 10),
+);
 
 void main() {
   setUpAll(() {
@@ -96,15 +92,14 @@ void main() {
   ConflictService<TestDatabase> buildService({
     SyncConfig? config,
     Map<String, TableConflictConfig>? tableConfigs,
-  }) =>
-      ConflictService<TestDatabase>(
-        db: db,
-        transport: transport,
-        tables: tables,
-        config: config ?? const SyncConfig(),
-        tableConflictConfigs: tableConfigs ?? const {},
-        events: events,
-      );
+  }) => ConflictService<TestDatabase>(
+    db: db,
+    transport: transport,
+    tables: tables,
+    config: config ?? const SyncConfig(),
+    tableConflictConfigs: tableConfigs ?? const {},
+    events: events,
+  );
 
   group('strategy: serverWins', () {
     test('writes server data to local and resolves true', () async {
@@ -254,11 +249,7 @@ void main() {
       final service = buildService(
         config: SyncConfig(
           conflictStrategy: ConflictStrategy.merge,
-          mergeFunction: (l, s) => {
-            ...s,
-            ...l,
-            'extra': 'merged',
-          },
+          mergeFunction: (l, s) => {...s, ...l, 'extra': 'merged'},
         ),
       );
 
@@ -335,8 +326,7 @@ void main() {
       verify(() => transport.forcePush(any())).called(2);
     });
 
-    test('AcceptMerged is unresolved for DeleteOp (not an UpsertOp)',
-        () async {
+    test('AcceptMerged is unresolved for DeleteOp (not an UpsertOp)', () async {
       final service = buildService(
         config: SyncConfig(
           conflictStrategy: ConflictStrategy.merge,
@@ -352,8 +342,7 @@ void main() {
   });
 
   group('strategy: manual', () {
-    test('emits ConflictUnresolvedEvent and defers when no resolver',
-        () async {
+    test('emits ConflictUnresolvedEvent and defers when no resolver', () async {
       final captured = <SyncEvent>[];
       final sub = events.stream.listen(captured.add);
 
@@ -386,8 +375,7 @@ void main() {
       expect(rows.first.name, 'Server');
     });
 
-    test('per-table resolver overrides global, can DiscardOperation',
-        () async {
+    test('per-table resolver overrides global, can DiscardOperation', () async {
       final service = buildService(
         config: SyncConfig(
           conflictStrategy: ConflictStrategy.manual,
@@ -427,38 +415,40 @@ void main() {
   });
 
   group('strategy: autoPreserve', () {
-    test('merges local and server, force-pushes, emits DataMergedEvent',
-        () async {
-      when(() => transport.forcePush(any()))
-          .thenAnswer((_) async => const PushSuccess());
+    test(
+      'merges local and server, force-pushes, emits DataMergedEvent',
+      () async {
+        when(() => transport.forcePush(any()))
+            .thenAnswer((_) async => const PushSuccess());
 
-      final captured = <SyncEvent>[];
-      final sub = events.stream.listen(captured.add);
+        final captured = <SyncEvent>[];
+        final sub = events.stream.listen(captured.add);
 
-      final service = buildService(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.autoPreserve,
-        ),
-      );
+        final service = buildService(
+          config: const SyncConfig(
+            conflictStrategy: ConflictStrategy.autoPreserve,
+          ),
+        );
 
-      final op = _upsert(
-        payload: {
-          'id': 'item-1',
-          'updated_at': '2024-06-01T12:00:00.000Z',
-          'name': 'Local',
-          'note': 'client-side',
-        },
-        changedFields: {'note'},
-      );
+        final op = _upsert(
+          payload: {
+            'id': 'item-1',
+            'updated_at': '2024-06-01T12:00:00.000Z',
+            'name': 'Local',
+            'note': 'client-side',
+          },
+          changedFields: {'note'},
+        );
 
-      final result = await service.resolve(op, _conflict());
+        final result = await service.resolve(op, _conflict());
 
-      expect(result.resolved, isTrue);
-      expect(result.resultData!['note'], 'client-side');
+        expect(result.resolved, isTrue);
+        expect(result.resultData!['note'], 'client-side');
 
-      await Future<void>.delayed(Duration.zero);
-      await sub.cancel();
-      expect(captured.whereType<DataMergedEvent>(), hasLength(1));
-    });
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
+        expect(captured.whereType<DataMergedEvent>(), hasLength(1));
+      },
+    );
   });
 }

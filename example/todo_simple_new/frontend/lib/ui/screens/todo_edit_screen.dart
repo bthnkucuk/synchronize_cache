@@ -28,7 +28,9 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.todo?.title ?? '');
-    _descriptionController = TextEditingController(text: widget.todo?.description ?? '');
+    _descriptionController = TextEditingController(
+      text: widget.todo?.description ?? '',
+    );
     _priority = widget.todo?.priority ?? 3;
     _completed = widget.todo?.completed ?? false;
     _dueDate = widget.todo?.dueDate;
@@ -200,9 +202,8 @@ class _PrioritySelector extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           '1 = Highest priority, 5 = Lowest priority',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -220,7 +221,10 @@ class _DueDatePicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Due Date (optional)', style: Theme.of(context).textTheme.labelLarge),
+        Text(
+          'Due Date (optional)',
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -229,7 +233,9 @@ class _DueDatePicker extends StatelessWidget {
                 onPressed: () => _pickDate(context),
                 icon: const Icon(Icons.calendar_today),
                 label: Text(
-                  value != null ? '${value!.month}/${value!.day}/${value!.year}' : 'Select date',
+                  value != null
+                      ? '${value!.month}/${value!.day}/${value!.year}'
+                      : 'Select date',
                 ),
               ),
             ),

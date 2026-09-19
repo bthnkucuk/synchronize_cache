@@ -33,12 +33,11 @@ void main() {
   AppLifecycleSyncHandler<GeneratedDatabase> makeHandler({
     void Function()? onResume,
     void Function()? onPause,
-  }) =>
-      AppLifecycleSyncHandler<GeneratedDatabase>(
-        engine: engine,
-        onResume: onResume,
-        onPause: onPause,
-      );
+  }) => AppLifecycleSyncHandler<GeneratedDatabase>(
+    engine: engine,
+    onResume: onResume,
+    onPause: onPause,
+  );
 
   void deliver(AppLifecycleState state, AppLifecycleSyncHandler<dynamic> h) {
     h.didChangeAppLifecycleState(state);
@@ -48,10 +47,8 @@ void main() {
     test('resumed → onResume; pause/detach/inactive/hidden → onPause', () {
       var resumed = 0;
       var paused = 0;
-      final h = makeHandler(
-        onResume: () => resumed++,
-        onPause: () => paused++,
-      )..start();
+      final h = makeHandler(onResume: () => resumed++, onPause: () => paused++)
+        ..start();
 
       deliver(AppLifecycleState.resumed, h);
       deliver(AppLifecycleState.paused, h);
@@ -79,10 +76,7 @@ void main() {
         onPause: () {},
       )..start();
 
-      expect(
-        () => deliver(AppLifecycleState.resumed, h),
-        throwsStateError,
-      );
+      expect(() => deliver(AppLifecycleState.resumed, h), throwsStateError);
       h.dispose();
     });
   });
@@ -97,9 +91,8 @@ void main() {
       deliver(AppLifecycleState.resumed, h);
 
       verify(() => engine.sync()).called(1);
-      verify(
-        () => engine.startAuto(interval: const Duration(minutes: 30)),
-      ).called(1);
+      verify(() => engine.startAuto(interval: const Duration(minutes: 30)))
+          .called(1);
       h.dispose();
     });
 

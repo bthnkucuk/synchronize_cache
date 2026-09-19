@@ -41,12 +41,11 @@ void main() {
 
   NetworkSyncHandler<GeneratedDatabase> makeHandler({
     Future<void> Function()? onReconnect,
-  }) =>
-      NetworkSyncHandler<GeneratedDatabase>(
-        engine: engine,
-        connectivity: connectivity,
-        onReconnect: onReconnect,
-      );
+  }) => NetworkSyncHandler<GeneratedDatabase>(
+    engine: engine,
+    connectivity: connectivity,
+    onReconnect: onReconnect,
+  );
 
   test('does not call onReconnect on initial online event', () async {
     var calls = 0;
@@ -69,18 +68,20 @@ void main() {
     handler.dispose();
   });
 
-  test('subsequent online events without an offline drop do not re-trigger',
-      () async {
-    var calls = 0;
-    final handler = makeHandler(onReconnect: () async => calls++)..start();
+  test(
+    'subsequent online events without an offline drop do not re-trigger',
+    () async {
+      var calls = 0;
+      final handler = makeHandler(onReconnect: () async => calls++)..start();
 
-    await emit(const [ConnectivityResult.none]);
-    await emit(const [ConnectivityResult.wifi]);
-    await emit(const [ConnectivityResult.mobile]);
+      await emit(const [ConnectivityResult.none]);
+      await emit(const [ConnectivityResult.wifi]);
+      await emit(const [ConnectivityResult.mobile]);
 
-    expect(calls, equals(1));
-    handler.dispose();
-  });
+      expect(calls, equals(1));
+      handler.dispose();
+    },
+  );
 
   test('handles multiple offline/online cycles', () async {
     var calls = 0;
@@ -95,17 +96,19 @@ void main() {
     handler.dispose();
   });
 
-  test('multiple online types in a single event are still treated as online',
-      () async {
-    var calls = 0;
-    final handler = makeHandler(onReconnect: () async => calls++)..start();
+  test(
+    'multiple online types in a single event are still treated as online',
+    () async {
+      var calls = 0;
+      final handler = makeHandler(onReconnect: () async => calls++)..start();
 
-    await emit(const [ConnectivityResult.none]);
-    await emit(const [ConnectivityResult.wifi, ConnectivityResult.vpn]);
+      await emit(const [ConnectivityResult.none]);
+      await emit(const [ConnectivityResult.wifi, ConnectivityResult.vpn]);
 
-    expect(calls, equals(1));
-    handler.dispose();
-  });
+      expect(calls, equals(1));
+      handler.dispose();
+    },
+  );
 
   test('events delivered after dispose() are ignored', () async {
     var calls = 0;
@@ -123,21 +126,22 @@ void main() {
     expect(handler.dispose, returnsNormally);
   });
 
-  test('a none-only emission does not flip wasOffline back to online',
-      () async {
-    var calls = 0;
-    final handler = makeHandler(onReconnect: () async => calls++)..start();
+  test(
+    'a none-only emission does not flip wasOffline back to online',
+    () async {
+      var calls = 0;
+      final handler = makeHandler(onReconnect: () async => calls++)..start();
 
-    await emit(const [ConnectivityResult.none]);
-    await emit(const [ConnectivityResult.none]);
-    await emit(const [ConnectivityResult.none]);
+      await emit(const [ConnectivityResult.none]);
+      await emit(const [ConnectivityResult.none]);
+      await emit(const [ConnectivityResult.none]);
 
-    expect(calls, equals(0));
-    handler.dispose();
-  });
+      expect(calls, equals(0));
+      handler.dispose();
+    },
+  );
 
-  test('falls back to engine.sync() when no onReconnect is provided',
-      () async {
+  test('falls back to engine.sync() when no onReconnect is provided', () async {
     when(() => engine.sync()).thenAnswer((_) async => const SyncStats());
 
     final handler = makeHandler()..start();

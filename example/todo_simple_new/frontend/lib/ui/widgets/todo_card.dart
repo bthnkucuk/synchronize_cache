@@ -38,13 +38,16 @@ class TodoCard extends StatelessWidget {
                     Text(
                       todo.title,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        decoration: todo.completed ? TextDecoration.lineThrough : null,
+                        decoration: todo.completed
+                            ? TextDecoration.lineThrough
+                            : null,
                         color: todo.completed
                             ? colorScheme.onSurface.withValues(alpha: 0.6)
                             : null,
                       ),
                     ),
-                    if (todo.description != null && todo.description!.isNotEmpty) ...[
+                    if (todo.description != null &&
+                        todo.description!.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
                         todo.description!,
@@ -113,18 +116,20 @@ class _DueDateChip extends StatelessWidget {
     final localDueDate = dueDate.toLocal();
     final now = DateTime.now();
     final isOverdue = localDueDate.isBefore(now);
-    final isToday = localDueDate.day == now.day &&
+    final isToday =
+        localDueDate.day == now.day &&
         localDueDate.month == now.month &&
         localDueDate.year == now.year;
 
     final color = isOverdue
         ? Colors.red
         : isToday
-            ? Colors.orange
-            : Colors.grey;
+        ? Colors.orange
+        : Colors.grey;
 
-    final label =
-        isToday ? 'Today' : '${localDueDate.month}/${localDueDate.day}/${localDueDate.year}';
+    final label = isToday
+        ? 'Today'
+        : '${localDueDate.month}/${localDueDate.day}/${localDueDate.year}';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -138,10 +143,7 @@ class _DueDateChip extends StatelessWidget {
         children: [
           Icon(Icons.calendar_today, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(fontSize: 12, color: color),
-          ),
+          Text(label, style: TextStyle(fontSize: 12, color: color)),
         ],
       ),
     );

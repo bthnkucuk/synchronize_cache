@@ -168,8 +168,9 @@ void main() {
     // =========================================================================
 
     group('CRUD Operations', () {
-      testWidgets('CREATE: todo with description appears immediately',
-          (tester) async {
+      testWidgets('CREATE: todo with description appears immediately', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 
@@ -408,8 +409,9 @@ void main() {
     // =========================================================================
 
     group('Outbox Queue', () {
-      testWidgets('todos with different priorities queue correctly',
-          (tester) async {
+      testWidgets('todos with different priorities queue correctly', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestApp());
         await tester.pumpAndSettle();
 

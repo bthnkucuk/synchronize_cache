@@ -133,7 +133,9 @@ void main() {
       await cleanupWidget(tester);
     });
 
-    testWidgets('shows sync status indicator with Online badge', (tester) async {
+    testWidgets('shows sync status indicator with Online badge', (
+      tester,
+    ) async {
       await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 

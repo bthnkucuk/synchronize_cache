@@ -7,12 +7,12 @@ import 'package:test/test.dart';
 class _MockDb extends Mock implements SyncDatabaseMixin {}
 
 UpsertOp _upsert(String id) => UpsertOp(
-      opId: 'op-$id',
-      kind: 'items',
-      id: id,
-      localTimestamp: DateTime.utc(2024, 1, 1),
-      payloadJson: const {'k': 'v'},
-    );
+  opId: 'op-$id',
+  kind: 'items',
+  id: id,
+  localTimestamp: DateTime.utc(2024, 1, 1),
+  payloadJson: const {'k': 'v'},
+);
 
 void main() {
   setUpAll(() {
@@ -108,10 +108,7 @@ void main() {
           ),
         ).thenThrow(Exception('db fail'));
 
-        expect(
-          () => service.take(),
-          throwsA(isA<DatabaseException>()),
-        );
+        expect(() => service.take(), throwsA(isA<DatabaseException>()));
       });
     });
 
@@ -133,10 +130,7 @@ void main() {
       test('wraps db error in DatabaseException', () async {
         when(() => db.ackOutbox(any())).thenThrow(Exception('boom'));
 
-        expect(
-          () => service.ack(['a']),
-          throwsA(isA<DatabaseException>()),
-        );
+        expect(() => service.ack(['a']), throwsA(isA<DatabaseException>()));
       });
     });
 
@@ -220,10 +214,7 @@ void main() {
 
         expect(received, [0, 2]);
         verify(
-          () => db.watchOutboxCount(
-            kinds: {'items'},
-            maxTryCountExclusive: 3,
-          ),
+          () => db.watchOutboxCount(kinds: {'items'}, maxTryCountExclusive: 3),
         ).called(1);
 
         await sub.cancel();
@@ -258,8 +249,7 @@ void main() {
 
     group('incrementTryCount', () {
       test('delegates to db.incrementOutboxTryCount', () async {
-        when(() => db.incrementOutboxTryCount(any()))
-            .thenAnswer((_) async {});
+        when(() => db.incrementOutboxTryCount(any())).thenAnswer((_) async {});
 
         await service.incrementTryCount(['a', 'b']);
 
@@ -281,22 +271,19 @@ void main() {
       test('forwards errors map and triedAt', () async {
         final triedAt = DateTime.utc(2024, 3, 1);
         when(
-          () => db.recordOutboxFailures(
-            any(),
-            triedAt: any(named: 'triedAt'),
-          ),
+          () => db.recordOutboxFailures(any(), triedAt: any(named: 'triedAt')),
         ).thenAnswer((_) async {});
 
-        await service.recordFailures(
-          {'a': 'err-a', 'b': 'err-b'},
-          triedAt: triedAt,
-        );
+        await service.recordFailures({
+          'a': 'err-a',
+          'b': 'err-b',
+        }, triedAt: triedAt);
 
         verify(
-          () => db.recordOutboxFailures(
-            {'a': 'err-a', 'b': 'err-b'},
-            triedAt: triedAt,
-          ),
+          () => db.recordOutboxFailures({
+            'a': 'err-a',
+            'b': 'err-b',
+          }, triedAt: triedAt),
         ).called(1);
       });
 
@@ -322,8 +309,7 @@ void main() {
       });
 
       test('wraps db error in DatabaseException', () async {
-        when(() => db.resetOutboxTryCount(any()))
-            .thenThrow(Exception('boom'));
+        when(() => db.resetOutboxTryCount(any())).thenThrow(Exception('boom'));
 
         expect(
           () => service.resetTryCount(['a']),
@@ -351,11 +337,7 @@ void main() {
 
         expect(result, hasLength(1));
         verify(
-          () => db.getStuckOutbox(
-            minTryCount: 3,
-            limit: 50,
-            kinds: {'items'},
-          ),
+          () => db.getStuckOutbox(minTryCount: 3, limit: 50, kinds: {'items'}),
         ).called(1);
       });
 
@@ -370,13 +352,8 @@ void main() {
 
         await service.getStuck(minTryCount: 5);
 
-        verify(
-          () => db.getStuckOutbox(
-            minTryCount: 5,
-            limit: 100,
-            kinds: null,
-          ),
-        ).called(1);
+        verify(() => db.getStuckOutbox(minTryCount: 5, limit: 100, kinds: null))
+            .called(1);
       });
 
       test('wraps db error in DatabaseException', () async {
@@ -404,15 +381,11 @@ void main() {
           ),
         ).thenAnswer((_) async => 4);
 
-        final n = await service.countStuck(
-          minTryCount: 5,
-          kinds: {'items'},
-        );
+        final n = await service.countStuck(minTryCount: 5, kinds: {'items'});
 
         expect(n, 4);
-        verify(
-          () => db.countStuckOutbox(minTryCount: 5, kinds: {'items'}),
-        ).called(1);
+        verify(() => db.countStuckOutbox(minTryCount: 5, kinds: {'items'}))
+            .called(1);
       });
 
       test('wraps db error in DatabaseException', () async {

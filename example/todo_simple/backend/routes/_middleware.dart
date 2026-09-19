@@ -18,16 +18,11 @@ Middleware _corsMiddleware() {
     return (context) async {
       // Handle preflight requests
       if (context.request.method == HttpMethod.options) {
-        return Response(
-          statusCode: 204,
-          headers: _corsHeaders,
-        );
+        return Response(statusCode: 204, headers: _corsHeaders);
       }
 
       final response = await handler(context);
-      return response.copyWith(
-        headers: {...response.headers, ..._corsHeaders},
-      );
+      return response.copyWith(headers: {...response.headers, ..._corsHeaders});
     };
   };
 }
@@ -36,6 +31,7 @@ Middleware _corsMiddleware() {
 const _corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Idempotency-Key',
+  'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, X-Idempotency-Key',
   'Access-Control-Max-Age': '86400',
 };

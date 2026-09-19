@@ -39,9 +39,9 @@ class SyncService extends ChangeNotifier {
     http.Client? httpClient,
     int maxRetries = 5,
     int maxPushRetries = 5,
-  })  : _db = db,
-        _baseUri = Uri.parse(baseUrl),
-        _httpClient = httpClient ?? http.Client() {
+  }) : _db = db,
+       _baseUri = Uri.parse(baseUrl),
+       _httpClient = httpClient ?? http.Client() {
     final config = SyncConfig(
       conflictStrategy: ConflictStrategy.autoPreserve,
       pageSize: 500,
@@ -202,8 +202,4 @@ class SyncService extends ChangeNotifier {
   }
 }
 
-enum SyncStatus {
-  idle,
-  syncing,
-  error,
-}
+enum SyncStatus { idle, syncing, error }

@@ -144,10 +144,7 @@ class TodoRepository {
     }
 
     final now = DateTime.now().toUtc();
-    _todos[id] = current.copyWith(
-      updatedAt: now,
-      deletedAt: now,
-    );
+    _todos[id] = current.copyWith(updatedAt: now, deletedAt: now);
     if (idempotencyKey != null) {
       _addIdempotencyKey(idempotencyKey);
     }

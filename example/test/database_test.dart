@@ -73,11 +73,13 @@ void main() {
         healthRecordId: 1,
       );
 
-      await db.into(db.dailyFeelings).insertOnConflictUpdate(updated.toInsertable());
+      await db
+          .into(db.dailyFeelings)
+          .insertOnConflictUpdate(updated.toInsertable());
 
-      final result = await (db.select(db.dailyFeelings)
-            ..where((t) => t.id.equals('df-update')))
-          .getSingle();
+      final result = await (db.select(
+        db.dailyFeelings,
+      )..where((t) => t.id.equals('df-update'))).getSingle();
 
       expect(result.feeling, 'good');
     });
@@ -94,7 +96,9 @@ void main() {
       await db.into(db.dailyFeelings).insert(feeling.toInsertable());
       expect((await db.select(db.dailyFeelings).get()).length, 1);
 
-      await (db.delete(db.dailyFeelings)..where((t) => t.id.equals('df-delete'))).go();
+      await (db.delete(
+        db.dailyFeelings,
+      )..where((t) => t.id.equals('df-delete'))).go();
       expect((await db.select(db.dailyFeelings).get()).length, 0);
     });
   });
@@ -163,7 +167,10 @@ void main() {
     });
 
     test('cursor operations', () async {
-      final cursor = Cursor(ts: DateTime.utc(2024, 6, 15, 12, 0), lastId: 'last-1');
+      final cursor = Cursor(
+        ts: DateTime.utc(2024, 6, 15, 12, 0),
+        lastId: 'last-1',
+      );
 
       await db.setCursor('daily_feeling', cursor);
 
@@ -233,4 +240,3 @@ void main() {
     });
   });
 }
-

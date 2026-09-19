@@ -40,23 +40,16 @@ void main() {
       });
 
       test('wraps db error in DatabaseException', () async {
-        when(
-          () => db.getCursor(any()),
-        ).thenThrow(StateError('boom'));
+        when(() => db.getCursor(any())).thenThrow(StateError('boom'));
 
-        expect(
-          () => service.get('items'),
-          throwsA(isA<DatabaseException>()),
-        );
+        expect(() => service.get('items'), throwsA(isA<DatabaseException>()));
       });
     });
 
     group('set', () {
       test('delegates to db.setCursor', () async {
         final cursor = Cursor(ts: DateTime.utc(2024, 6, 1), lastId: 'x');
-        when(
-          () => db.setCursor(any(), any()),
-        ).thenAnswer((_) async {});
+        when(() => db.setCursor(any(), any())).thenAnswer((_) async {});
 
         await service.set('items', cursor);
 
@@ -64,15 +57,12 @@ void main() {
       });
 
       test('wraps db error in DatabaseException', () async {
-        when(
-          () => db.setCursor(any(), any()),
-        ).thenThrow(Exception('disk full'));
+        when(() => db.setCursor(any(), any()))
+            .thenThrow(Exception('disk full'));
 
         expect(
-          () => service.set(
-            'items',
-            Cursor(ts: DateTime.utc(2024), lastId: ''),
-          ),
+          () =>
+              service.set('items', Cursor(ts: DateTime.utc(2024), lastId: '')),
           throwsA(isA<DatabaseException>()),
         );
       });
@@ -88,20 +78,18 @@ void main() {
         await service.reset('items');
 
         expect(captured, isNotNull);
-        expect(captured!.ts, DateTime.fromMillisecondsSinceEpoch(0, isUtc: true));
+        expect(
+          captured!.ts,
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        );
         expect(captured!.lastId, isEmpty);
         verify(() => db.setCursor('items', any())).called(1);
       });
 
       test('propagates DatabaseException from set', () async {
-        when(
-          () => db.setCursor(any(), any()),
-        ).thenThrow(Exception('fail'));
+        when(() => db.setCursor(any(), any())).thenThrow(Exception('fail'));
 
-        expect(
-          () => service.reset('items'),
-          throwsA(isA<DatabaseException>()),
-        );
+        expect(() => service.reset('items'), throwsA(isA<DatabaseException>()));
       });
     });
 

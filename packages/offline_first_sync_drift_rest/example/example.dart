@@ -28,36 +28,36 @@ class Todo {
   });
 
   factory Todo.fromJson(Map<String, dynamic> json) => Todo(
-        id: json['id'] as String,
-        title: json['title'] as String,
-        completed: json['completed'] as bool,
-        updatedAt: DateTime.parse(json['updated_at'] as String),
-        deletedAt: json['deleted_at'] != null
-            ? DateTime.parse(json['deleted_at'] as String)
-            : null,
-        deletedAtLocal: json['deleted_at_local'] != null
-            ? DateTime.parse(json['deleted_at_local'] as String)
-            : null,
-      );
+    id: json['id'] as String,
+    title: json['title'] as String,
+    completed: json['completed'] as bool,
+    updatedAt: DateTime.parse(json['updated_at'] as String),
+    deletedAt: json['deleted_at'] != null
+        ? DateTime.parse(json['deleted_at'] as String)
+        : null,
+    deletedAtLocal: json['deleted_at_local'] != null
+        ? DateTime.parse(json['deleted_at_local'] as String)
+        : null,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'completed': completed,
-        'updated_at': updatedAt.toIso8601String(),
-        if (deletedAt != null) 'deleted_at': deletedAt!.toIso8601String(),
-        if (deletedAtLocal != null)
-          'deleted_at_local': deletedAtLocal!.toIso8601String(),
-      };
+    'id': id,
+    'title': title,
+    'completed': completed,
+    'updated_at': updatedAt.toIso8601String(),
+    if (deletedAt != null) 'deleted_at': deletedAt!.toIso8601String(),
+    if (deletedAtLocal != null)
+      'deleted_at_local': deletedAtLocal!.toIso8601String(),
+  };
 
   TodosCompanion toInsertable() => TodosCompanion.insert(
-        id: id,
-        title: title,
-        completed: completed,
-        updatedAt: updatedAt,
-        deletedAt: Value(deletedAt),
-        deletedAtLocal: Value(deletedAtLocal),
-      );
+    id: id,
+    title: title,
+    completed: completed,
+    updatedAt: updatedAt,
+    deletedAt: Value(deletedAt),
+    deletedAtLocal: Value(deletedAtLocal),
+  );
 }
 
 // Table with SyncColumns
@@ -109,9 +109,7 @@ Future<void> main() async {
         toInsertable: (t) => t.toInsertable(),
       ),
     ],
-    config: const SyncConfig(
-      conflictStrategy: ConflictStrategy.autoPreserve,
-    ),
+    config: const SyncConfig(conflictStrategy: ConflictStrategy.autoPreserve),
   );
 
   // Listen to events
@@ -168,9 +166,3 @@ Future<void> main() async {
   engine.dispose();
   await db.close();
 }
-
-
-
-
-
-

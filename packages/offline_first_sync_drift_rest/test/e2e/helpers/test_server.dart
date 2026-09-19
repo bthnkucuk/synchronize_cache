@@ -156,10 +156,7 @@ class TestServer {
     final existing = _storage[kind]![id];
     final now = _now();
 
-    final updatedData = <String, Object?>{
-      ...?existing,
-      ...data,
-    };
+    final updatedData = <String, Object?>{...?existing, ...data};
 
     if (!data.containsKey('updated_at')) {
       updatedData['updated_at'] = now.toIso8601String();
@@ -178,12 +175,14 @@ class TestServer {
 
     try {
       final body = await _readBody(request);
-      recordedRequests.add(RecordedRequest(
-        method: method,
-        path: path,
-        headers: request.headers,
-        body: body,
-      ));
+      recordedRequests.add(
+        RecordedRequest(
+          method: method,
+          path: path,
+          headers: request.headers,
+          body: body,
+        ),
+      );
 
       if (_nextDelay != null && _delayedRequestsCount > 0) {
         await Future<void>.delayed(_nextDelay!);
@@ -255,7 +254,9 @@ class TestServer {
   }
 
   Future<void> _handleBatch(
-      HttpRequest request, Map<String, Object?>? body) async {
+    HttpRequest request,
+    Map<String, Object?>? body,
+  ) async {
     if (body == null || !body.containsKey('ops')) {
       _sendError(request, 400, 'Missing ops in body');
       return;
@@ -275,11 +276,7 @@ class TestServer {
         final result = await _processBatchOp(kind, id, type, op, request);
         results.add({'opId': opId, ...result});
       } catch (e) {
-        results.add({
-          'opId': opId,
-          'statusCode': 500,
-          'error': e.toString(),
-        });
+        results.add({'opId': opId, 'statusCode': 500, 'error': e.toString()});
       }
     }
 
@@ -321,9 +318,7 @@ class TestServer {
     }
 
     if (mockReq.responseCode >= 200 && mockReq.responseCode < 300) {
-      final res = <String, Object?>{
-        'statusCode': mockReq.responseCode,
-      };
+      final res = <String, Object?>{'statusCode': mockReq.responseCode};
       if (mockReq.responseBody != null) {
         final data = jsonDecode(mockReq.responseBody!) as Map<String, Object?>;
         res['data'] = data;
@@ -333,10 +328,7 @@ class TestServer {
     } else if (mockReq.responseCode == 409) {
       // Конфликт
       final body = jsonDecode(mockReq.responseBody!);
-      return {
-        'statusCode': 409,
-        'error': body,
-      };
+      return {'statusCode': 409, 'error': body};
     } else {
       return {
         'statusCode': mockReq.responseCode,
@@ -408,8 +400,7 @@ class TestServer {
     });
   }
 
-  Future<void> _handleFetch(
-      HttpRequest request, String kind, String id) async {
+  Future<void> _handleFetch(HttpRequest request, String kind, String id) async {
     final data = get(kind, id);
     if (data == null) {
       _sendError(request, 404, 'Not Found');
@@ -586,7 +577,8 @@ class TestServer {
       'message': 'Data has been modified on server',
       'current': serverData,
       'serverTimestamp': serverTimestamp,
-      'version': 'v${_versions[serverData['kind'] as String? ?? '']?[serverData['id']] ?? 1}',
+      'version':
+          'v${_versions[serverData['kind'] as String? ?? '']?[serverData['id']] ?? 1}',
     });
   }
 
@@ -636,8 +628,7 @@ class _MockHttpRequest implements HttpRequest {
   Uri get uri => _uriOverride ?? _original.uri;
 
   @override
-  HttpHeaders get headers =>
-      _MockHttpHeaders(_original.headers); // Use mock wrapper for headers
+  HttpHeaders get headers => _MockHttpHeaders(_original.headers); // Use mock wrapper for headers
 
   @override
   HttpResponse get response => _MockHttpResponse(this);
@@ -654,8 +645,7 @@ class _MockHttpResponse implements HttpResponse {
   set statusCode(int code) => _req.responseCode = code;
 
   @override
-  HttpHeaders get headers =>
-      _MockHttpHeaders(null, _req.responseHeaders); // Pass null as source, map as target
+  HttpHeaders get headers => _MockHttpHeaders(null, _req.responseHeaders); // Pass null as source, map as target
 
   @override
   void write(Object? obj) {
@@ -682,7 +672,7 @@ class _MockHttpHeaders implements HttpHeaders {
       _headersMap[name] = value.toString();
     }
   }
-  
+
   @override
   set contentType(ContentType? contentType) {} // ignore
 

@@ -18,7 +18,11 @@ Future<void> main() async {
   final db = AppDatabase.open();
   final todoSync = todoSyncTable(db);
   final todoRepo = TodoRepository(db, todoSync);
-  final syncService = SyncService(db: db, baseUrl: kBackendUrl, todoSync: todoSync);
+  final syncService = SyncService(
+    db: db,
+    baseUrl: kBackendUrl,
+    todoSync: todoSync,
+  );
   await syncService.start();
 
   runApp(

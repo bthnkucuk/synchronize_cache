@@ -21,7 +21,9 @@ class JsonTextContentParser implements SearchContentParser {
   Future<String> parse({required String body, String? hint}) async {
     if (body.isEmpty) return '';
     try {
-      final decoded = jsonDecoder != null ? await jsonDecoder!(body) : jsonDecode(body);
+      final decoded = jsonDecoder != null
+          ? await jsonDecoder!(body)
+          : jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
         return (decoded[textKey] as String?) ?? '';
       }

@@ -37,8 +37,10 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
   TableInfo<SearchLookup, SearchLookupData>? _lookupTable;
   TableInfo<SearchIndexCursors, SearchIndexCursorRow>? _cursorTable;
 
-  TableInfo<PendingSearchItems, PendingSearchItemRow> get _pendingSearchItems =>
-      _pendingTable ??= allTables.whereType<TableInfo<PendingSearchItems, PendingSearchItemRow>>().firstWhere(
+  TableInfo<PendingSearchItems, PendingSearchItemRow>
+  get _pendingSearchItems => _pendingTable ??= allTables
+      .whereType<TableInfo<PendingSearchItems, PendingSearchItemRow>>()
+      .firstWhere(
         (t) => t.actualTableName == 'pending_search_items',
         orElse: () => throw StateError(
           'PendingSearchItems table not found. Add:\n'
@@ -48,8 +50,10 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
         ),
       );
 
-  TableInfo<SearchLookup, SearchLookupData> get _searchLookup =>
-      _lookupTable ??= allTables.whereType<TableInfo<SearchLookup, SearchLookupData>>().firstWhere(
+  TableInfo<SearchLookup, SearchLookupData>
+  get _searchLookup => _lookupTable ??= allTables
+      .whereType<TableInfo<SearchLookup, SearchLookupData>>()
+      .firstWhere(
         (t) => t.actualTableName == 'search_lookup',
         orElse: () => throw StateError(
           'SearchLookup table not found. Add:\n'
@@ -59,8 +63,10 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
         ),
       );
 
-  TableInfo<SearchIndexCursors, SearchIndexCursorRow> get _searchIndexCursors =>
-      _cursorTable ??= allTables.whereType<TableInfo<SearchIndexCursors, SearchIndexCursorRow>>().firstWhere(
+  TableInfo<SearchIndexCursors, SearchIndexCursorRow>
+  get _searchIndexCursors => _cursorTable ??= allTables
+      .whereType<TableInfo<SearchIndexCursors, SearchIndexCursorRow>>()
+      .firstWhere(
         (t) => t.actualTableName == 'search_index_cursors',
         orElse: () => throw StateError(
           'SearchIndexCursors table not found. Add:\n'
@@ -78,11 +84,16 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
     required String kind,
   }) async {
     final table = _searchIndexCursors;
-    final row = await (select(table)..where((c) => c.userId.equals(userId) & c.kind.equals(kind)))
-        .getSingleOrNull();
+    final row =
+        await (select(table)
+              ..where((c) => c.userId.equals(userId) & c.kind.equals(kind)))
+            .getSingleOrNull();
     if (row == null) return null;
     return SearchIndexCursor(
-      since: DateTime.fromMillisecondsSinceEpoch(row.lastIndexedAtMs, isUtc: true),
+      since: DateTime.fromMillisecondsSinceEpoch(
+        row.lastIndexedAtMs,
+        isUtc: true,
+      ),
       lastId: row.lastIndexedId,
     );
   }
@@ -110,7 +121,8 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
     required String userId,
     String? kind,
   }) async {
-    final del = delete(_searchIndexCursors)..where((c) => c.userId.equals(userId));
+    final del = delete(_searchIndexCursors)
+      ..where((c) => c.userId.equals(userId));
     if (kind != null) {
       del.where((c) => c.kind.equals(kind));
     }
@@ -206,15 +218,23 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
   }
 
   /// Deletes a single queued entry by its (id, kind) primary key.
-  Future<void> deletePendingUserItem({required String id, required String kind}) async {
+  Future<void> deletePendingUserItem({
+    required String id,
+    required String kind,
+  }) async {
     final table = _pendingSearchItems;
-    await (delete(table)..where((t) => t.id.equals(id) & t.kind.equals(kind))).go();
+    await (delete(
+      table,
+    )..where((t) => t.id.equals(id) & t.kind.equals(kind))).go();
   }
 
   /// Increments the failure counter for `(id, kind)`. Once the counter
   /// reaches the engine's `maxPendingTries` the row is shadow-banned by
   /// [getPendingUserItems] until [resetPendingTryCount] is called.
-  Future<void> incrementPendingTryCount({required String id, required String kind}) async {
+  Future<void> incrementPendingTryCount({
+    required String id,
+    required String kind,
+  }) async {
     await customStatement(
       'UPDATE pending_search_items SET try_count = try_count + 1 WHERE id = ? AND kind = ?',
       [id, kind],
@@ -238,15 +258,30 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
 
   /// Removes any existing FTS5 row + lookup entry for (originalId, kind, userId).
   /// Must be called from inside a transaction.
-  Future<void> _deleteNoTxn({required String originalId, required String kind, required String userId}) async {
+  Future<void> _deleteNoTxn({
+    required String originalId,
+    required String kind,
+    required String userId,
+  }) async {
     final lookup = _searchLookup;
     final query = select(lookup)
-      ..where((t) => t.originalId.equals(originalId) & t.kind.equals(kind) & t.userId.equals(userId));
+      ..where(
+        (t) =>
+            t.originalId.equals(originalId) &
+            t.kind.equals(kind) &
+            t.userId.equals(userId),
+      );
     final row = await query.getSingleOrNull();
     if (row == null) return;
-    await customStatement('DELETE FROM global_search WHERE rowid = ?', [row.ftsRowid]);
-    await (delete(lookup)
-          ..where((t) => t.originalId.equals(originalId) & t.kind.equals(kind) & t.userId.equals(userId)))
+    await customStatement('DELETE FROM global_search WHERE rowid = ?', [
+      row.ftsRowid,
+    ]);
+    await (delete(lookup)..where(
+          (t) =>
+              t.originalId.equals(originalId) &
+              t.kind.equals(kind) &
+              t.userId.equals(userId),
+        ))
         .go();
   }
 
@@ -266,7 +301,11 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
   /// updated/deleted later without re-querying the index.
   Future<void> upsertSearchItem(GlobalSearch item) async {
     await transaction(() async {
-      await _deleteNoTxn(originalId: item.originalId, kind: item.kind, userId: item.userId);
+      await _deleteNoTxn(
+        originalId: item.originalId,
+        kind: item.kind,
+        userId: item.userId,
+      );
       final ftsRowId = await customInsert(
         'INSERT INTO global_search ('
         'original_id, user_id, kind, '
@@ -398,9 +437,11 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
     final matchExpr = cleanNormalized == null
         ? cleanRaw
         : '({title description content}: $cleanRaw) '
-            'OR ({title_normalized description_normalized content_normalized}: $cleanNormalized)';
+              'OR ({title_normalized description_normalized content_normalized}: $cleanNormalized)';
 
-    final kindClause = kinds.isEmpty ? '' : 'AND kind IN (${List.filled(kinds.length, '?').join(',')})';
+    final kindClause = kinds.isEmpty
+        ? ''
+        : 'AND kind IN (${List.filled(kinds.length, '?').join(',')})';
 
     final variables = <Variable<Object>>[
       Variable.withString(highlight.titleOpen),
@@ -420,7 +461,8 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
       Variable.withInt(offset),
     ];
 
-    final sql = 'SELECT *, '
+    final sql =
+        'SELECT *, '
         'highlight(global_search, 3, ?, ?) as hl_title, '
         'snippet(global_search, 4, ?, ?, ?, ?) as hl_desc, '
         'snippet(global_search, 5, ?, ?, ?, ?) as hl_content '

@@ -14,8 +14,9 @@ Future<Response> onRequest(RequestContext context) async {
 
 Response _handleList(RequestContext context, TodoRepository repo) {
   final params = context.request.uri.queryParameters;
-  final updatedSince =
-      params['updatedSince'] != null ? DateTime.tryParse(params['updatedSince']!) : null;
+  final updatedSince = params['updatedSince'] != null
+      ? DateTime.tryParse(params['updatedSince']!)
+      : null;
   final limit = (int.tryParse(params['limit'] ?? '') ?? 500).clamp(1, 1000);
   final pageToken = params['pageToken'];
   final includeDeleted = params['includeDeleted'] != 'false';

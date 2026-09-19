@@ -39,7 +39,11 @@ void main() {
     final initial = await db.takeOutbox();
     await db.ackOutbox(initial.map((e) => e.opId));
 
-    final updated = await repository.update(todo, title: 'After', completed: true);
+    final updated = await repository.update(
+      todo,
+      title: 'After',
+      completed: true,
+    );
     expect(updated.title, 'After');
     expect(updated.completed, isTrue);
 

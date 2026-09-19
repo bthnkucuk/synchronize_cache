@@ -75,10 +75,7 @@ class SimulationService {
     if (current == null || current.deletedAt != null) return null;
 
     final now = DateTime.now().toUtc();
-    final updated = current.copyWith(
-      priority: newPriority,
-      updatedAt: now,
-    );
+    final updated = current.copyWith(priority: newPriority, updatedAt: now);
 
     final result = _repository.update(id, updated, forceUpdate: true);
     if (result is OperationSuccess) {

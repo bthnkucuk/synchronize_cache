@@ -6,11 +6,7 @@ void main() {
     final now = DateTime.utc(2025, 1, 15, 10, 30);
 
     test('creates instance with required fields', () {
-      final todo = Todo(
-        id: 'test-id',
-        title: 'Test Todo',
-        updatedAt: now,
-      );
+      final todo = Todo(id: 'test-id', title: 'Test Todo', updatedAt: now);
 
       expect(todo.id, 'test-id');
       expect(todo.title, 'Test Todo');
@@ -104,11 +100,7 @@ void main() {
 
     group('toJson', () {
       test('serializes minimal todo', () {
-        final todo = Todo(
-          id: 'test-id',
-          title: 'Test Todo',
-          updatedAt: now,
-        );
+        final todo = Todo(id: 'test-id', title: 'Test Todo', updatedAt: now);
 
         final json = todo.toJson();
 
@@ -150,11 +142,7 @@ void main() {
 
     group('copyWith', () {
       test('copies with no changes', () {
-        final todo = Todo(
-          id: 'test-id',
-          title: 'Test Todo',
-          updatedAt: now,
-        );
+        final todo = Todo(id: 'test-id', title: 'Test Todo', updatedAt: now);
 
         final copy = todo.copyWith();
 
@@ -164,11 +152,7 @@ void main() {
       });
 
       test('copies with changes', () {
-        final todo = Todo(
-          id: 'test-id',
-          title: 'Test Todo',
-          updatedAt: now,
-        );
+        final todo = Todo(id: 'test-id', title: 'Test Todo', updatedAt: now);
 
         final copy = todo.copyWith(
           title: 'Updated Title',
@@ -185,11 +169,7 @@ void main() {
     });
 
     test('toString returns readable format', () {
-      final todo = Todo(
-        id: 'test-id',
-        title: 'Test Todo',
-        updatedAt: now,
-      );
+      final todo = Todo(id: 'test-id', title: 'Test Todo', updatedAt: now);
 
       expect(
         todo.toString(),

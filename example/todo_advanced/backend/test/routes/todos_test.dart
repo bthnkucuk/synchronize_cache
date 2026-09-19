@@ -50,10 +50,7 @@ void main() {
       when(() => context.request).thenReturn(
         Request.post(
           Uri.parse('http://localhost/todos'),
-          body: jsonEncode({
-            'id': 'custom-id',
-            'title': 'Test Todo',
-          }),
+          body: jsonEncode({'id': 'custom-id', 'title': 'Test Todo'}),
         ),
       );
 
@@ -68,9 +65,8 @@ void main() {
 
   group('GET /todos', () {
     test('returns empty list when no todos', () async {
-      when(() => context.request).thenReturn(
-        Request.get(Uri.parse('http://localhost/todos')),
-      );
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos')));
 
       final response = await todos_index.onRequest(context);
 
@@ -81,20 +77,15 @@ void main() {
     });
 
     test('returns list of todos', () async {
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'First',
-        updatedAt: DateTime.now().toUtc(),
-      ));
-      repository.create(Todo(
-        id: 'todo-2',
-        title: 'Second',
-        updatedAt: DateTime.now().toUtc(),
-      ));
-
-      when(() => context.request).thenReturn(
-        Request.get(Uri.parse('http://localhost/todos')),
+      repository.create(
+        Todo(id: 'todo-1', title: 'First', updatedAt: DateTime.now().toUtc()),
       );
+      repository.create(
+        Todo(id: 'todo-2', title: 'Second', updatedAt: DateTime.now().toUtc()),
+      );
+
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos')));
 
       final response = await todos_index.onRequest(context);
 
@@ -108,15 +99,10 @@ void main() {
   group('GET /todos/:id', () {
     test('returns todo by id', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Test',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Test', updatedAt: now));
 
-      when(() => context.request).thenReturn(
-        Request.get(Uri.parse('http://localhost/todos/todo-1')),
-      );
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos/todo-1')));
 
       final response = await todos_id.onRequest(context, 'todo-1');
 
@@ -141,11 +127,7 @@ void main() {
   group('PUT /todos/:id', () {
     test('updates todo without conflict check', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Original',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Original', updatedAt: now));
 
       when(() => context.request).thenReturn(
         Request.put(
@@ -165,11 +147,7 @@ void main() {
 
     test('returns 409 conflict when base_updated_at mismatch', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Original',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Original', updatedAt: now));
 
       final oldTimestamp = now.subtract(const Duration(hours: 1));
 
@@ -196,11 +174,7 @@ void main() {
 
     test('updates with X-Force-Update header ignoring conflict', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Original',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Original', updatedAt: now));
 
       final oldTimestamp = now.subtract(const Duration(hours: 1));
 
@@ -225,11 +199,7 @@ void main() {
 
     test('respects idempotency key', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Original',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Original', updatedAt: now));
 
       when(() => context.request).thenReturn(
         Request.put(
@@ -261,17 +231,10 @@ void main() {
   group('DELETE /todos/:id', () {
     test('soft deletes todo', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Test',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Test', updatedAt: now));
 
       when(() => context.request).thenReturn(
-        Request.delete(
-          Uri.parse('http://localhost/todos/todo-1'),
-          headers: {},
-        ),
+        Request.delete(Uri.parse('http://localhost/todos/todo-1'), headers: {}),
       );
 
       final response = await todos_id.onRequest(context, 'todo-1');
@@ -297,11 +260,7 @@ void main() {
 
     test('returns 409 conflict with X-Base-Updated-At mismatch', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Test',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Test', updatedAt: now));
 
       final oldTimestamp = now.subtract(const Duration(hours: 1));
 
@@ -323,11 +282,7 @@ void main() {
 
     test('deletes with X-Force-Delete header ignoring conflict', () async {
       final now = DateTime.now().toUtc();
-      repository.create(Todo(
-        id: 'todo-1',
-        title: 'Test',
-        updatedAt: now,
-      ));
+      repository.create(Todo(id: 'todo-1', title: 'Test', updatedAt: now));
 
       final oldTimestamp = now.subtract(const Duration(hours: 1));
 

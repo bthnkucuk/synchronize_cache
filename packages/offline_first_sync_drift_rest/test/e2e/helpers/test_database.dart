@@ -32,38 +32,38 @@ class TestEntity {
   final String? tags;
 
   factory TestEntity.fromJson(Map<String, dynamic> json) => TestEntity(
-        id: json['id'] as String,
-        updatedAt: DateTime.parse(json['updated_at'] as String),
-        deletedAt: json['deleted_at'] != null
-            ? DateTime.parse(json['deleted_at'] as String)
-            : null,
-        name: json['name'] as String? ?? '',
-        mood: json['mood'] as int?,
-        energy: json['energy'] as int?,
-        notes: json['notes'] as String?,
-        settings: json['settings'] is String
-            ? json['settings'] as String
-            : json['settings'] != null
-                ? jsonEncode(json['settings'])
-                : null,
-        tags: json['tags'] is String
-            ? json['tags'] as String
-            : json['tags'] != null
-                ? jsonEncode(json['tags'])
-                : null,
-      );
+    id: json['id'] as String,
+    updatedAt: DateTime.parse(json['updated_at'] as String),
+    deletedAt: json['deleted_at'] != null
+        ? DateTime.parse(json['deleted_at'] as String)
+        : null,
+    name: json['name'] as String? ?? '',
+    mood: json['mood'] as int?,
+    energy: json['energy'] as int?,
+    notes: json['notes'] as String?,
+    settings: json['settings'] is String
+        ? json['settings'] as String
+        : json['settings'] != null
+        ? jsonEncode(json['settings'])
+        : null,
+    tags: json['tags'] is String
+        ? json['tags'] as String
+        : json['tags'] != null
+        ? jsonEncode(json['tags'])
+        : null,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'updated_at': updatedAt.toIso8601String(),
-        'deleted_at': deletedAt?.toIso8601String(),
-        'name': name,
-        'mood': mood,
-        'energy': energy,
-        'notes': notes,
-        'settings': settings,
-        'tags': tags,
-      };
+    'id': id,
+    'updated_at': updatedAt.toIso8601String(),
+    'deleted_at': deletedAt?.toIso8601String(),
+    'name': name,
+    'mood': mood,
+    'energy': energy,
+    'notes': notes,
+    'settings': settings,
+    'tags': tags,
+  };
 
   Map<String, Object?>? get settingsMap =>
       settings != null ? jsonDecode(settings!) as Map<String, Object?> : null;
@@ -96,4 +96,3 @@ class TestDatabase extends _$TestDatabase with SyncDatabaseMixin {
   @override
   int get schemaVersion => 1;
 }
-

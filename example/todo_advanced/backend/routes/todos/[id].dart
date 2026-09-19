@@ -45,10 +45,15 @@ Future<Response> _put(RequestContext context, String id) async {
 
     // Validate required fields
     final title = json['title'];
-    if (title == null || title is! String || title.isEmpty || title.length > 500) {
+    if (title == null ||
+        title is! String ||
+        title.isEmpty ||
+        title.length > 500) {
       return Response(
         statusCode: 400,
-        body: jsonEncode({'error': 'title is required and must be 1-500 characters'}),
+        body: jsonEncode({
+          'error': 'title is required and must be 1-500 characters',
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     }
@@ -95,10 +100,7 @@ Future<Response> _put(RequestContext context, String id) async {
       ),
       OperationConflict(:final current) => Response(
         statusCode: 409,
-        body: jsonEncode({
-          'error': 'conflict',
-          'current': current.toJson(),
-        }),
+        body: jsonEncode({'error': 'conflict', 'current': current.toJson()}),
         headers: {'Content-Type': 'application/json'},
       ),
       OperationNotFound() => Response(
@@ -140,10 +142,7 @@ Future<Response> _delete(RequestContext context, String id) async {
     OperationSuccess() => Response(statusCode: 204),
     OperationConflict(:final current) => Response(
       statusCode: 409,
-      body: jsonEncode({
-        'error': 'conflict',
-        'current': current.toJson(),
-      }),
+      body: jsonEncode({'error': 'conflict', 'current': current.toJson()}),
       headers: {'Content-Type': 'application/json'},
     ),
     OperationNotFound() => Response(

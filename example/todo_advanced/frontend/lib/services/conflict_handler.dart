@@ -48,11 +48,9 @@ class ConflictHandler extends ChangeNotifier {
 
   /// Logs a sync event.
   void logEvent(String message, {SyncLogLevel level = SyncLogLevel.info}) {
-    _log.add(SyncLogEntry(
-      timestamp: DateTime.now(),
-      message: message,
-      level: level,
-    ));
+    _log.add(
+      SyncLogEntry(timestamp: DateTime.now(), message: message, level: level),
+    );
     // Prevent unbounded memory growth
     while (_log.length > _maxLogEntries) {
       _log.removeAt(0);
@@ -71,10 +69,7 @@ class ConflictHandler extends ChangeNotifier {
       localTodo = Todo.fromJson(conflict.localData.cast<String, dynamic>());
       serverTodo = Todo.fromJson(conflict.serverData.cast<String, dynamic>());
     } catch (e) {
-      logEvent(
-        'Failed to parse conflict data: $e',
-        level: SyncLogLevel.error,
-      );
+      logEvent('Failed to parse conflict data: $e', level: SyncLogLevel.error);
       // Defer resolution on parse error - will retry on next sync
       return const DeferResolution();
     }
@@ -261,8 +256,4 @@ class SyncLogEntry {
 }
 
 /// Log level for sync events.
-enum SyncLogLevel {
-  info,
-  warning,
-  error,
-}
+enum SyncLogLevel { info, warning, error }
