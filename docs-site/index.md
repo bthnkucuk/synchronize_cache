@@ -59,8 +59,8 @@ flowchart LR
 ::: code-group
 ```yaml [pubspec.yaml]
 dependencies:
-  offline_first_sync_drift: ^0.2.1
-  offline_first_sync_drift_rest: ^0.2.1
+  offline_first_sync_drift: ^0.2.2
+  offline_first_sync_drift_rest: ^0.2.2
   drift: ^2.26.1
 
 dev_dependencies:
