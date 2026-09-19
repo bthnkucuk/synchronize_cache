@@ -1,4 +1,5 @@
 import 'package:todo_advanced_backend/models/todo.dart';
+import 'package:todo_advanced_backend/utils/server_clock.dart';
 
 /// Represents the result of an update/delete operation.
 sealed class OperationResult {}
@@ -143,7 +144,7 @@ class TodoRepository {
       }
     }
 
-    final now = DateTime.now().toUtc();
+    final now = serverNow();
     _todos[id] = current.copyWith(updatedAt: now, deletedAt: now);
     if (idempotencyKey != null) {
       _addIdempotencyKey(idempotencyKey);

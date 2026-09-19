@@ -39,12 +39,31 @@ class AppDatabase extends _$AppDatabase with SyncDatabaseMixin {
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        // v2 stores DateTime as ISO-8601 text (see build.yaml). Convert the
+        // unix-second integers written by v1; their sub-second part is
+        // already lost, the next pull restores the exact server versions.
+        for (final column in const [
+          'updated_at',
+          'deleted_at',
+          'deleted_at_local',
+          'due_date',
+        ]) {
+          await customStatement(
+            "UPDATE todos SET $column = "
+            "strftime('%Y-%m-%dT%H:%M:%fZ', $column, 'unixepoch') "
+            "WHERE typeof($column) = 'integer'",
+          );
+        }
+      }
     },
   );
 }
