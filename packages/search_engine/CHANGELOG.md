@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-09-20
+
+### Fixed
+
+- `incrementPendingTryCount` tells drift that it changed
+  `pending_search_items` (it ran a raw `customStatement`, which reports
+  nothing), so a `watch()` on the pending queue sees an item move towards the
+  dead-letter threshold. `watchSearch` was not affected: every index write is
+  paired with a typed write to `search_lookup`, which is what it listens to.
+
 ## [0.2.1] - 2026-09-19
 
 ### Added

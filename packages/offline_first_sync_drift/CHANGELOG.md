@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-20
+
+### Fixed
+
+- A queued **delete** that conflicts with an edit made elsewhere is resolved
+  under `ConflictStrategy.autoPreserve` — the default — and `merge`: the
+  server's version is kept (written back locally) and the delete is dropped.
+  Both strategies answered `AcceptMerged`, which cannot be pushed for a
+  delete, so the op was reported unresolved, never counted as an attempt,
+  never became stuck, and was sent again by every sync, forever. A manual
+  resolver that returns `AcceptMerged` for a delete gets the same treatment.
+  `clientWins` / `lastWriteWins` still delete, `serverWins` still keeps.
+- Stream queries on the sync tables are re-run when the library changes them.
+  `ackOutbox`, `incrementOutboxTryCount`, `resetOutboxTryCount`,
+  `deleteOutboxMeta`, `purgeOutboxOlderThan`, `resetAllCursors` and
+  `clearSyncableTables` ran raw SQL without telling drift which table they
+  touched, so after a successful sync `watchOutboxCount()` /
+  `OutboxService.watchPendingCount()` / `watchStuckOutboxCount()` — and any
+  `watch()` an app builds on `sync_outbox`, e.g. a per-item "synced / not sent
+  yet" label — kept their old value until the app restarted. After
+  `fullResync(clearData: true)` lists kept showing the wiped rows when the
+  pull brought nothing.
+
 ## [0.2.2] - 2026-09-19
 
 ### Fixed
