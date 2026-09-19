@@ -110,6 +110,23 @@ class SyncEngine<DB extends GeneratedDatabase> {
 
   SyncDatabaseMixin get _syncDb => _db as SyncDatabaseMixin;
 
+  Future<void>? _outboxIndexesReady;
+
+  /// A database created by an older version of this package has the outbox
+  /// without its indexes; create them before the first sync of this engine.
+  Future<void> _ensureOutboxIndexes() =>
+      _outboxIndexesReady ??= _createOutboxIndexes();
+
+  Future<void> _createOutboxIndexes() async {
+    try {
+      await _syncDb.ensureSyncIndexes();
+    } catch (_) {
+      // They only make the outbox queries faster: never fail a sync over
+      // them, try again with the next one.
+      _outboxIndexesReady = null;
+    }
+  }
+
   static Map<String, SyncableTable<dynamic>> _buildTablesMap(
     List<SyncableTable<dynamic>> tables,
   ) {
@@ -285,6 +302,8 @@ class SyncEngine<DB extends GeneratedDatabase> {
     Set<String>? pushKinds,
     Set<String>? pullKinds,
   }) async {
+    await _ensureOutboxIndexes();
+
     // 1. If a full resync is already in flight, share it.
     if (_fullResyncFuture != null) return _fullResyncFuture!;
 
@@ -546,6 +565,8 @@ class SyncEngine<DB extends GeneratedDatabase> {
     });
 
     try {
+      await _ensureOutboxIndexes();
+
       _events
         ..add(FullResyncStarted(reason))
         ..add(const SyncStarted(SyncPhase.push));

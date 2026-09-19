@@ -306,6 +306,10 @@ typedef $$SyncOutboxTableProcessedTableManager =
       i1.SyncOutboxData,
       i0.PrefetchHooks Function()
     >;
+i0.Index get idxSyncOutboxKindTs => i0.Index(
+  'idx_sync_outbox_kind_ts',
+  'CREATE INDEX IF NOT EXISTS idx_sync_outbox_kind_ts ON sync_outbox (kind, ts)',
+);
 
 class $SyncOutboxTable extends i3.SyncOutbox
     with i0.TableInfo<$SyncOutboxTable, i1.SyncOutboxData> {
@@ -694,3 +698,12 @@ class SyncOutboxCompanion extends i0.UpdateCompanion<i1.SyncOutboxData> {
         .toString();
   }
 }
+
+i0.Index get idxSyncOutboxTs => i0.Index(
+  'idx_sync_outbox_ts',
+  'CREATE INDEX IF NOT EXISTS idx_sync_outbox_ts ON sync_outbox (ts)',
+);
+i0.Index get idxSyncOutboxKindEntity => i0.Index(
+  'idx_sync_outbox_kind_entity',
+  'CREATE INDEX IF NOT EXISTS idx_sync_outbox_kind_entity ON sync_outbox (kind, entity_id)',
+);

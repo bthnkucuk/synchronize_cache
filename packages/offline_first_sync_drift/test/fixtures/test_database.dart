@@ -102,7 +102,8 @@ class TestItems extends Table with SyncColumns {
   tables: [TestItems],
 )
 class TestDatabase extends $TestDatabase with SyncDatabaseMixin {
-  TestDatabase() : super(NativeDatabase.memory());
+  TestDatabase([QueryExecutor? executor])
+    : super(executor ?? NativeDatabase.memory());
 
   @override
   int get schemaVersion => 1;

@@ -248,6 +248,9 @@ abstract class $TestDatabase extends i0.GeneratedDatabase {
     syncCursors,
     syncOutboxMeta,
     syncOutbox,
+    i3.idxSyncOutboxKindTs,
+    i3.idxSyncOutboxTs,
+    i3.idxSyncOutboxKindEntity,
     testItems,
   ];
   @override
