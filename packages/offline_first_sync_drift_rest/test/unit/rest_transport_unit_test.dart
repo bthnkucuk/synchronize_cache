@@ -346,49 +346,130 @@ void main() {
   });
 
   group('Push conflict (409) parsing edge cases', () {
-    test('409 with empty body falls back to default PushConflict', () async {
-      final client = MockClient((req) async => http.Response('', 409));
-      final transport = buildTransport(client);
+    // A 409 must carry the server's record. The transport used to invent one
+    // — `serverData: {}` stamped with `DateTime.now()` — which made the server
+    // look unconditionally newer: `serverWins` / `lastWriteWins` then wrote an
+    // EMPTY entity over the local row, and `autoPreserve` force-pushed a merge
+    // built from local data only, discarding whatever the server really held.
+    UpsertOp conflictingOp() => UpsertOp(
+      opId: 'op-1',
+      kind: 'thing',
+      id: 'e1',
+      localTimestamp: DateTime.now().toUtc(),
+      payloadJson: const {'name': 'x'},
+    );
 
-      final res = await transport.push([
-        UpsertOp(
-          opId: 'op-1',
-          kind: 'thing',
-          id: 'e1',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: const {'name': 'x'},
+    Matcher isHttp409Error() => isA<PushError>().having(
+      (e) => e.error,
+      'error',
+      isA<TransportException>().having((e) => e.statusCode, 'statusCode', 409),
+    );
+
+    for (final (label, body) in [
+      ('an empty body', ''),
+      ('a malformed JSON body', 'not-json{'),
+      ('a JSON array', '[1, 2]'),
+      ('an error envelope without the record', '{"error": "version mismatch"}'),
+      ('an empty `current`', '{"error": "conflict", "current": {}}'),
+    ]) {
+      test(
+        '409 with $label is a push error, not an invented conflict',
+        () async {
+          final transport = buildTransport(
+            MockClient((req) async => http.Response(body, 409)),
+          );
+
+          final res = await transport.push([conflictingOp()]);
+
+          expect(res.results.single.result, isHttp409Error());
+        },
+      );
+    }
+
+    test('409 whose whole body IS the record is still a conflict', () async {
+      // Documented fallback (docs/backend-transport.md): `body` as a whole.
+      final transport = buildTransport(
+        MockClient(
+          (req) async => http.Response(
+            jsonEncode({
+              'id': 'e1',
+              'name': 'server',
+              'updated_at': '2024-06-05T10:00:00.000Z',
+            }),
+            409,
+          ),
         ),
-      ]);
+      );
 
-      expect(res.results[0].isConflict, isTrue);
-      final c = res.results[0].result as PushConflict;
-      expect(c.serverData, isEmpty);
-      expect(c.serverTimestamp, isNotNull);
+      final res = await transport.push([conflictingOp()]);
+
+      final conflict = res.results.single.result as PushConflict;
+      expect(conflict.serverData['name'], 'server');
+      expect(conflict.serverTimestamp, DateTime.utc(2024, 6, 5, 10));
     });
 
-    test(
-      '409 with malformed JSON body falls back to default PushConflict',
-      () async {
-        final client = MockClient(
-          (req) async => http.Response('not-json{', 409),
-        );
-        final transport = buildTransport(client);
-
-        final res = await transport.push([
-          UpsertOp(
-            opId: 'op-1',
-            kind: 'thing',
-            id: 'e1',
-            localTimestamp: DateTime.now().toUtc(),
-            payloadJson: const {'name': 'x'},
+    for (final (label, current) in [
+      ('no timestamp', '{"id": "e1", "name": "server"}'),
+      ('an unparseable timestamp', '{"id": "e1", "updated_at": "yesterday"}'),
+    ]) {
+      test('409 whose record has $label is a conflict against that record, '
+          'timestamped now', () async {
+        final before = DateTime.now().toUtc();
+        final transport = buildTransport(
+          MockClient(
+            (req) async => http.Response('{"current": $current}', 409),
           ),
-        ]);
+        );
 
-        expect(res.results[0].isConflict, isTrue);
-        final c = res.results[0].result as PushConflict;
-        expect(c.serverData, isEmpty);
-      },
-    );
+        final res = await transport.push([conflictingOp()]);
+
+        final conflict = res.results.single.result as PushConflict;
+        expect(conflict.serverData['id'], 'e1');
+        expect(conflict.serverTimestamp.isBefore(before), isFalse);
+      });
+    }
+
+    test('409 reads a zone-less server timestamp as UTC', () async {
+      final transport = buildTransport(
+        MockClient(
+          (req) async => http.Response(
+            jsonEncode({
+              'current': {'id': 'e1', 'updated_at': '2024-06-05T10:00:00.000'},
+            }),
+            409,
+          ),
+        ),
+      );
+
+      final res = await transport.push([conflictingOp()]);
+
+      final conflict = res.results.single.result as PushConflict;
+      expect(conflict.serverTimestamp, DateTime.utc(2024, 6, 5, 10));
+    });
+
+    test('batch: a 409 item without the record is a push error', () async {
+      final transport = buildTransport(
+        MockClient(
+          (req) async => http.Response(
+            jsonEncode({
+              'results': [
+                {
+                  'opId': 'op-1',
+                  'statusCode': 409,
+                  'error': {'error': 'version mismatch'},
+                },
+              ],
+            }),
+            200,
+          ),
+        ),
+        enableBatch: true,
+      );
+
+      final res = await transport.push([conflictingOp()]);
+
+      expect(res.results.single.result, isHttp409Error());
+    });
 
     test('409 prefers `current` over `serverData` when both present', () async {
       final client = MockClient(

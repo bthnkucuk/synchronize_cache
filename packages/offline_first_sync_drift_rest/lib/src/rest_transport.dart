@@ -497,56 +497,84 @@ class RestTransport implements TransportAdapter {
     );
   }
 
-  PushConflict _parseConflict(http.Response res) {
-    if (res.body.isNotEmpty) {
-      try {
-        final body = jsonDecode(res.body) as Map<String, Object?>;
-        return _parseConflictMap(body, res.headers['etag']);
-      } catch (_) {}
+  /// Turns a 409 response into a [PushConflict], or into a [PushError] when
+  /// the response does not carry the server's record.
+  PushResult _parseConflict(http.Response res) {
+    Object? body;
+    try {
+      body = res.body.isEmpty ? null : jsonDecode(res.body);
+    } on FormatException {
+      body = null;
     }
-
-    return PushConflict(
-      serverData: {},
-      serverTimestamp: DateTime.now().toUtc(),
+    return _parseConflictMap(
+      body is Map<String, Object?> ? body : const {},
+      headerEtag: res.headers['etag'],
+      rawBody: res.body,
     );
   }
 
-  PushConflict _parseConflictMap(
-    Map<String, Object?> body, [
+  /// A conflict can only be resolved against the record the server holds.
+  ///
+  /// Without one the transport used to invent `serverData: {}` stamped with
+  /// `DateTime.now()`: the server looked unconditionally newer, so
+  /// `serverWins` / `lastWriteWins` wrote an empty entity over the local row,
+  /// and `autoPreserve` force-pushed a merge built from local data alone. A
+  /// 409 without a usable record is reported as the protocol error it is; the
+  /// op stays queued and is retried.
+  PushResult _parseConflictMap(
+    Map<String, Object?> body, {
     String? headerEtag,
-  ]) {
-    Map<String, Object?> serverData = {};
-    DateTime serverTimestamp = DateTime.now().toUtc();
-    String? serverVersion;
-
-    try {
-      // Support multiple server response formats
-      serverData =
-          (body['current'] as Map<String, Object?>?) ??
-          (body['serverData'] as Map<String, Object?>?) ??
-          body;
-
-      final ts =
-          body['serverTimestamp'] ??
-          serverData[SyncFields.updatedAt] ??
-          serverData[SyncFields.updatedAtSnake];
-      if (ts != null) {
-        serverTimestamp = ts is DateTime
-            ? ts
-            : DateTime.parse(ts.toString()).toUtc();
-      }
-
-      serverVersion =
-          body['version']?.toString() ??
-          serverData['version']?.toString() ??
-          headerEtag;
-    } catch (_) {}
+    String? rawBody,
+  }) {
+    final serverData = _conflictRecord(body);
+    if (serverData == null) {
+      return PushError(
+        TransportException.httpError(409, rawBody ?? jsonEncode(body)),
+      );
+    }
 
     return PushConflict(
       serverData: serverData,
-      serverTimestamp: serverTimestamp,
-      serverVersion: serverVersion,
+      // A record without a usable timestamp is still the server's record;
+      // "now" keeps the long-standing behaviour of treating it as current.
+      serverTimestamp:
+          _conflictTimestamp(body, serverData) ?? DateTime.now().toUtc(),
+      serverVersion:
+          body['version']?.toString() ??
+          serverData['version']?.toString() ??
+          headerEtag,
     );
+  }
+
+  /// The server's record, in the documented order: `current`, `serverData`,
+  /// then the body as a whole. The whole body only counts when it looks like
+  /// an entity — an error envelope such as `{"error": "…"}` is not one.
+  Map<String, Object?>? _conflictRecord(Map<String, Object?> body) {
+    for (final key in const ['current', 'serverData']) {
+      final nested = body[key];
+      if (nested is Map<String, Object?> && nested.isNotEmpty) return nested;
+    }
+
+    final looksLikeEntity =
+        SyncFields.idFields.any(body.containsKey) ||
+        SyncFields.updatedAtFields.any(body.containsKey);
+    return looksLikeEntity ? body : null;
+  }
+
+  DateTime? _conflictTimestamp(
+    Map<String, Object?> body,
+    Map<String, Object?> serverData,
+  ) {
+    final raw =
+        body['serverTimestamp'] ??
+        serverData[SyncFields.updatedAt] ??
+        serverData[SyncFields.updatedAtSnake];
+    if (raw == null) return null;
+    try {
+      return parseServerTimestamp(raw);
+    } on FormatException {
+      return null;
+    }
   }
 
   /// Forces push of an operation, bypassing conflict detection.

@@ -2072,14 +2072,17 @@ void main() {
 
       server.returnIncompleteConflict(true);
 
-      Object? caughtError;
-      try {
-        await engine.sync();
-      } catch (e) {
-        caughtError = e;
-      }
+      // A 409 without the server's record cannot be resolved. It used to be
+      // parsed as a conflict whose record was the error envelope itself,
+      // which blew up when `serverWins` tried to store it. It is now a failed
+      // push: nothing is thrown, nothing is written locally, and the op stays
+      // queued for the next sync.
+      final stats = await engine.sync(pullKinds: const {});
 
-      expect(caughtError, test_matchers.isNotNull);
+      expect(stats.conflicts, 0);
+      expect(stats.errors, 1);
+      expect(await db.takeOutbox(), hasLength(1));
+      expect(server.get('test_entity', 'entity-1')!['name'], 'Server Modified');
 
       server.returnIncompleteConflict(false);
       engine.dispose();
