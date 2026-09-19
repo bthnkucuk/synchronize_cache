@@ -323,6 +323,84 @@ void main() {
       );
     });
 
+    test('treats a zone-less server timestamp as UTC for the cursor', () async {
+      // Regression: `DateTime.parse(s).toUtc()` reads a string without a zone
+      // designator as LOCAL time, so the cursor moved by the device's UTC
+      // offset. West of UTC it jumped ahead and rows in the gap were skipped.
+      when(
+        () => transport.pull(
+          kind: any(named: 'kind'),
+          updatedSince: any(named: 'updatedSince'),
+          pageSize: any(named: 'pageSize'),
+          pageToken: any(named: 'pageToken'),
+          afterId: any(named: 'afterId'),
+          includeDeleted: any(named: 'includeDeleted'),
+        ),
+      ).thenAnswer(
+        (_) async => const PullPage(
+          items: [
+            {'id': 'a', 'updated_at': '2024-01-01T10:00:00.000', 'name': 'A'},
+          ],
+        ),
+      );
+
+      await buildService().pullKind('test_item');
+
+      final cursor = await cursorService.get('test_item');
+      expect(cursor == null, isFalse, reason: 'a cursor must be stored');
+      expect(
+        cursor!.ts.isAtSameMomentAs(DateTime.utc(2024, 1, 1, 10)),
+        isTrue,
+        reason:
+            'stored ${cursor.ts.toUtc().toIso8601String()} on a device with '
+            'UTC offset ${DateTime(2024).timeZoneOffset}',
+      );
+    });
+
+    test('rejects an item without any id instead of storing the cursor id '
+        '"null"', () async {
+      // A model whose fromJson tolerates a missing id (e.g. it derives the
+      // key from other fields) used to get `null.toString()` == "null"
+      // persisted as the keyset-pagination id.
+      tables = {
+        'test_item': SyncableTable<TestItem>(
+          kind: 'test_item',
+          table: db.testItems,
+          fromJson: (json) =>
+              TestItem.fromJson({...json, 'id': json['id'] ?? 'derived'}),
+          toJson: (e) => e.toJson(),
+          toInsertable: (e) => e.toInsertable(),
+          getId: (e) => e.id,
+          getUpdatedAt: (e) => e.updatedAt,
+        ),
+      };
+      when(
+        () => transport.pull(
+          kind: any(named: 'kind'),
+          updatedSince: any(named: 'updatedSince'),
+          pageSize: any(named: 'pageSize'),
+          pageToken: any(named: 'pageToken'),
+          afterId: any(named: 'afterId'),
+          includeDeleted: any(named: 'includeDeleted'),
+        ),
+      ).thenAnswer(
+        (_) async => PullPage(
+          items: [
+            {
+              'updated_at': DateTime.utc(2024).toIso8601String(),
+              'name': 'no id',
+            },
+          ],
+        ),
+      );
+
+      await expectLater(
+        buildService().pullKind('test_item'),
+        throwsA(isA<ParseException>()),
+      );
+      expect(await cursorService.get('test_item') == null, isTrue);
+    });
+
     test('wraps non-SyncException errors in SyncOperationException', () async {
       when(
         () => transport.pull(

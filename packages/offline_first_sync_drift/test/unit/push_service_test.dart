@@ -407,12 +407,67 @@ void main() {
     );
 
     test(
-      'unresolved conflict without skipConflictingOps gets resolved on retry',
+      'a conflict that stays unresolved is pushed once per pushAll, not in a '
+      'loop',
       () async {
-        // Two-attempt scenario: first push returns conflict, second returns
-        // success — proves the loop continues until either resolution or
-        // ack. This is the safe variant of "stays in outbox" without risking
-        // an infinite loop in the test.
+        // Regression: an unresolved conflict was neither acked nor counted
+        // as a failure, so the `while (true)` in pushAll re-took and
+        // re-pushed the same op forever (sync() never returned).
+        await outbox.enqueue(_upsert(id: 'spin'));
+
+        var pushCall = 0;
+        when(() => transport.push(any())).thenAnswer((invocation) async {
+          pushCall++;
+          if (pushCall > 10) {
+            // Safety valve so a regression fails the test instead of
+            // hanging the suite.
+            throw StateError('push loop is spinning');
+          }
+          final ops = invocation.positionalArguments[0] as List<Op>;
+          return BatchPushResult(
+            results: ops
+                .map(
+                  (o) => OpPushResult(
+                    opId: o.opId,
+                    result: PushConflict(
+                      serverData: const {'id': 'spin'},
+                      serverTimestamp: DateTime.utc(2024, 6, 5),
+                    ),
+                  ),
+                )
+                .toList(),
+          );
+        });
+
+        final conflictStub = _StubConflictService<TestDatabase>(
+          const ConflictResolutionResult(resolved: false),
+        );
+        final service = buildService(
+          conflictService: conflictStub as ConflictService<dynamic>,
+        );
+
+        final stats = await service.pushAll();
+
+        expect(pushCall, 1, reason: 'one push per pushAll run');
+        expect(conflictStub.callCount, 1);
+        expect(stats.conflicts, 1);
+        expect(stats.conflictsResolved, 0);
+
+        // The op is still queued so the next sync can retry it.
+        final pending = await outbox.take(
+          limit: 100,
+          maxTryCountExclusive: null,
+        );
+        expect(pending.map((op) => op.id), ['spin']);
+      },
+    );
+
+    test(
+      'unresolved conflict without skipConflictingOps is retried by the next '
+      'pushAll',
+      () async {
+        // First push returns a conflict that stays unresolved; the op must
+        // remain queued. The NEXT pushAll run retries it and succeeds.
         await outbox.enqueue(_upsert(id: 'c3'));
 
         var pushCall = 0;
@@ -426,7 +481,7 @@ void main() {
                     (o) => OpPushResult(
                       opId: o.opId,
                       result: PushConflict(
-                        serverData: {'id': 'c3'},
+                        serverData: const {'id': 'c3'},
                         serverTimestamp: DateTime.utc(2024, 6, 5),
                       ),
                     ),
@@ -444,28 +499,31 @@ void main() {
           );
         });
 
-        // Conflict service: any call returns unresolved (op stays in
-        // outbox). Loop re-fetches outbox, push#2 returns success, op is
-        // acked.
         final conflictStub = _StubConflictService<TestDatabase>(
           const ConflictResolutionResult(resolved: false),
         );
-
         final service = buildService(
           conflictService: conflictStub as ConflictService<dynamic>,
         );
-        final stats = await service.pushAll();
 
+        final first = await service.pushAll();
+        expect(pushCall, 1);
         expect(conflictStub.callCount, 1);
-        expect(pushCall, 2);
-        expect(stats.conflicts, 1);
-        expect(stats.pushed, 1);
-
-        final pending = await outbox.take(
-          limit: 100,
-          maxTryCountExclusive: null,
+        expect(first.conflicts, 1);
+        expect(first.pushed, 0);
+        expect(
+          await outbox.take(limit: 100, maxTryCountExclusive: null),
+          hasLength(1),
+          reason: 'unresolved op stays queued',
         );
-        expect(pending, isEmpty);
+
+        final second = await service.pushAll();
+        expect(pushCall, 2);
+        expect(second.pushed, 1);
+        expect(
+          await outbox.take(limit: 100, maxTryCountExclusive: null),
+          isEmpty,
+        );
       },
     );
   });

@@ -163,6 +163,7 @@ final class PushService {
           await _outbox.recordFailures(failed);
         }
 
+        var hadUnresolvedConflicts = false;
         for (final entry in conflictOps.entries) {
           final result = await _conflictService.resolve(entry.key, entry.value);
           if (result.resolved) {
@@ -170,6 +171,8 @@ final class PushService {
             successOpIds.add(entry.key.opId);
           } else if (_config.skipConflictingOps) {
             successOpIds.add(entry.key.opId);
+          } else {
+            hadUnresolvedConflicts = true;
           }
         }
 
@@ -185,9 +188,11 @@ final class PushService {
           );
         }
 
-        // Do not spin on the same failed operations in a single sync run.
-        // Leave unresolved items in outbox for the next sync attempt.
-        if (hadPushErrors) {
+        // Do not spin on the same operations in a single sync run. Failed
+        // pushes and unresolved conflicts both stay in the outbox, so the
+        // next `take` would return them again and produce the same result.
+        // Leave them for the next sync attempt.
+        if (hadPushErrors || hadUnresolvedConflicts) {
           break;
         }
       }

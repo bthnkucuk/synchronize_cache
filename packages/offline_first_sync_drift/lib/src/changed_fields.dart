@@ -1,7 +1,10 @@
+import 'package:offline_first_sync_drift/src/internal/deep_equals.dart';
+
 /// Helper to track changed fields for conflict-aware updates.
 ///
 /// `changedFields` is used by conflict resolution (e.g. autoPreserve) to avoid
 /// overwriting server-side changes for fields the user did not edit.
+
 class ChangedFieldsTracker {
   final Set<String> _fields = <String>{};
 
@@ -57,7 +60,7 @@ abstract final class ChangedFieldsDiff {
 
     for (final key in keys) {
       if (ignoredFields.contains(key)) continue;
-      if (!_deepEquals(before[key], after[key])) {
+      if (!deepEquals(before[key], after[key])) {
         changed.add(key);
       }
     }
@@ -72,40 +75,5 @@ abstract final class ChangedFieldsDiff {
   }) {
     final changed = diffMaps(before, after, ignoredFields: ignoredFields);
     return changed.isEmpty ? null : changed;
-  }
-
-  static bool _deepEquals(Object? a, Object? b) {
-    if (identical(a, b)) return true;
-    if (a == null || b == null) return a == b;
-
-    if (a is Map && b is Map) {
-      if (a.length != b.length) return false;
-      for (final key in a.keys) {
-        if (!b.containsKey(key)) return false;
-        if (!_deepEquals(a[key], b[key])) return false;
-      }
-      return true;
-    }
-
-    if (a is List && b is List) {
-      if (a.length != b.length) return false;
-      for (var i = 0; i < a.length; i++) {
-        if (!_deepEquals(a[i], b[i])) return false;
-      }
-      return true;
-    }
-
-    // Special-case doubles: NaN == NaN must report true for change detection.
-    // IEEE 754 says NaN != NaN, but for diffing purposes two NaN values
-    // represent the same "missing/invalid number" state, so we treat them
-    // as equal. Without this, `identical(a, b)` at the top can return either
-    // true or false for two NaN doubles depending on whether the VM happened
-    // to canonicalize them, making diffMaps non-deterministic for NaN fields.
-    if (a is double && b is double) {
-      if (a.isNaN && b.isNaN) return true;
-      return a == b;
-    }
-
-    return a == b;
   }
 }

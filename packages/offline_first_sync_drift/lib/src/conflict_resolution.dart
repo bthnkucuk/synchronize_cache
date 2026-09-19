@@ -1,4 +1,5 @@
 import 'package:offline_first_sync_drift/src/constants.dart';
+import 'package:offline_first_sync_drift/src/internal/deep_equals.dart';
 
 /// Strategies and types for sync conflict resolution.
 
@@ -278,8 +279,15 @@ abstract final class ConflictUtils {
         continue;
       }
 
-      // Local is null and server is present: keep server
+      // Local is null and server is present. When the caller told us which
+      // fields the user changed, a null here is a deliberate clear and must
+      // win; without that information keep the server value.
       if (localVal == null && serverVal != null) {
+        if (changedFields != null) {
+          result[key] = null;
+          localFieldsUsed.add(key);
+          serverFieldsUsed.remove(key);
+        }
         continue;
       }
 
@@ -324,7 +332,9 @@ abstract final class ConflictUtils {
           result.add(item);
         }
       } else {
-        if (!server.contains(item)) {
+        // `contains` would compare maps and lists by identity and append an
+        // equal, separately decoded item again on every conflict.
+        if (!server.any((s) => deepEquals(s, item))) {
           result.add(item);
         }
       }
