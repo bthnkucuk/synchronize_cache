@@ -1,5 +1,12 @@
+import 'dart:convert';
+
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
 import 'package:test/test.dart';
+
+/// A separately allocated, structurally equal copy — what both sides hold
+/// after a JSON round trip.
+List<Object?> _decodedCopy(List<Object?> value) =>
+    jsonDecode(jsonEncode(value)) as List<Object?>;
 
 void main() {
   group('ConflictStrategy', () {
@@ -331,6 +338,56 @@ void main() {
       expect(result.serverFields, contains('value'));
     });
 
+    test('a changed field that is null locally is an explicit clear', () {
+      // Regression: the user cleared `note` (it is listed in changedFields),
+      // but the merge kept the server's old value — silent data loss under
+      // the default autoPreserve strategy.
+      final local = <String, Object?>{'id': '1', 'note': null, 'title': 'mine'};
+      final server = <String, Object?>{
+        'id': '1',
+        'note': 'old server note',
+        'title': 'theirs',
+      };
+
+      final result = ConflictUtils.preservingMerge(
+        local,
+        server,
+        changedFields: {'note', 'title'},
+      );
+
+      expect(result.data.containsKey('note'), isTrue);
+      expect(result.data['note'], isNull);
+      expect(result.data['title'], equals('mine'));
+      expect(result.localFields, containsAll(['note', 'title']));
+      expect(result.serverFields, isNot(contains('note')));
+    });
+
+    test('a null local field that was NOT changed keeps the server value', () {
+      final local = <String, Object?>{'id': '1', 'note': null, 'title': 'mine'};
+      final server = <String, Object?>{'id': '1', 'note': 'server note'};
+
+      final result = ConflictUtils.preservingMerge(
+        local,
+        server,
+        changedFields: {'title'},
+      );
+
+      expect(result.data['note'], equals('server note'));
+    });
+
+    test('a key absent from a partial local payload is not a clear', () {
+      final local = <String, Object?>{'id': '1', 'title': 'mine'};
+      final server = <String, Object?>{'id': '1', 'note': 'server note'};
+
+      final result = ConflictUtils.preservingMerge(
+        local,
+        server,
+        changedFields: {'note', 'title'},
+      );
+
+      expect(result.data['note'], equals('server note'));
+    });
+
     test('both null values are skipped', () {
       final local = <String, Object?>{'nullField': null};
       final server = <String, Object?>{'nullField': null};
@@ -355,6 +412,79 @@ void main() {
       expect(tags, contains('a'));
       expect(tags, contains('b'));
       expect(tags, contains('c'));
+    });
+
+    test('equal list items without an id are not duplicated', () {
+      // Regression: `List.contains` compares maps by identity, so equal but
+      // separately decoded objects were appended again on every conflict.
+      final local = <String, Object?>{
+        'checklist': [
+          <String, Object?>{'text': 'milk', 'done': false},
+          'plain',
+          3,
+        ],
+      };
+      final server = <String, Object?>{
+        'checklist': [
+          <String, Object?>{'text': 'milk', 'done': false},
+          'plain',
+          3,
+        ],
+      };
+
+      final result = ConflictUtils.preservingMerge(local, server);
+
+      expect(
+        result.data['checklist'],
+        equals([
+          {'text': 'milk', 'done': false},
+          'plain',
+          3,
+        ]),
+      );
+    });
+
+    test('repeated merges of id-less objects keep the list stable', () {
+      var checklist = <Object?>[
+        <String, Object?>{
+          'text': 'milk',
+          'nested': <Object?>[1, 2],
+        },
+      ];
+      final sizes = <int>[];
+      for (var round = 0; round < 4; round++) {
+        final merged = ConflictUtils.preservingMerge(
+          <String, Object?>{'checklist': _decodedCopy(checklist)},
+          <String, Object?>{'checklist': _decodedCopy(checklist)},
+          changedFields: {'checklist'},
+        );
+        checklist = merged.data['checklist']! as List<Object?>;
+        sizes.add(checklist.length);
+      }
+      expect(sizes, equals([1, 1, 1, 1]));
+    });
+
+    test('different id-less objects are both kept', () {
+      final result = ConflictUtils.preservingMerge(
+        <String, Object?>{
+          'checklist': [
+            <String, Object?>{'text': 'local only'},
+          ],
+        },
+        <String, Object?>{
+          'checklist': [
+            <String, Object?>{'text': 'server only'},
+          ],
+        },
+      );
+
+      expect(
+        result.data['checklist'],
+        equals([
+          {'text': 'server only'},
+          {'text': 'local only'},
+        ]),
+      );
     });
 
     test('list items with id are merged uniquely', () {

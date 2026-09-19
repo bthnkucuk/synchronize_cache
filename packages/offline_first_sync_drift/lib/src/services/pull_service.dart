@@ -6,6 +6,7 @@ import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/cursor.dart';
 import 'package:offline_first_sync_drift/src/exceptions.dart';
+import 'package:offline_first_sync_drift/src/internal/server_timestamp.dart';
 import 'package:offline_first_sync_drift/src/services/cursor_service.dart';
 import 'package:offline_first_sync_drift/src/sync_events.dart';
 import 'package:offline_first_sync_drift/src/syncable_table.dart';
@@ -96,19 +97,25 @@ final class PullService<DB extends GeneratedDatabase> {
         final ts =
             last[SyncFields.updatedAt] ?? last[SyncFields.updatedAtSnake];
         final id =
-            (last[SyncFields.id] ??
-                    last[SyncFields.idUpper] ??
-                    last[SyncFields.uuid])
-                .toString();
+            last[SyncFields.id] ??
+            last[SyncFields.idUpper] ??
+            last[SyncFields.uuid];
 
         if (ts == null) {
           throw ParseException(
             'Transport returned item without updatedAt for kind=$kind',
           );
         }
+        // `null.toString()` is the legal string "null"; persisting it would
+        // silently poison keyset pagination for this kind.
+        if (id == null) {
+          throw ParseException(
+            'Transport returned item without id for kind=$kind',
+          );
+        }
 
-        since = ts is DateTime ? ts : DateTime.parse(ts.toString()).toUtc();
-        afterId = id;
+        since = parseServerTimestamp(ts);
+        afterId = id.toString();
         await _cursorService.set(kind, Cursor(ts: since, lastId: afterId));
 
         done += page.items.length;
