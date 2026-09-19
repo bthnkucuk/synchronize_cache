@@ -419,6 +419,48 @@ if (await engine.outbox.hasOperations()) {
 }
 ```
 
+### Failed Operations, the Retry Budget and "Stuck" Operations
+
+Every operation has a retry budget, `SyncConfig.maxOutboxTryCount` (default 5).
+An operation that used it up is **stuck**: `take()` no longer returns it, so it
+cannot hold up the queue, and it stays in the outbox until you decide what to
+do with it. `SyncRunResult.stuckOpsCount` tells you after every sync.
+
+```dart
+final stuck = await engine.getStuckOperations();   // look at them
+await engine.retryStuckOperations();               // give them a new budget
+await engine.dropStuckOperations();                // or give up on them
+```
+
+The budget exists for operations the server will **never** accept (`400`,
+`413`, `422`, a payload that cannot be serialized …). Only such failures use
+it up. A failure that says nothing about the operation does not count, no
+matter how often it happens:
+
+| Failure | Counts against the operation? |
+|---|---|
+| No network, timeout (`NetworkException`, `TimeoutException`, `MaxRetriesExceededException`) | No |
+| `401`, `403` — missing or expired credentials | No |
+| `408`, `425`, `429` — "not now" | No |
+| `5xx` — the server is down or broken | No |
+| Any other `4xx`, or an error without a status | **Yes** |
+
+So a device that is offline for a day, or whose token expired, keeps its whole
+queue: the first sync that gets through delivers it. The failure is still
+reported — `OperationFailedEvent` (with `willRetry: true`), `SyncStats.errors`,
+and `last_error` / `last_tried_at` in `sync_outbox_meta`. The same rule is
+available to your own code as `SyncErrorInfo.isEnvironmental`.
+
+Before 0.2.2 **every** failed push counted, so five sync attempts without a
+network parked everything that was queued. Operations parked that way stay
+parked after the upgrade; call `engine.retryStuckOperations()` once if your
+app may have users in that state.
+
+If you write your own `TransportAdapter`, report failures so that the engine
+can tell them apart: `PushError(NetworkException(...))` when the request did
+not get through, `PushError(TransportException.httpError(status, body))` when
+the server answered.
+
 ---
 
 ## CursorService (`engine.cursors`)
