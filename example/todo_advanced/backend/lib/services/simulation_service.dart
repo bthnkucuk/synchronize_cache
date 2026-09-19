@@ -10,6 +10,25 @@ class SimulationService {
 
   final TodoRepository _repository;
 
+  Duration _pendingDelay = Duration.zero;
+  int _delayedRequests = 0;
+
+  /// Makes the next [count] API requests respond only after [delay].
+  ///
+  /// Simulates a stalled connection (captive portal, overloaded server) so
+  /// clients can demonstrate their request timeout handling.
+  void delayNextRequests(Duration delay, {int count = 1}) {
+    _pendingDelay = delay;
+    _delayedRequests = count;
+  }
+
+  /// Returns the delay to apply to the current request and consumes one slot.
+  Duration takeDelay() {
+    if (_delayedRequests <= 0) return Duration.zero;
+    _delayedRequests--;
+    return _pendingDelay;
+  }
+
   /// Adds a reminder to a todo's description.
   ///
   /// Simulates a server-side process that adds a reminder notice.

@@ -42,3 +42,6 @@ REFACTOR2.md
 
 # FVM Version Cache
 .fvm/
+
+# Playwright MCP artifacts (snapshots, console logs, screenshots)
+.playwright-mcp/

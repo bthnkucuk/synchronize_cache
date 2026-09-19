@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 
 import 'database/database.dart';
@@ -22,6 +24,13 @@ const kBackendUrl = String.fromEnvironment(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // On the web Flutter only builds the accessibility tree after the user opts
+  // in. Enable it up front so screen readers — and browser automation such as
+  // the Playwright scenario checks — can see the UI immediately.
+  if (kIsWeb) {
+    SemanticsBinding.instance.ensureSemantics();
+  }
 
   // Open database
   final db = AppDatabase.open();
