@@ -189,9 +189,38 @@ Queue of local operations waiting to be sent to the server.
 | `base_updated_at` | INTEGER? | `int?` | Timestamp of data received from server (for conflict detection) |
 | `changed_fields` | TEXT? | `String?` | JSON array of changed field names |
 
+Indexes (declared on the table, so `m.createAll()` creates them):
+
+| Index | Columns | Used by |
+|---|---|---|
+| `idx_sync_outbox_kind_ts` | `(kind, ts)` | taking the next batch of one kind, in dispatch order |
+| `idx_sync_outbox_ts` | `(ts)` | taking the next batch of any kind (full resync), `purgeOutboxOlderThan` |
+| `idx_sync_outbox_kind_entity` | `(kind, entity_id)` | finding and re-basing the ops still queued for a pushed entity |
+
+The engine reads the queue once per batch and updates it once per pushed
+operation. Without the indexes each of those statements scans and sorts the
+whole queue, so draining N operations costs N².
+
+A database created before 0.2.1 has the table without them. Nothing to
+migrate: they are declared `CREATE INDEX IF NOT EXISTS`, and `SyncEngine`
+creates them before its first sync. If you verify the schema after your
+migrations (`validateDatabaseSchema`), create them in `onUpgrade` — see
+[Migration](migration.md#outbox-indexes-021).
+
 Table definition (`outbox.dart`):
 
 ```dart
+@TableIndex.sql(
+  'CREATE INDEX IF NOT EXISTS idx_sync_outbox_kind_ts '
+  'ON sync_outbox (kind, ts)',
+)
+@TableIndex.sql(
+  'CREATE INDEX IF NOT EXISTS idx_sync_outbox_ts ON sync_outbox (ts)',
+)
+@TableIndex.sql(
+  'CREATE INDEX IF NOT EXISTS idx_sync_outbox_kind_entity '
+  'ON sync_outbox (kind, entity_id)',
+)
 @UseRowClass(SyncOutboxData)
 class SyncOutbox extends Table {
   TextColumn get opId => text()();

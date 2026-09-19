@@ -373,6 +373,25 @@ MigrationStrategy get migration => MigrationStrategy(
 - `onCreate` always calls `m.createAll()`.
 - `beforeOpen` — for PRAGMAs and settings unrelated to migration.
 
+### Outbox indexes (0.2.1)
+
+0.2.1 adds three indexes to `sync_outbox` (see
+[Database tables](database-tables.md#syncoutbox)). After upgrading, re-run
+`build_runner` so your generated database lists them; `m.createAll()` then
+creates them for new installations.
+
+Existing installations need **no** migration step: `SyncEngine` creates the
+indexes before its first sync, and they are declared `IF NOT EXISTS`, so it
+does not matter who creates them first. Add a step only if you verify your
+schema after migrations (`validateDatabaseSchema` from `drift_dev`), which
+otherwise reports them as missing until the first sync has run:
+
+```dart
+if (from < 7) {
+  await ensureSyncIndexes(); // from SyncDatabaseMixin; safe to repeat
+}
+```
+
 ---
 
 ## 6. When to Call fullResync After Migration

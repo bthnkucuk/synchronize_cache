@@ -104,6 +104,8 @@ Creates or updates an entity (upsert). The client generates the `id` (UUID) itse
 
 - `_baseUpdatedAt` — timestamp of the version the client based its changes on. The server compares it with the current `updated_at` of the record to detect conflicts. Absent for new records.
 
+> **Version precision.** The comparison is an equality check, so `updated_at` must survive a round trip through every client unchanged. Dart VM clients keep microseconds (the outbox stores them since 0.2.0), but browsers — JavaScript `Date`, and therefore Dart on the web — only keep **milliseconds**. If web clients talk to your API, generate `updated_at` with millisecond precision (or compare at millisecond precision); otherwise no web client can ever echo a version back and each of its edits is a conflict. Always return the saved record from a successful write: the client re-bases its queued edits of that record onto the returned `updated_at`.
+
 **Response Format (200 OK / 201 Created):**
 
 ```json
