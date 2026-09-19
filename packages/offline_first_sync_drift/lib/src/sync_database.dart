@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/cursor.dart';
-import 'package:offline_first_sync_drift/src/internal/outbox_timestamp.dart';
+import 'package:offline_first_sync_drift/src/internal/timestamp_codec.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/tables/cursors.drift.dart';
 import 'package:offline_first_sync_drift/src/tables/outbox.drift.dart';
@@ -113,7 +113,7 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
 
     if (op is UpsertOp) {
       final base = op.baseUpdatedAt;
-      final baseTs = base == null ? null : encodeOutboxTimestamp(base);
+      final baseTs = base == null ? null : encodeTimestamp(base);
       final changedFieldsJson = op.changedFields != null
           ? jsonEncode(op.changedFields!.toList())
           : null;
@@ -133,7 +133,7 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
       );
     } else if (op is DeleteOp) {
       final base = op.baseUpdatedAt;
-      final baseTs = base == null ? null : encodeOutboxTimestamp(base);
+      final baseTs = base == null ? null : encodeTimestamp(base);
 
       await into(_outbox).insertOnConflictUpdate(
         SyncOutboxCompanion.insert(
@@ -411,7 +411,7 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     final ts = DateTime.fromMillisecondsSinceEpoch(tsMillis, isUtc: true);
     final baseUpdatedAt = storedBase == null
         ? null
-        : decodeOutboxTimestamp(storedBase);
+        : decodeTimestamp(storedBase);
 
     if (opType == OpType.delete) {
       return DeleteOp(
@@ -467,7 +467,7 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     'WHERE ${TableColumns.kind} = ? AND ${TableColumns.entityId} = ? '
     'AND ${TableColumns.baseUpdatedAt} IS NOT NULL',
     variables: [
-      Variable.withInt(encodeOutboxTimestamp(serverVersion)),
+      Variable.withInt(encodeTimestamp(serverVersion)),
       Variable.withString(kind),
       Variable.withString(entityId),
     ],
@@ -554,20 +554,22 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
 
     final row = rows.first;
     return Cursor(
-      ts: DateTime.fromMillisecondsSinceEpoch(
-        row.read<int>(TableColumns.ts),
-        isUtc: true,
-      ),
+      ts: decodeTimestamp(row.read<int>(TableColumns.ts)),
       lastId: row.read<String>(TableColumns.lastId),
     );
   }
 
   /// Save cursor for an entity kind.
+  ///
+  /// The timestamp keeps its microseconds: it is the lower bound of the next
+  /// pull, and truncated to milliseconds it pointed just before the last row
+  /// of a server with microsecond versions, which every pull then delivered
+  /// again.
   Future<void> setCursor(String kind, Cursor cursor) async {
     await into(_cursors).insertOnConflictUpdate(
       SyncCursorsCompanion.insert(
         kind: kind,
-        ts: cursor.ts.toUtc().millisecondsSinceEpoch,
+        ts: encodeTimestamp(cursor.ts),
         lastId: cursor.lastId,
       ),
     );
