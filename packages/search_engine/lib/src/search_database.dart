@@ -235,9 +235,15 @@ mixin SearchDatabaseMixin on GeneratedDatabase {
     required String id,
     required String kind,
   }) async {
-    await customStatement(
-      'UPDATE pending_search_items SET try_count = try_count + 1 WHERE id = ? AND kind = ?',
-      [id, kind],
+    // `customUpdate` with `updates:`, not `customStatement`: the latter tells
+    // drift nothing, and a `watch()` on the pending queue would never see an
+    // item move towards the dead-letter threshold.
+    await customUpdate(
+      'UPDATE pending_search_items SET try_count = try_count + 1 '
+      'WHERE id = ? AND kind = ?',
+      variables: [Variable.withString(id), Variable.withString(kind)],
+      updates: {_pendingSearchItems},
+      updateKind: UpdateKind.update,
     );
   }
 
