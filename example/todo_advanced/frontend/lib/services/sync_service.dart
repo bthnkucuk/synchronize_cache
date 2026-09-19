@@ -7,7 +7,6 @@ import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:offline_first_sync_drift_rest/offline_first_sync_drift_rest.dart';
 
 import '../database/database.dart';
-import '../models/todo.dart';
 import 'conflict_handler.dart';
 // ignore: unused_import
 import '../sync/todo_sync.dart';
@@ -47,8 +46,8 @@ class SyncService extends ChangeNotifier {
     required SyncableTable<Todo> todoSync,
     int maxRetries = 5,
     int maxPushRetries = 5,
-  })  : _db = db,
-        _conflictHandler = conflictHandler {
+  }) : _db = db,
+       _conflictHandler = conflictHandler {
     _transport = RestTransport(
       base: Uri.parse(baseUrl),
       // No auth for demo
@@ -167,7 +166,10 @@ class SyncService extends ChangeNotifier {
   }
 
   /// Triggers server-side simulation endpoint.
-  Future<void> triggerServerSimulation(String endpoint, Map<String, dynamic> body) async {
+  Future<void> triggerServerSimulation(
+    String endpoint,
+    Map<String, dynamic> body,
+  ) async {
     try {
       final uri = Uri.parse('${_transport.base}$endpoint');
       final response = await http.post(
@@ -218,11 +220,17 @@ class SyncService extends ChangeNotifier {
         _status = SyncStatus.error;
         notifyListeners();
 
-      case OperationPushedEvent(:final kind, :final entityId, :final operationType):
+      case OperationPushedEvent(
+        :final kind,
+        :final entityId,
+        :final operationType,
+      ):
         _conflictHandler.logEvent('$operationType $kind: $entityId');
 
       case CacheUpdateEvent(:final kind, :final upserts, :final deletes):
-        _conflictHandler.logEvent('Cache: $kind - $upserts upserts, $deletes deletes');
+        _conflictHandler.logEvent(
+          'Cache: $kind - $upserts upserts, $deletes deletes',
+        );
 
       case ConflictDetectedEvent(:final conflict):
         _conflictHandler.logEvent(

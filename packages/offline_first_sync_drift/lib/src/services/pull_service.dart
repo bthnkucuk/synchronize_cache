@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart';
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/cursor.dart';
@@ -11,20 +12,16 @@ import 'package:offline_first_sync_drift/src/syncable_table.dart';
 import 'package:offline_first_sync_drift/src/transport_adapter.dart';
 
 /// Service for pulling changes from the server.
-class PullService<DB extends GeneratedDatabase> {
-  PullService({
-    required DB db,
-    required TransportAdapter transport,
-    required Map<String, SyncableTable<dynamic>> tables,
-    required CursorService cursorService,
-    required SyncConfig config,
-    required StreamController<SyncEvent> events,
-  }) : _db = db,
-       _transport = transport,
-       _tables = tables,
-       _cursorService = cursorService,
-       _config = config,
-       _events = events;
+@immutable
+final class PullService<DB extends GeneratedDatabase> {
+  const PullService({
+    required this._db,
+    required this._transport,
+    required this._tables,
+    required this._cursorService,
+    required this._config,
+    required this._events,
+  });
 
   final DB _db;
   final TransportAdapter _transport;
@@ -115,14 +112,15 @@ class PullService<DB extends GeneratedDatabase> {
         await _cursorService.set(kind, Cursor(ts: since, lastId: afterId));
 
         done += page.items.length;
-        _events.add(
-          PullPageProcessedEvent(
-            kind: kind,
-            pageSize: page.items.length,
-            totalDone: done,
-          ),
-        );
-        _events.add(SyncProgress(SyncPhase.pull, done, done));
+        _events
+          ..add(
+            PullPageProcessedEvent(
+              kind: kind,
+              pageSize: page.items.length,
+              totalDone: done,
+            ),
+          )
+          ..add(SyncProgress(SyncPhase.pull, done, done));
 
         token = page.nextPageToken;
         if (token == null && page.items.length < _config.pageSize) {

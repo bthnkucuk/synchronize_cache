@@ -140,7 +140,7 @@ class SearchIndexer<DB extends GeneratedDatabase> {
           // tableUpdates emit re-arms the loop.
           if (rows.length < batchSize) return;
         }
-      } catch (e, _) {
+      } catch (e) {
         // Indexer is best-effort; the cursor wasn't advanced past the failed
         // row so it'll be retried on the next mutation.
         // ignore: avoid_print

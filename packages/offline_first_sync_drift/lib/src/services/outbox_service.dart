@@ -1,13 +1,11 @@
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/exceptions.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/sync_database.dart';
 
 /// Service for working with the outbox queue.
-class OutboxService {
-  OutboxService(this._db);
-
-  final SyncDatabaseMixin _db;
-
+@immutable
+final class const OutboxService(final SyncDatabaseMixin _db) {
   /// Add operation to the send queue.
   Future<void> enqueue(Op op) async {
     try {
@@ -65,23 +63,19 @@ class OutboxService {
   Stream<int> watchPendingCount({
     Set<String>? kinds,
     int? maxTryCountExclusive,
-  }) {
-    return _db.watchOutboxCount(
-      kinds: kinds,
-      maxTryCountExclusive: maxTryCountExclusive,
-    );
-  }
+  }) => _db.watchOutboxCount(
+    kinds: kinds,
+    maxTryCountExclusive: maxTryCountExclusive,
+  );
 
   /// Reactive stream indicating whether pending operations exist.
   Stream<bool> watchHasOperations({
     Set<String>? kinds,
     int? maxTryCountExclusive,
-  }) {
-    return watchPendingCount(
-      kinds: kinds,
-      maxTryCountExclusive: maxTryCountExclusive,
-    ).map((count) => count > 0);
-  }
+  }) => watchPendingCount(
+    kinds: kinds,
+    maxTryCountExclusive: maxTryCountExclusive,
+  ).map((count) => count > 0);
 
   /// Increment try count for operations.
   Future<void> incrementTryCount(Iterable<String> opIds) async {

@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/changed_fields.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/op_id.dart';
@@ -27,15 +28,14 @@ class SyncWriter<DB extends GeneratedDatabase> {
   final SyncDatabaseMixin _syncDb;
 
   /// Create a typed writer bound to a registered [SyncableTable].
-  SyncEntityWriter<T, DB> forTable<T>(SyncableTable<T> table) {
-    return SyncEntityWriter<T, DB>._(
-      db: db,
-      syncDb: _syncDb,
-      table: table,
-      opIdFactory: opIdFactory,
-      clock: clock,
-    );
-  }
+  SyncEntityWriter<T, DB> forTable<T>(SyncableTable<T> table) =>
+      SyncEntityWriter<T, DB>._(
+        db: db,
+        syncDb: _syncDb,
+        table: table,
+        opIdFactory: opIdFactory,
+        clock: clock,
+      );
 
   static SyncDatabaseMixin _requireSyncDb(GeneratedDatabase db) {
     if (db is SyncDatabaseMixin) return db;
@@ -47,18 +47,15 @@ class SyncWriter<DB extends GeneratedDatabase> {
 }
 
 /// A typed writer for a single entity kind/table.
+@immutable
 class SyncEntityWriter<T, DB extends GeneratedDatabase> {
-  SyncEntityWriter._({
-    required DB db,
-    required SyncDatabaseMixin syncDb,
-    required SyncableTable<T> table,
-    required OpIdFactory opIdFactory,
-    required SyncClock clock,
-  }) : _db = db,
-       _syncDb = syncDb,
-       _table = table,
-       _opIdFactory = opIdFactory,
-       _clock = clock;
+  const SyncEntityWriter._({
+    required this._db,
+    required this._syncDb,
+    required this._table,
+    required this._opIdFactory,
+    required this._clock,
+  });
 
   final DB _db;
   final SyncDatabaseMixin _syncDb;

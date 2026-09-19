@@ -122,21 +122,12 @@ class $$SyncOutboxMetaTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i2.$$SyncOutboxMetaTableFilterComposer(
-                $db: db,
-                $table: table,
-              ),
-          createOrderingComposer:
-              () => i2.$$SyncOutboxMetaTableOrderingComposer(
-                $db: db,
-                $table: table,
-              ),
-          createComputedFieldComposer:
-              () => i2.$$SyncOutboxMetaTableAnnotationComposer(
-                $db: db,
-                $table: table,
-              ),
+          createFilteringComposer: () =>
+              i2.$$SyncOutboxMetaTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i2.$$SyncOutboxMetaTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () => i2
+              .$$SyncOutboxMetaTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 i0.Value<String> opId = const i0.Value.absent(),
@@ -161,16 +152,20 @@ class $$SyncOutboxMetaTableTableManager
                 lastError: lastError,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<i2.$SyncOutboxMetaTable, i1.SyncOutboxMetaData>(
+                    table,
+                  ),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i2.$SyncOutboxMetaTable,
+                    i1.SyncOutboxMetaData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -283,11 +278,10 @@ class $SyncOutboxMetaTable extends i3.SyncOutboxMeta
   i1.SyncOutboxMetaData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i1.SyncOutboxMetaData(
-      opId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}op_id'],
-          )!,
+      opId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}op_id'],
+      )!,
       lastTriedAt: attachedDatabase.typeMapping.read(
         i0.DriftSqlType.int,
         data['${effectivePrefix}last_tried_at'],

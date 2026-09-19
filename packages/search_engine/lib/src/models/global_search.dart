@@ -1,5 +1,4 @@
 import 'package:drift/drift.dart';
-import 'package:equatable/equatable.dart';
 
 /// Domain row representation of a hit in the FTS5 `global_search` virtual
 /// table.
@@ -14,7 +13,7 @@ import 'package:equatable/equatable.dart';
 /// User queries are normalized the same way before being sent to FTS5, so
 /// `şehir`-flavoured rows remain searchable as `sehir` without losing the
 /// original glyphs in the highlight output.
-class GlobalSearch extends Equatable {
+class GlobalSearch {
   const GlobalSearch({
     required this.originalId,
     required this.userId,
@@ -30,36 +29,33 @@ class GlobalSearch extends Equatable {
     this.hlContent,
   });
 
-  factory GlobalSearch.fromJson(Map<String, dynamic> json) {
-    return GlobalSearch(
-      originalId: json['original_id'] as String,
-      userId: json['user_id'] as String,
-      kind: json['kind'] as String,
-      title: json['title'] as String,
-      description: json['description'] as String,
-      content: json['content'] as String,
-      titleNormalized: (json['title_normalized'] as String?) ?? '',
-      descriptionNormalized: (json['description_normalized'] as String?) ?? '',
-      contentNormalized: (json['content_normalized'] as String?) ?? '',
-    );
-  }
+  factory GlobalSearch.fromJson(Map<String, dynamic> json) => GlobalSearch(
+    originalId: json['original_id'] as String,
+    userId: json['user_id'] as String,
+    kind: json['kind'] as String,
+    title: json['title'] as String,
+    description: json['description'] as String,
+    content: json['content'] as String,
+    titleNormalized: (json['title_normalized'] as String?) ?? '',
+    descriptionNormalized: (json['description_normalized'] as String?) ?? '',
+    contentNormalized: (json['content_normalized'] as String?) ?? '',
+  );
 
-  factory GlobalSearch.fromSql(QueryRow row) {
-    return GlobalSearch(
-      originalId: row.read<String>('original_id'),
-      userId: row.read<String>('user_id'),
-      kind: row.read<String>('kind'),
-      title: row.read<String>('title'),
-      description: row.read<String>('description'),
-      content: row.read<String>('content'),
-      titleNormalized: row.readNullable<String>('title_normalized') ?? '',
-      descriptionNormalized: row.readNullable<String>('description_normalized') ?? '',
-      contentNormalized: row.readNullable<String>('content_normalized') ?? '',
-      hlTitle: row.read<String>('hl_title'),
-      hlDescription: row.read<String>('hl_desc'),
-      hlContent: row.read<String>('hl_content'),
-    );
-  }
+  factory GlobalSearch.fromSql(QueryRow row) => GlobalSearch(
+    originalId: row.read<String>('original_id'),
+    userId: row.read<String>('user_id'),
+    kind: row.read<String>('kind'),
+    title: row.read<String>('title'),
+    description: row.read<String>('description'),
+    content: row.read<String>('content'),
+    titleNormalized: row.readNullable<String>('title_normalized') ?? '',
+    descriptionNormalized:
+        row.readNullable<String>('description_normalized') ?? '',
+    contentNormalized: row.readNullable<String>('content_normalized') ?? '',
+    hlTitle: row.read<String>('hl_title'),
+    hlDescription: row.read<String>('hl_desc'),
+    hlContent: row.read<String>('hl_content'),
+  );
 
   final String originalId;
   final String userId;
@@ -116,33 +112,59 @@ class GlobalSearch extends Equatable {
     return nDescription;
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'original_id': originalId,
-      'user_id': userId,
-      'kind': kind,
-      'title': title,
-      'description': description,
-      'content': content,
-      'title_normalized': titleNormalized,
-      'description_normalized': descriptionNormalized,
-      'content_normalized': contentNormalized,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'original_id': originalId,
+    'user_id': userId,
+    'kind': kind,
+    'title': title,
+    'description': description,
+    'content': content,
+    'title_normalized': titleNormalized,
+    'description_normalized': descriptionNormalized,
+    'content_normalized': contentNormalized,
+  };
 
   @override
-  List<Object?> get props => [
-        originalId,
-        userId,
-        kind,
-        title,
-        description,
-        content,
-        titleNormalized,
-        descriptionNormalized,
-        contentNormalized,
-        hlTitle,
-        hlDescription,
-        hlContent,
-      ];
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GlobalSearch &&
+          runtimeType == other.runtimeType &&
+          originalId == other.originalId &&
+          userId == other.userId &&
+          kind == other.kind &&
+          title == other.title &&
+          description == other.description &&
+          content == other.content &&
+          titleNormalized == other.titleNormalized &&
+          descriptionNormalized == other.descriptionNormalized &&
+          contentNormalized == other.contentNormalized &&
+          hlTitle == other.hlTitle &&
+          hlDescription == other.hlDescription &&
+          hlContent == other.hlContent;
+
+  @override
+  int get hashCode => Object.hash(
+    runtimeType,
+    originalId,
+    userId,
+    kind,
+    title,
+    description,
+    content,
+    titleNormalized,
+    descriptionNormalized,
+    contentNormalized,
+    hlTitle,
+    hlDescription,
+    hlContent,
+  );
+
+  @override
+  String toString() =>
+      'GlobalSearch(originalId: $originalId, userId: $userId, kind: $kind, '
+      'title: $title, description: $description, content: $content, '
+      'titleNormalized: $titleNormalized, '
+      'descriptionNormalized: $descriptionNormalized, '
+      'contentNormalized: $contentNormalized, hlTitle: $hlTitle, '
+      'hlDescription: $hlDescription, hlContent: $hlContent)';
 }

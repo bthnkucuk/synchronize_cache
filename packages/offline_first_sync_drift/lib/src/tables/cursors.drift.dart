@@ -119,16 +119,12 @@ class $$SyncCursorsTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i2.$$SyncCursorsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer:
-              () =>
-                  i2.$$SyncCursorsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer:
-              () => i2.$$SyncCursorsTableAnnotationComposer(
-                $db: db,
-                $table: table,
-              ),
+          createFilteringComposer: () =>
+              i2.$$SyncCursorsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i2.$$SyncCursorsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              i2.$$SyncCursorsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 i0.Value<String> kind = const i0.Value.absent(),
@@ -153,16 +149,18 @@ class $$SyncCursorsTableTableManager
                 lastId: lastId,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<i2.$SyncCursorsTable, i1.SyncCursorData>(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i2.$SyncCursorsTable,
+                    i1.SyncCursorData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -271,21 +269,18 @@ class $SyncCursorsTable extends i3.SyncCursors
   i1.SyncCursorData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i1.SyncCursorData(
-      kind:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}kind'],
-          )!,
-      ts:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.int,
-            data['${effectivePrefix}ts'],
-          )!,
-      lastId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}last_id'],
-          )!,
+      kind: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      ts: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.int,
+        data['${effectivePrefix}ts'],
+      )!,
+      lastId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}last_id'],
+      )!,
     );
   }
 

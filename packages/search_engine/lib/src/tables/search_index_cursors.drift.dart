@@ -136,18 +136,15 @@ class $$SearchIndexCursorsTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i1.$$SearchIndexCursorsTableFilterComposer(
+          createFilteringComposer: () => i1
+              .$$SearchIndexCursorsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i1.$$SearchIndexCursorsTableOrderingComposer(
                 $db: db,
                 $table: table,
               ),
-          createOrderingComposer:
-              () => i1.$$SearchIndexCursorsTableOrderingComposer(
-                $db: db,
-                $table: table,
-              ),
-          createComputedFieldComposer:
-              () => i1.$$SearchIndexCursorsTableAnnotationComposer(
+          createComputedFieldComposer: () =>
+              i1.$$SearchIndexCursorsTableAnnotationComposer(
                 $db: db,
                 $table: table,
               ),
@@ -179,16 +176,21 @@ class $$SearchIndexCursorsTableTableManager
                 lastIndexedId: lastIndexedId,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    i1.$SearchIndexCursorsTable,
+                    i1.SearchIndexCursorRow
+                  >(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i1.$SearchIndexCursorsTable,
+                    i1.SearchIndexCursorRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -334,26 +336,22 @@ class $SearchIndexCursorsTable extends i2.SearchIndexCursors
   }) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i1.SearchIndexCursorRow(
-      userId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}user_id'],
-          )!,
-      kind:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}kind'],
-          )!,
-      lastIndexedAtMs:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.int,
-            data['${effectivePrefix}last_indexed_at_ms'],
-          )!,
-      lastIndexedId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}last_indexed_id'],
-          )!,
+      userId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      lastIndexedAtMs: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.int,
+        data['${effectivePrefix}last_indexed_at_ms'],
+      )!,
+      lastIndexedId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}last_indexed_id'],
+      )!,
     );
   }
 
@@ -437,14 +435,12 @@ class SearchIndexCursorRow extends i0.DataClass
     return SearchIndexCursorRow(
       userId: data.userId.present ? data.userId.value : this.userId,
       kind: data.kind.present ? data.kind.value : this.kind,
-      lastIndexedAtMs:
-          data.lastIndexedAtMs.present
-              ? data.lastIndexedAtMs.value
-              : this.lastIndexedAtMs,
-      lastIndexedId:
-          data.lastIndexedId.present
-              ? data.lastIndexedId.value
-              : this.lastIndexedId,
+      lastIndexedAtMs: data.lastIndexedAtMs.present
+          ? data.lastIndexedAtMs.value
+          : this.lastIndexedAtMs,
+      lastIndexedId: data.lastIndexedId.present
+          ? data.lastIndexedId.value
+          : this.lastIndexedId,
     );
   }
 

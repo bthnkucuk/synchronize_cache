@@ -45,11 +45,11 @@ Response _get(RequestContext context) {
   return Response(
     body: jsonEncode({
       'items': result.map((t) => t.toJson()).toList(),
-      if (nextPageToken != null) 'nextPageToken': nextPageToken,
+      'nextPageToken': ?nextPageToken,
     }),
     headers: {
       'Content-Type': 'application/json',
-      if (nextPageToken != null) 'X-Next-Page-Token': nextPageToken,
+      'X-Next-Page-Token': ?nextPageToken,
     },
   );
 }
@@ -63,10 +63,15 @@ Future<Response> _post(RequestContext context) async {
 
     // Validate required fields
     final title = json['title'];
-    if (title == null || title is! String || title.isEmpty || title.length > 500) {
+    if (title == null ||
+        title is! String ||
+        title.isEmpty ||
+        title.length > 500) {
       return Response(
         statusCode: 400,
-        body: jsonEncode({'error': 'title is required and must be 1-500 characters'}),
+        body: jsonEncode({
+          'error': 'title is required and must be 1-500 characters',
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     }

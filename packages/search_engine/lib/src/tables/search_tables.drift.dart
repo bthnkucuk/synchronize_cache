@@ -214,12 +214,12 @@ class $GlobalSearchTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i1.$GlobalSearchFilterComposer($db: db, $table: table),
-          createOrderingComposer:
-              () => i1.$GlobalSearchOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer:
-              () => i1.$GlobalSearchAnnotationComposer($db: db, $table: table),
+          createFilteringComposer: () =>
+              i1.$GlobalSearchFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i1.$GlobalSearchOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              i1.$GlobalSearchAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 i0.Value<String> originalId = const i0.Value.absent(),
@@ -269,16 +269,18 @@ class $GlobalSearchTableManager
                 contentNormalized: contentNormalized,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<i1.GlobalSearch, i1.GlobalSearchData>(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i1.GlobalSearch,
+                    i1.GlobalSearchData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -531,51 +533,42 @@ class GlobalSearch extends i0.Table
   i1.GlobalSearchData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i1.GlobalSearchData(
-      originalId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}original_id'],
-          )!,
-      kind:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}kind'],
-          )!,
-      userId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}user_id'],
-          )!,
-      title:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}title'],
-          )!,
-      description:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}description'],
-          )!,
-      content:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}content'],
-          )!,
-      titleNormalized:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}title_normalized'],
-          )!,
-      descriptionNormalized:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}description_normalized'],
-          )!,
-      contentNormalized:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}content_normalized'],
-          )!,
+      originalId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}original_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      content: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}content'],
+      )!,
+      titleNormalized: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}title_normalized'],
+      )!,
+      descriptionNormalized: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}description_normalized'],
+      )!,
+      contentNormalized: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}content_normalized'],
+      )!,
     );
   }
 
@@ -704,26 +697,25 @@ class GlobalSearchData extends i0.DataClass
   );
   GlobalSearchData copyWithCompanion(i1.GlobalSearchCompanion data) {
     return GlobalSearchData(
-      originalId:
-          data.originalId.present ? data.originalId.value : this.originalId,
+      originalId: data.originalId.present
+          ? data.originalId.value
+          : this.originalId,
       kind: data.kind.present ? data.kind.value : this.kind,
       userId: data.userId.present ? data.userId.value : this.userId,
       title: data.title.present ? data.title.value : this.title,
-      description:
-          data.description.present ? data.description.value : this.description,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
       content: data.content.present ? data.content.value : this.content,
-      titleNormalized:
-          data.titleNormalized.present
-              ? data.titleNormalized.value
-              : this.titleNormalized,
-      descriptionNormalized:
-          data.descriptionNormalized.present
-              ? data.descriptionNormalized.value
-              : this.descriptionNormalized,
-      contentNormalized:
-          data.contentNormalized.present
-              ? data.contentNormalized.value
-              : this.contentNormalized,
+      titleNormalized: data.titleNormalized.present
+          ? data.titleNormalized.value
+          : this.titleNormalized,
+      descriptionNormalized: data.descriptionNormalized.present
+          ? data.descriptionNormalized.value
+          : this.descriptionNormalized,
+      contentNormalized: data.contentNormalized.present
+          ? data.contentNormalized.value
+          : this.contentNormalized,
     );
   }
 

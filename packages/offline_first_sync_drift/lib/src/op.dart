@@ -1,8 +1,12 @@
 /// Outbox operations: upsert/delete with idempotency via opId.
+library;
+
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/op_id.dart';
 
+@immutable
 sealed class Op {
-  Op({
+  const Op({
     required this.opId,
     required this.kind,
     required this.id,
@@ -23,8 +27,9 @@ sealed class Op {
 }
 
 /// Create/update operation for an entity.
+@immutable
 class UpsertOp extends Op {
-  UpsertOp({
+  const UpsertOp({
     required super.opId,
     required super.kind,
     required super.id,
@@ -95,8 +100,9 @@ class UpsertOp extends Op {
 }
 
 /// Delete operation for an entity.
+@immutable
 class DeleteOp extends Op {
-  DeleteOp({
+  const DeleteOp({
     required super.opId,
     required super.kind,
     required super.id,

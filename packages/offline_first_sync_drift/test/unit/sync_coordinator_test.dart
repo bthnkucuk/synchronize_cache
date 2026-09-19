@@ -22,14 +22,13 @@ void main() {
             table: db.testItems,
             fromJson: TestItem.fromJson,
             toJson: (item) => item.toJson(),
-            toInsertable:
-                (item) => TestItemsCompanion.insert(
-                  updatedAt: item.updatedAt,
-                  deletedAt: Value(item.deletedAt),
-                  deletedAtLocal: Value(item.deletedAtLocal),
-                  id: item.id,
-                  name: item.name,
-                ),
+            toInsertable: (item) => TestItemsCompanion.insert(
+              updatedAt: item.updatedAt,
+              deletedAt: Value(item.deletedAt),
+              deletedAtLocal: Value(item.deletedAtLocal),
+              id: item.id,
+              name: item.name,
+            ),
           ),
         ],
         config: const SyncConfig(fullResyncInterval: Duration(days: 365)),
@@ -78,7 +77,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -118,7 +117,7 @@ void main() {
             kind: 'test_item',
             id: 'stuck-1',
             localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {'id': 'stuck-1', 'name': 'Stuck'},
+            payloadJson: const {'id': 'stuck-1', 'name': 'Stuck'},
           ),
         );
         for (var i = 0; i < 5; i++) {
@@ -140,7 +139,7 @@ void main() {
             kind: 'test_item',
             id: 'fresh-1',
             localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {'id': 'fresh-1', 'name': 'Fresh'},
+            payloadJson: const {'id': 'fresh-1', 'name': 'Fresh'},
           ),
         );
 

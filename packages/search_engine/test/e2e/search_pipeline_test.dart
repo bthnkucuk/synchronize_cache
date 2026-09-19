@@ -35,14 +35,13 @@ PendingSearchItem makeItem({
     'description': 'jumps over',
     'content': 'lazy dog',
   },
-}) =>
-    PendingSearchItem(
-      userId: userId,
-      kind: kind,
-      id: id,
-      data: data,
-      deleted: deleted,
-    );
+}) => PendingSearchItem(
+  userId: userId,
+  kind: kind,
+  id: id,
+  data: data,
+  deleted: deleted,
+);
 
 void main() {
   late TestSearchDatabase db;
@@ -59,7 +58,7 @@ void main() {
         // engine in normal usage.
         searchableTable<GeneratedDatabase, Map<String, dynamic>>(
           kind: 'note',
-          watch: (_, __) => const Stream.empty(),
+          watch: (_, _) => const Stream.empty(),
           idOf: (row) => row['id'] as String,
           toJson: (row) => row,
         ),
@@ -72,22 +71,27 @@ void main() {
     await db.close();
   });
 
-  test('addSearchItems(processNow: true) writes to FTS and clears the queue',
-      () async {
-    await engine.addSearchItems([makeItem()], processNow: true);
+  test(
+    'addSearchItems(processNow: true) writes to FTS and clears the queue',
+    () async {
+      await engine.addSearchItems([makeItem()], processNow: true);
 
-    final hits = await db.searchGlobal(userId: 'u', query: 'fox');
-    expect(hits, hasLength(1));
-    expect(hits.first.originalId, equals('1'));
-    expect(hits.first.title, equals('Brown fox'));
+      final hits = await db.searchGlobal(userId: 'u', query: 'fox');
+      expect(hits, hasLength(1));
+      expect(hits.first.originalId, equals('1'));
+      expect(hits.first.title, equals('Brown fox'));
 
-    final pending = await db.getPendingUserItems(
-      userId: 'u',
-      jsonDecoder: (s) async => jsonDecode(s),
-    );
-    expect(pending, isEmpty,
-        reason: 'successfully indexed rows must be removed from the queue');
-  });
+      final pending = await db.getPendingUserItems(
+        userId: 'u',
+        jsonDecoder: (s) async => jsonDecode(s),
+      );
+      expect(
+        pending,
+        isEmpty,
+        reason: 'successfully indexed rows must be removed from the queue',
+      );
+    },
+  );
 
   test('processPendingItems drains the queue into the FTS index', () async {
     // Enqueue without processing — simulates a sync that wrote to the queue
@@ -121,10 +125,9 @@ void main() {
     expect(await db.searchGlobal(userId: 'u', query: 'fox'), hasLength(1));
 
     // Then enqueue a tombstone for the same (id, kind) and drain.
-    await engine.addSearchItems(
-      [makeItem(id: '1', deleted: true)],
-      processNow: true,
-    );
+    await engine.addSearchItems([
+      makeItem(id: '1', deleted: true),
+    ], processNow: true);
 
     expect(await db.searchGlobal(userId: 'u', query: 'fox'), isEmpty);
     final pending = await db.getPendingUserItems(

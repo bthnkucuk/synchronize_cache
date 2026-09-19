@@ -1,3 +1,4 @@
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
 import 'package:offline_first_sync_drift/src/sync_error.dart';
 
@@ -18,26 +19,24 @@ enum FullResyncReason {
 }
 
 /// Full resync started.
-class FullResyncStarted implements SyncEvent {
-  FullResyncStarted(this.reason);
-  final FullResyncReason reason;
-
+@immutable
+final class const FullResyncStarted(final FullResyncReason reason)
+    implements SyncEvent {
   @override
   String toString() => 'FullResyncStarted($reason)';
 }
 
 /// Synchronization started.
-class SyncStarted implements SyncEvent {
-  SyncStarted(this.phase);
-  final SyncPhase phase;
-
+@immutable
+final class const SyncStarted(final SyncPhase phase) implements SyncEvent {
   @override
   String toString() => 'SyncStarted($phase)';
 }
 
 /// Synchronization progress.
+@immutable
 class SyncProgress implements SyncEvent {
-  SyncProgress(this.phase, this.done, this.total);
+  const SyncProgress(this.phase, this.done, this.total);
   final SyncPhase phase;
   final int done;
   final int total;
@@ -49,8 +48,9 @@ class SyncProgress implements SyncEvent {
 }
 
 /// Synchronization completed.
+@immutable
 class SyncCompleted implements SyncEvent {
-  SyncCompleted(this.took, this.at, {this.stats});
+  const SyncCompleted(this.took, this.at, {this.stats});
   final Duration took;
   final DateTime at;
   final SyncStats? stats;
@@ -109,8 +109,9 @@ class SyncErrorEvent implements SyncEvent {
 }
 
 /// Data conflict detected.
+@immutable
 class ConflictDetectedEvent implements SyncEvent {
-  ConflictDetectedEvent({required this.conflict, required this.strategy});
+  const ConflictDetectedEvent({required this.conflict, required this.strategy});
 
   /// Conflict information.
   final Conflict conflict;
@@ -125,8 +126,9 @@ class ConflictDetectedEvent implements SyncEvent {
 }
 
 /// Conflict resolved.
+@immutable
 class ConflictResolvedEvent implements SyncEvent {
-  ConflictResolvedEvent({
+  const ConflictResolvedEvent({
     required this.conflict,
     required this.resolution,
     this.resultData,
@@ -148,8 +150,9 @@ class ConflictResolvedEvent implements SyncEvent {
 }
 
 /// Conflict could not be resolved automatically.
+@immutable
 class ConflictUnresolvedEvent implements SyncEvent {
-  ConflictUnresolvedEvent({required this.conflict, required this.reason});
+  const ConflictUnresolvedEvent({required this.conflict, required this.reason});
 
   /// Conflict information.
   final Conflict conflict;
@@ -164,8 +167,9 @@ class ConflictUnresolvedEvent implements SyncEvent {
 }
 
 /// Data was merged during conflict resolution.
+@immutable
 class DataMergedEvent implements SyncEvent {
-  DataMergedEvent({
+  const DataMergedEvent({
     required this.kind,
     required this.entityId,
     required this.localFields,
@@ -195,8 +199,9 @@ class DataMergedEvent implements SyncEvent {
 }
 
 /// Cache update.
+@immutable
 class CacheUpdateEvent implements SyncEvent {
-  CacheUpdateEvent(this.kind, {this.upserts = 0, this.deletes = 0});
+  const CacheUpdateEvent(this.kind, {this.upserts = 0, this.deletes = 0});
   final String kind;
   final int upserts;
   final int deletes;
@@ -207,8 +212,9 @@ class CacheUpdateEvent implements SyncEvent {
 }
 
 /// Operation pushed successfully.
+@immutable
 class OperationPushedEvent implements SyncEvent {
-  OperationPushedEvent({
+  const OperationPushedEvent({
     required this.opId,
     required this.kind,
     required this.entityId,
@@ -246,8 +252,9 @@ class OperationFailedEvent implements SyncEvent {
 }
 
 /// Pull page processed.
+@immutable
 class PullPageProcessedEvent implements SyncEvent {
-  PullPageProcessedEvent({
+  const PullPageProcessedEvent({
     required this.kind,
     required this.pageSize,
     required this.totalDone,
@@ -259,8 +266,9 @@ class PullPageProcessedEvent implements SyncEvent {
 }
 
 /// Push batch processed.
+@immutable
 class PushBatchProcessedEvent implements SyncEvent {
-  PushBatchProcessedEvent({
+  const PushBatchProcessedEvent({
     required this.batchSize,
     required this.successCount,
     required this.errorCount,

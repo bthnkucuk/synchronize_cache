@@ -1,14 +1,12 @@
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/cursor.dart';
 import 'package:offline_first_sync_drift/src/exceptions.dart';
 import 'package:offline_first_sync_drift/src/sync_database.dart';
 
 /// Service for synchronization cursors.
-class CursorService {
-  CursorService(this._db);
-
-  final SyncDatabaseMixin _db;
-
+@immutable
+final class const CursorService(final SyncDatabaseMixin _db) {
   /// Get cursor for an entity kind.
   Future<Cursor?> get(String kind) async {
     try {

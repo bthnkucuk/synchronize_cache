@@ -78,7 +78,10 @@ void main() {
     test('explicit null nextPageToken parses to null', () async {
       final client = MockClient(
         (req) async => http.Response(
-          jsonEncode({'items': <Map<String, Object?>>[], 'nextPageToken': null}),
+          jsonEncode({
+            'items': <Map<String, Object?>>[],
+            'nextPageToken': null,
+          }),
           200,
         ),
       );
@@ -173,7 +176,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -183,29 +186,24 @@ void main() {
       expect(ok.serverVersion, 'v7');
     });
 
-    test(
-      'upsert 2xx with non-JSON body returns PushSuccess and serverData stays null',
-      () async {
-        final client = MockClient(
-          (req) async => http.Response('not-json', 201),
-        );
-        final transport = buildTransport(client);
+    test('upsert 2xx with non-JSON body returns PushSuccess and serverData stays null', () async {
+      final client = MockClient((req) async => http.Response('not-json', 201));
+      final transport = buildTransport(client);
 
-        final res = await transport.push([
-          UpsertOp(
-            opId: 'op-1',
-            kind: 'thing',
-            id: 'e1',
-            localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {'name': 'x'},
-          ),
-        ]);
+      final res = await transport.push([
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'thing',
+          id: 'e1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'name': 'x'},
+        ),
+      ]);
 
-        expect(res.results[0].isSuccess, isTrue);
-        final ok = res.results[0].result as PushSuccess;
-        expect(ok.serverData, isNull);
-      },
-    );
+      expect(res.results[0].isSuccess, isTrue);
+      final ok = res.results[0].result as PushSuccess;
+      expect(ok.serverData, isNull);
+    });
 
     test('upsert sets X-Idempotency-Key header from opId', () async {
       String? sawKey;
@@ -221,7 +219,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -244,7 +242,7 @@ void main() {
           kind: 'thing',
           id: '',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -253,9 +251,7 @@ void main() {
     });
 
     test('upsert 5xx (after retries exhausted) returns PushError', () async {
-      final client = MockClient(
-        (req) async => http.Response('boom', 500),
-      );
+      final client = MockClient((req) async => http.Response('boom', 500));
       final transport = buildTransport(client);
 
       final res = await transport.push([
@@ -264,7 +260,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -289,7 +285,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -312,7 +308,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
           baseUpdatedAt: base,
         ),
       ]);
@@ -320,31 +316,33 @@ void main() {
       expect(sawPayload!['_baseUpdatedAt'], base.toIso8601String());
     });
 
-    test('forcePush upsert omits _baseUpdatedAt and sends X-Force-Update',
-        () async {
-      Map<String, Object?>? sawPayload;
-      Map<String, String>? sawHeaders;
-      final client = MockClient((req) async {
-        sawPayload = jsonDecode(req.body) as Map<String, Object?>;
-        sawHeaders = req.headers;
-        return http.Response('{}', 200);
-      });
-      final transport = buildTransport(client);
+    test(
+      'forcePush upsert omits _baseUpdatedAt and sends X-Force-Update',
+      () async {
+        Map<String, Object?>? sawPayload;
+        Map<String, String>? sawHeaders;
+        final client = MockClient((req) async {
+          sawPayload = jsonDecode(req.body) as Map<String, Object?>;
+          sawHeaders = req.headers;
+          return http.Response('{}', 200);
+        });
+        final transport = buildTransport(client);
 
-      await transport.forcePush(
-        UpsertOp(
-          opId: 'op-1',
-          kind: 'thing',
-          id: 'e1',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
-          baseUpdatedAt: DateTime.utc(2024),
-        ),
-      );
+        await transport.forcePush(
+          UpsertOp(
+            opId: 'op-1',
+            kind: 'thing',
+            id: 'e1',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: const {'name': 'x'},
+            baseUpdatedAt: DateTime.utc(2024),
+          ),
+        );
 
-      expect(sawPayload!.containsKey('_baseUpdatedAt'), isFalse);
-      expect(sawHeaders!['X-Force-Update'], 'true');
-    });
+        expect(sawPayload!.containsKey('_baseUpdatedAt'), isFalse);
+        expect(sawHeaders!['X-Force-Update'], 'true');
+      },
+    );
   });
 
   group('Push conflict (409) parsing edge cases', () {
@@ -358,7 +356,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -368,30 +366,31 @@ void main() {
       expect(c.serverTimestamp, isNotNull);
     });
 
-    test('409 with malformed JSON body falls back to default PushConflict',
-        () async {
-      final client = MockClient(
-        (req) async => http.Response('not-json{', 409),
-      );
-      final transport = buildTransport(client);
+    test(
+      '409 with malformed JSON body falls back to default PushConflict',
+      () async {
+        final client = MockClient(
+          (req) async => http.Response('not-json{', 409),
+        );
+        final transport = buildTransport(client);
 
-      final res = await transport.push([
-        UpsertOp(
-          opId: 'op-1',
-          kind: 'thing',
-          id: 'e1',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
-        ),
-      ]);
+        final res = await transport.push([
+          UpsertOp(
+            opId: 'op-1',
+            kind: 'thing',
+            id: 'e1',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: const {'name': 'x'},
+          ),
+        ]);
 
-      expect(res.results[0].isConflict, isTrue);
-      final c = res.results[0].result as PushConflict;
-      expect(c.serverData, isEmpty);
-    });
+        expect(res.results[0].isConflict, isTrue);
+        final c = res.results[0].result as PushConflict;
+        expect(c.serverData, isEmpty);
+      },
+    );
 
-    test('409 prefers `current` over `serverData` when both present',
-        () async {
+    test('409 prefers `current` over `serverData` when both present', () async {
       final client = MockClient(
         (req) async => http.Response(
           jsonEncode({
@@ -409,7 +408,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -438,7 +437,7 @@ void main() {
             kind: 'thing',
             id: 'e1',
             localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {'name': 'x'},
+            payloadJson: const {'name': 'x'},
           ),
         ]);
 
@@ -451,64 +450,65 @@ void main() {
       },
     );
 
-    test('409 reads ETag header for serverVersion when body lacks one',
-        () async {
-      final client = MockClient(
-        (req) async => http.Response(
-          jsonEncode({
-            'current': {'id': 'e1', 'name': 'x'},
-          }),
-          409,
-          headers: {'etag': 'W/"42"'},
-        ),
-      );
-      final transport = buildTransport(client);
+    test(
+      '409 reads ETag header for serverVersion when body lacks one',
+      () async {
+        final client = MockClient(
+          (req) async => http.Response(
+            jsonEncode({
+              'current': {'id': 'e1', 'name': 'x'},
+            }),
+            409,
+            headers: {'etag': 'W/"42"'},
+          ),
+        );
+        final transport = buildTransport(client);
 
-      final res = await transport.push([
-        UpsertOp(
-          opId: 'op-1',
-          kind: 'thing',
-          id: 'e1',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
-        ),
-      ]);
+        final res = await transport.push([
+          UpsertOp(
+            opId: 'op-1',
+            kind: 'thing',
+            id: 'e1',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: const {'name': 'x'},
+          ),
+        ]);
 
-      final c = res.results[0].result as PushConflict;
-      expect(c.serverVersion, 'W/"42"');
-    });
+        final c = res.results[0].result as PushConflict;
+        expect(c.serverVersion, 'W/"42"');
+      },
+    );
 
-    test('409 falls back to updated_at (snake) when serverTimestamp missing',
-        () async {
-      final client = MockClient(
-        (req) async => http.Response(
-          jsonEncode({
-            'current': {
-              'id': 'e1',
-              'updated_at': '2024-03-04T05:06:07Z',
-            },
-          }),
-          409,
-        ),
-      );
-      final transport = buildTransport(client);
+    test(
+      '409 falls back to updated_at (snake) when serverTimestamp missing',
+      () async {
+        final client = MockClient(
+          (req) async => http.Response(
+            jsonEncode({
+              'current': {'id': 'e1', 'updated_at': '2024-03-04T05:06:07Z'},
+            }),
+            409,
+          ),
+        );
+        final transport = buildTransport(client);
 
-      final res = await transport.push([
-        UpsertOp(
-          opId: 'op-1',
-          kind: 'thing',
-          id: 'e1',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
-        ),
-      ]);
+        final res = await transport.push([
+          UpsertOp(
+            opId: 'op-1',
+            kind: 'thing',
+            id: 'e1',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: const {'name': 'x'},
+          ),
+        ]);
 
-      final c = res.results[0].result as PushConflict;
-      expect(
-        c.serverTimestamp,
-        DateTime.parse('2024-03-04T05:06:07Z').toUtc(),
-      );
-    });
+        final c = res.results[0].result as PushConflict;
+        expect(
+          c.serverTimestamp,
+          DateTime.parse('2024-03-04T05:06:07Z').toUtc(),
+        );
+      },
+    );
   });
 
   group('Delete operation branches', () {
@@ -529,9 +529,7 @@ void main() {
     });
 
     test('delete unexpected 418 returns PushError', () async {
-      final client = MockClient(
-        (req) async => http.Response('teapot', 418),
-      );
+      final client = MockClient((req) async => http.Response('teapot', 418));
       final transport = buildTransport(client);
 
       final res = await transport.push([
@@ -575,30 +573,32 @@ void main() {
       expect(sawBase, base.toIso8601String());
     });
 
-    test('forcePush delete omits _baseUpdatedAt and sends X-Force-Delete',
-        () async {
-      Map<String, String>? sawQuery;
-      Map<String, String>? sawHeaders;
-      final client = MockClient((req) async {
-        sawQuery = req.url.queryParameters;
-        sawHeaders = req.headers;
-        return http.Response('', 204);
-      });
-      final transport = buildTransport(client);
+    test(
+      'forcePush delete omits _baseUpdatedAt and sends X-Force-Delete',
+      () async {
+        Map<String, String>? sawQuery;
+        Map<String, String>? sawHeaders;
+        final client = MockClient((req) async {
+          sawQuery = req.url.queryParameters;
+          sawHeaders = req.headers;
+          return http.Response('', 204);
+        });
+        final transport = buildTransport(client);
 
-      await transport.forcePush(
-        DeleteOp(
-          opId: 'op-1',
-          kind: 'thing',
-          id: 'e1',
-          localTimestamp: DateTime.now().toUtc(),
-          baseUpdatedAt: DateTime.utc(2024),
-        ),
-      );
+        await transport.forcePush(
+          DeleteOp(
+            opId: 'op-1',
+            kind: 'thing',
+            id: 'e1',
+            localTimestamp: DateTime.now().toUtc(),
+            baseUpdatedAt: DateTime.utc(2024),
+          ),
+        );
 
-      expect(sawQuery!.containsKey('_baseUpdatedAt'), isFalse);
-      expect(sawHeaders!['X-Force-Delete'], 'true');
-    });
+        expect(sawQuery!.containsKey('_baseUpdatedAt'), isFalse);
+        expect(sawHeaders!['X-Force-Delete'], 'true');
+      },
+    );
   });
 
   group('Batch push parsing edge cases', () {
@@ -621,14 +621,14 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'a'},
+          payloadJson: const {'name': 'a'},
         ),
         UpsertOp(
           opId: 'op-2',
           kind: 'thing',
           id: 'e2',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'b'},
+          payloadJson: const {'name': 'b'},
         ),
       ];
       final res = await transport.push(ops);
@@ -661,53 +661,55 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
       expect(res.results[0].isNotFound, isTrue);
     });
 
-    test('batch item with 409 + nested error.current parses conflict',
-        () async {
-      final client = MockClient(
-        (req) async => http.Response(
-          jsonEncode({
-            'results': [
-              {
-                'opId': 'op-1',
-                'statusCode': 409,
-                'error': {
-                  'current': {
-                    'id': 'e1',
-                    'name': 'server-version',
-                    'updated_at': '2024-02-02T02:02:02Z',
+    test(
+      'batch item with 409 + nested error.current parses conflict',
+      () async {
+        final client = MockClient(
+          (req) async => http.Response(
+            jsonEncode({
+              'results': [
+                {
+                  'opId': 'op-1',
+                  'statusCode': 409,
+                  'error': {
+                    'current': {
+                      'id': 'e1',
+                      'name': 'server-version',
+                      'updated_at': '2024-02-02T02:02:02Z',
+                    },
+                    'version': 'v9',
                   },
-                  'version': 'v9',
                 },
-              },
-            ],
-          }),
-          200,
-        ),
-      );
-      final transport = buildTransport(client, enableBatch: true);
+              ],
+            }),
+            200,
+          ),
+        );
+        final transport = buildTransport(client, enableBatch: true);
 
-      final res = await transport.push([
-        UpsertOp(
-          opId: 'op-1',
-          kind: 'thing',
-          id: 'e1',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'local'},
-        ),
-      ]);
+        final res = await transport.push([
+          UpsertOp(
+            opId: 'op-1',
+            kind: 'thing',
+            id: 'e1',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: const {'name': 'local'},
+          ),
+        ]);
 
-      expect(res.results[0].isConflict, isTrue);
-      final c = res.results[0].result as PushConflict;
-      expect(c.serverData['name'], 'server-version');
-      expect(c.serverVersion, 'v9');
-    });
+        expect(res.results[0].isConflict, isTrue);
+        final c = res.results[0].result as PushConflict;
+        expect(c.serverData['name'], 'server-version');
+        expect(c.serverVersion, 'v9');
+      },
+    );
 
     test('batch item with 500 statusCode → PushError', () async {
       final client = MockClient(
@@ -728,7 +730,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -763,7 +765,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -792,7 +794,7 @@ void main() {
           kind: 'thing',
           id: 'e1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
+          payloadJson: const {'name': 'x'},
         ),
       ]);
 
@@ -800,34 +802,34 @@ void main() {
       expect(ok.serverVersion, '42');
     });
 
-    test('batch response missing `results` key returns PushError per op',
-        () async {
-      final client = MockClient(
-        (req) async => http.Response(jsonEncode({}), 200),
-      );
-      final transport = buildTransport(client, enableBatch: true);
+    test(
+      'batch response missing `results` key returns PushError per op',
+      () async {
+        final client = MockClient(
+          (req) async => http.Response(jsonEncode({}), 200),
+        );
+        final transport = buildTransport(client, enableBatch: true);
 
-      final res = await transport.push([
-        UpsertOp(
-          opId: 'op-1',
-          kind: 'thing',
-          id: 'e1',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'x'},
-        ),
-      ]);
+        final res = await transport.push([
+          UpsertOp(
+            opId: 'op-1',
+            kind: 'thing',
+            id: 'e1',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: const {'name': 'x'},
+          ),
+        ]);
 
-      expect(res.results[0].isError, isTrue);
-      expect(
-        (res.results[0].result as PushError).error.toString(),
-        contains('No result for op'),
-      );
-    });
+        expect(res.results[0].isError, isTrue);
+        expect(
+          (res.results[0].result as PushError).error.toString(),
+          contains('No result for op'),
+        );
+      },
+    );
 
     test('batch malformed JSON wraps to NetworkException PushError', () async {
-      final client = MockClient(
-        (req) async => http.Response('not-json{', 200),
-      );
+      final client = MockClient((req) async => http.Response('not-json{', 200));
       final transport = buildTransport(client, enableBatch: true);
 
       // _pushBatchChunk catches non-SyncException errors and rethrows as
@@ -840,7 +842,7 @@ void main() {
             kind: 'thing',
             id: 'e1',
             localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {'name': 'x'},
+            payloadJson: const {'name': 'x'},
           ),
         ]),
         throwsA(isA<NetworkException>()),
@@ -848,9 +850,7 @@ void main() {
     });
 
     test('batch non-2xx (after retries) throws TransportException', () async {
-      final client = MockClient(
-        (req) async => http.Response('bad', 400),
-      );
+      final client = MockClient((req) async => http.Response('bad', 400));
       final transport = buildTransport(client, enableBatch: true);
 
       await expectLater(
@@ -860,7 +860,7 @@ void main() {
             kind: 'thing',
             id: 'e1',
             localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {'name': 'x'},
+            payloadJson: const {'name': 'x'},
           ),
         ]),
         throwsA(
@@ -881,13 +881,10 @@ void main() {
         chunkSizes.add(ops.length);
         return http.Response(
           jsonEncode({
-            'results':
-                ops
-                    .cast<Map<String, Object?>>()
-                    .map(
-                      (op) => {'opId': op['opId'], 'statusCode': 200},
-                    )
-                    .toList(),
+            'results': ops
+                .cast<Map<String, Object?>>()
+                .map((op) => {'opId': op['opId'], 'statusCode': 200})
+                .toList(),
           }),
           200,
         );
@@ -912,36 +909,29 @@ void main() {
   });
 
   group('Fetch parsing edge cases', () {
-    test(
-      'fetch malformed JSON body returns FetchError(TransportException), '
-      'not FetchError(NetworkException)',
-      () async {
-        // Updated expectation: malformed bodies on 200 are a server-side
-        // data-shape problem, not a network failure. They must be reported
-        // as TransportException (parseError factory), so callers debugging
-        // "why is the network flaky?" don't get a misleading signal.
-        final client = MockClient(
-          (req) async => http.Response('not-json{', 200),
-        );
-        final transport = buildTransport(client);
+    test('fetch malformed JSON body returns FetchError(TransportException), '
+        'not FetchError(NetworkException)', () async {
+      // Updated expectation: malformed bodies on 200 are a server-side
+      // data-shape problem, not a network failure. They must be reported
+      // as TransportException (parseError factory), so callers debugging
+      // "why is the network flaky?" don't get a misleading signal.
+      final client = MockClient((req) async => http.Response('not-json{', 200));
+      final transport = buildTransport(client);
 
-        final res = await transport.fetch(kind: 'thing', id: 'e1');
+      final res = await transport.fetch(kind: 'thing', id: 'e1');
 
-        expect(res, isA<FetchError>());
-        final err = (res as FetchError).error;
-        expect(err, isA<TransportException>());
-        expect(err, isNot(isA<NetworkException>()));
-        final te = err as TransportException;
-        expect(te.statusCode, 0);
-        expect(te.responseBody, 'not-json{');
-        expect(te.cause, isA<FormatException>());
-      },
-    );
+      expect(res, isA<FetchError>());
+      final err = (res as FetchError).error;
+      expect(err, isA<TransportException>());
+      expect(err, isNot(isA<NetworkException>()));
+      final te = err as TransportException;
+      expect(te.statusCode, 0);
+      expect(te.responseBody, 'not-json{');
+      expect(te.cause, isA<FormatException>());
+    });
 
     test('fetch 5xx returns FetchError(TransportException)', () async {
-      final client = MockClient(
-        (req) async => http.Response('boom', 500),
-      );
+      final client = MockClient((req) async => http.Response('boom', 500));
       final transport = buildTransport(client);
 
       final res = await transport.fetch(kind: 'thing', id: 'e1');
@@ -953,18 +943,13 @@ void main() {
     });
 
     test('fetch 400 returns FetchError(TransportException)', () async {
-      final client = MockClient(
-        (req) async => http.Response('bad', 400),
-      );
+      final client = MockClient((req) async => http.Response('bad', 400));
       final transport = buildTransport(client);
 
       final res = await transport.fetch(kind: 'thing', id: 'e1');
 
       expect(res, isA<FetchError>());
-      expect(
-        ((res as FetchError).error as TransportException).statusCode,
-        400,
-      );
+      expect(((res as FetchError).error as TransportException).statusCode, 400);
     });
 
     test('fetch surfaces ETag as version on success', () async {
@@ -994,11 +979,7 @@ void main() {
         if (sw != null) delays.add(sw!.elapsed);
         sw = Stopwatch()..start();
         if (attempts < 2) {
-          return http.Response(
-            'slow down',
-            429,
-            headers: {'retry-after': '0'},
-          );
+          return http.Response('slow down', 429, headers: {'retry-after': '0'});
         }
         return http.Response(
           jsonEncode({'items': <Map<String, Object?>>[]}),
@@ -1017,30 +998,27 @@ void main() {
       expect(attempts, 2);
     });
 
-    test(
-      'network failure exhausts retries → throws NetworkException with attempt count',
-      () async {
-        var attempts = 0;
-        final client = MockClient((req) async {
-          attempts++;
-          throw http.ClientException('boom');
-        });
-        final transport = buildTransport(client, maxRetries: 2);
+    test('network failure exhausts retries → throws NetworkException with attempt count', () async {
+      var attempts = 0;
+      final client = MockClient((req) async {
+        attempts++;
+        throw http.ClientException('boom');
+      });
+      final transport = buildTransport(client, maxRetries: 2);
 
-        try {
-          await transport.pull(
-            kind: 'thing',
-            updatedSince: DateTime.utc(2024),
-            pageSize: 10,
-          );
-          fail('expected NetworkException');
-        } on NetworkException catch (e) {
-          expect(e.message, contains('Request failed after'));
-        }
-        // initial + 2 retries == 3
-        expect(attempts, 3);
-      },
-    );
+      try {
+        await transport.pull(
+          kind: 'thing',
+          updatedSince: DateTime.utc(2024),
+          pageSize: 10,
+        );
+        fail('expected NetworkException');
+      } on NetworkException catch (e) {
+        expect(e.message, contains('Request failed after'));
+      }
+      // initial + 2 retries == 3
+      expect(attempts, 3);
+    });
 
     test(
       'TransportException.parseError carries body, cause, and sentinel status',

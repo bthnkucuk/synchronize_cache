@@ -68,8 +68,7 @@ class _TestBinding extends SearchableTable<GeneratedDatabase, _Row> {
   DateTime updatedAtOf(_Row row) => row.updatedAt;
 
   @override
-  Map<String, dynamic> toJson(_Row row) =>
-      {'id': row.id, 'title': row.title};
+  Map<String, dynamic> toJson(_Row row) => {'id': row.id, 'title': row.title};
 
   @override
   Future<GlobalSearch> toGlobalSearch(PendingSearchItem item) async =>
@@ -91,18 +90,19 @@ class _TestBinding extends SearchableTable<GeneratedDatabase, _Row> {
     int limit,
   ) async {
     readSinceCalls++;
-    final filtered = _rows
-        .where(
-          (r) =>
-              r.updatedAt.isAfter(since) ||
-              (r.updatedAt.isAtSameMomentAs(since) &&
-                  (lastId == null || r.id.compareTo(lastId) > 0)),
-        )
-        .toList()
-      ..sort((a, b) {
-        final byTime = a.updatedAt.compareTo(b.updatedAt);
-        return byTime != 0 ? byTime : a.id.compareTo(b.id);
-      });
+    final filtered =
+        _rows
+            .where(
+              (r) =>
+                  r.updatedAt.isAfter(since) ||
+                  (r.updatedAt.isAtSameMomentAs(since) &&
+                      (lastId == null || r.id.compareTo(lastId) > 0)),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byTime = a.updatedAt.compareTo(b.updatedAt);
+            return byTime != 0 ? byTime : a.id.compareTo(b.id);
+          });
     return filtered.take(limit).toList();
   }
 }
@@ -134,8 +134,7 @@ class _ExplodingBinding extends SearchableTable<GeneratedDatabase, _Row> {
     DateTime since,
     String? lastId,
     int limit,
-  ) async =>
-      throw StateError('boom');
+  ) async => throw StateError('boom');
 }
 
 void main() {
@@ -216,21 +215,21 @@ void main() {
       expect(indexer.currentUserId, isNull);
     });
 
-    test('start runs an initial drain even before any tableUpdates emit',
-        () async {
-      binding.seed([
-        _Row(id: 'a', updatedAt: DateTime.utc(2026)),
-      ]);
+    test(
+      'start runs an initial drain even before any tableUpdates emit',
+      () async {
+        binding.seed([_Row(id: 'a', updatedAt: DateTime.utc(2026))]);
 
-      final indexer = makeIndexer();
-      await indexer.start(userId: 'u');
-      await flush();
+        final indexer = makeIndexer();
+        await indexer.start(userId: 'u');
+        await flush();
 
-      expect(binding.readSinceCalls, greaterThanOrEqualTo(1));
-      verify(() => engine.indexNow(any())).called(1);
+        expect(binding.readSinceCalls, greaterThanOrEqualTo(1));
+        verify(() => engine.indexNow(any())).called(1);
 
-      await indexer.stop();
-    });
+        await indexer.stop();
+      },
+    );
 
     test('start replaces the previous subscription atomically', () async {
       final indexer = makeIndexer();
@@ -251,33 +250,35 @@ void main() {
   });
 
   group('indexing path', () {
-    test('non-deleted rows go through engine.indexNow with parsed GlobalSearch',
-        () async {
-      binding.seed([
-        _Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1), title: 'alpha'),
-      ]);
+    test(
+      'non-deleted rows go through engine.indexNow with parsed GlobalSearch',
+      () async {
+        binding.seed([
+          _Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1), title: 'alpha'),
+        ]);
 
-      final indexer = makeIndexer();
-      await indexer.start(userId: 'u');
-      await flush();
+        final indexer = makeIndexer();
+        await indexer.start(userId: 'u');
+        await flush();
 
-      final captured = verify(() => engine.indexNow(captureAny())).captured;
-      final pushed = captured.single as GlobalSearch;
-      expect(pushed.originalId, equals('a'));
-      expect(pushed.title, equals('alpha'));
-      expect(pushed.userId, equals('u'));
-      expect(pushed.kind, equals('rows'));
+        final captured = verify(() => engine.indexNow(captureAny())).captured;
+        final pushed = captured.single as GlobalSearch;
+        expect(pushed.originalId, equals('a'));
+        expect(pushed.title, equals('alpha'));
+        expect(pushed.userId, equals('u'));
+        expect(pushed.kind, equals('rows'));
 
-      verifyNever(
-        () => engine.removeNow(
-          originalId: any(named: 'originalId'),
-          kind: any(named: 'kind'),
-          userId: any(named: 'userId'),
-        ),
-      );
+        verifyNever(
+          () => engine.removeNow(
+            originalId: any(named: 'originalId'),
+            kind: any(named: 'kind'),
+            userId: any(named: 'userId'),
+          ),
+        );
 
-      await indexer.stop();
-    });
+        await indexer.stop();
+      },
+    );
 
     test('tombstone rows go through engine.removeNow, not indexNow', () async {
       binding.seed([
@@ -288,60 +289,63 @@ void main() {
       await indexer.start(userId: 'u');
       await flush();
 
-      verify(
-        () => engine.removeNow(originalId: 'a', kind: 'rows', userId: 'u'),
-      ).called(1);
+      verify(() => engine.removeNow(originalId: 'a', kind: 'rows', userId: 'u'))
+          .called(1);
       verifyNever(() => engine.indexNow(any()));
 
       await indexer.stop();
     });
 
-    test('mix of deleted + alive rows is dispatched to the right channels',
-        () async {
-      binding.seed([
-        _Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1), title: 'alpha'),
-        _Row(id: 'b', updatedAt: DateTime.utc(2026, 1, 2), deleted: true),
-        _Row(id: 'c', updatedAt: DateTime.utc(2026, 1, 3), title: 'gamma'),
-      ]);
+    test(
+      'mix of deleted + alive rows is dispatched to the right channels',
+      () async {
+        binding.seed([
+          _Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1), title: 'alpha'),
+          _Row(id: 'b', updatedAt: DateTime.utc(2026, 1, 2), deleted: true),
+          _Row(id: 'c', updatedAt: DateTime.utc(2026, 1, 3), title: 'gamma'),
+        ]);
 
-      final indexer = makeIndexer();
-      await indexer.start(userId: 'u');
-      await flush();
+        final indexer = makeIndexer();
+        await indexer.start(userId: 'u');
+        await flush();
 
-      verify(() => engine.indexNow(any())).called(2);
-      verify(
-        () => engine.removeNow(originalId: 'b', kind: 'rows', userId: 'u'),
-      ).called(1);
+        verify(() => engine.indexNow(any())).called(2);
+        verify(
+          () => engine.removeNow(originalId: 'b', kind: 'rows', userId: 'u'),
+        ).called(1);
 
-      await indexer.stop();
-    });
+        await indexer.stop();
+      },
+    );
 
-    test('empty readSince returns immediately without any indexNow calls',
-        () async {
-      // No seed → readSince returns empty.
-      final indexer = makeIndexer();
-      await indexer.start(userId: 'u');
-      await flush();
+    test(
+      'empty readSince returns immediately without any indexNow calls',
+      () async {
+        // No seed → readSince returns empty.
+        final indexer = makeIndexer();
+        await indexer.start(userId: 'u');
+        await flush();
 
-      verifyNever(() => engine.indexNow(any()));
-      verifyNever(
-        () => engine.removeNow(
-          originalId: any(named: 'originalId'),
-          kind: any(named: 'kind'),
-          userId: any(named: 'userId'),
-        ),
-      );
-      verifyNever(
-        () => searchDb.writeSearchIndexCursor(
-          userId: any(named: 'userId'),
-          kind: any(named: 'kind'),
-          updatedAt: any(named: 'updatedAt'),
-          lastId: any(named: 'lastId'),
-        ),
-      );
+        verifyNever(() => engine.indexNow(any()));
+        verifyNever(
+          () => engine.removeNow(
+            originalId: any(named: 'originalId'),
+            kind: any(named: 'kind'),
+            userId: any(named: 'userId'),
+          ),
+        );
+        verifyNever(
+          () => searchDb.writeSearchIndexCursor(
+            userId: any(named: 'userId'),
+            kind: any(named: 'kind'),
+            updatedAt: any(named: 'updatedAt'),
+            lastId: any(named: 'lastId'),
+          ),
+        );
 
-      await indexer.stop();
-    });
+        await indexer.stop();
+      },
+    );
   });
 
   group('cursor advance', () {
@@ -395,15 +399,10 @@ void main() {
 
     test('starts from the persisted cursor, not from epoch', () async {
       when(
-        () => searchDb.readSearchIndexCursor(
-          userId: 'u',
-          kind: 'rows',
-        ),
+        () => searchDb.readSearchIndexCursor(userId: 'u', kind: 'rows'),
       ).thenAnswer(
-        (_) async => SearchIndexCursor(
-          since: DateTime.utc(2026, 1, 5),
-          lastId: 'r5',
-        ),
+        (_) async =>
+            SearchIndexCursor(since: DateTime.utc(2026, 1, 5), lastId: 'r5'),
       );
 
       binding.seed([
@@ -438,13 +437,12 @@ void main() {
         unawaited(indexer.start(userId: 'u'));
         fake.flushMicrotasks();
 
-        binding.seed([
-          _Row(id: 'late', updatedAt: DateTime.utc(2026, 6)),
-        ]);
+        binding.seed([_Row(id: 'late', updatedAt: DateTime.utc(2026, 6))]);
         tableUpdates.add(<TableUpdate>{});
         // Advance past the rxdart debounce window (1ms) to release the timer.
-        fake.elapse(const Duration(milliseconds: 5));
-        fake.flushMicrotasks();
+        fake
+          ..elapse(const Duration(milliseconds: 5))
+          ..flushMicrotasks();
 
         verify(() => engine.indexNow(any())).called(1);
 
@@ -465,8 +463,9 @@ void main() {
         tableUpdates.add(<TableUpdate>{});
         // Advance past the rxdart debounce window (1ms); even if a timer fires
         // it should be a no-op because the subscription has been cancelled.
-        fake.elapse(const Duration(milliseconds: 5));
-        fake.flushMicrotasks();
+        fake
+          ..elapse(const Duration(milliseconds: 5))
+          ..flushMicrotasks();
 
         verifyNever(() => engine.indexNow(any()));
       });
@@ -498,8 +497,7 @@ void main() {
   });
 
   group('cursor edge cases', () {
-    test(
-        'rows sharing updatedAt are tie-broken lexicographically by id and '
+    test('rows sharing updatedAt are tie-broken lexicographically by id and '
         'every row gets indexed', () async {
       final ts = DateTime.utc(2026, 3, 1);
       // Insert in non-lexicographic order to make sure the indexer's sort
@@ -531,29 +529,20 @@ void main() {
       await indexer.stop();
     });
 
-    test(
-        'switching users mid-flight stops the in-flight u1 batch from '
+    test('switching users mid-flight stops the in-flight u1 batch from '
         'advancing the u1 cursor', () async {
       // Hold the cursor read until we release it manually — that way we can
       // drive a second start() while the first batch is parked.
       final firstReadStarted = Completer<void>();
       final releaseFirstRead = Completer<void>();
-      when(
-        () => searchDb.readSearchIndexCursor(
-          userId: 'u1',
-          kind: 'rows',
-        ),
-      ).thenAnswer((_) async {
-        firstReadStarted.complete();
-        await releaseFirstRead.future;
-        return null;
-      });
-      when(
-        () => searchDb.readSearchIndexCursor(
-          userId: 'u2',
-          kind: 'rows',
-        ),
-      ).thenAnswer((_) async => null);
+      when(() => searchDb.readSearchIndexCursor(userId: 'u1', kind: 'rows'))
+          .thenAnswer((_) async {
+            firstReadStarted.complete();
+            await releaseFirstRead.future;
+            return null;
+          });
+      when(() => searchDb.readSearchIndexCursor(userId: 'u2', kind: 'rows'))
+          .thenAnswer((_) async => null);
 
       binding.seed([_Row(id: 'r1', updatedAt: DateTime.utc(2026))]);
 
@@ -609,17 +598,14 @@ void main() {
       await indexer.stop();
     });
 
-    test(
-        'tableUpdates events fired before start() are ignored (no listener '
+    test('tableUpdates events fired before start() are ignored (no listener '
         "exists yet) and don't crash a later start", () async {
       // Push an emit on the broadcast controller before anyone listens.
       tableUpdates.add(<TableUpdate>{});
       // A bit more to be sure: drain microtasks first.
       await Future<void>.delayed(Duration.zero);
 
-      binding.seed([
-        _Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1)),
-      ]);
+      binding.seed([_Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1))]);
 
       final indexer = makeIndexer();
       await expectLater(indexer.start(userId: 'u'), completes);
@@ -652,12 +638,9 @@ void main() {
       await indexer.stop();
     });
 
-    test('indexNow errors are swallowed and cursor is NOT advanced',
-        () async {
+    test('indexNow errors are swallowed and cursor is NOT advanced', () async {
       when(() => engine.indexNow(any())).thenThrow(StateError('engine down'));
-      binding.seed([
-        _Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1)),
-      ]);
+      binding.seed([_Row(id: 'a', updatedAt: DateTime.utc(2026, 1, 1))]);
 
       final indexer = makeIndexer();
       await indexer.start(userId: 'u');

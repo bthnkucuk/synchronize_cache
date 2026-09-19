@@ -3,7 +3,8 @@ import 'dart:async' show StreamSubscription;
 import 'package:connectivity_plus/connectivity_plus.dart'
     show Connectivity, ConnectivityResult;
 import 'package:drift/drift.dart' show GeneratedDatabase;
-import 'package:offline_first_sync_drift/offline_first_sync_drift.dart' show SyncEngine;
+import 'package:offline_first_sync_drift/offline_first_sync_drift.dart'
+    show SyncEngine;
 
 /// Triggers a full sync whenever the device regains network connectivity.
 ///
@@ -12,13 +13,12 @@ import 'package:offline_first_sync_drift/offline_first_sync_drift.dart' show Syn
 /// appears after a period with no connectivity.
 ///
 /// Call [start] to begin listening and [dispose] to release resources.
-class NetworkSyncHandler<DB extends GeneratedDatabase> {
+final class NetworkSyncHandler<DB extends GeneratedDatabase> {
   NetworkSyncHandler({
     required this.engine,
     Connectivity? connectivity,
-    Future<void> Function()? onReconnect,
-  }) : _connectivity = connectivity ?? Connectivity(),
-       _onReconnect = onReconnect;
+    this._onReconnect,
+  }) : _connectivity = connectivity ?? Connectivity();
 
   /// The sync engine to trigger on reconnect.
   final SyncEngine<DB> engine;

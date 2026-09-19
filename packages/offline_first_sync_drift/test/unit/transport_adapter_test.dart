@@ -5,7 +5,7 @@ import 'package:test/test.dart';
 void main() {
   group('PullPage', () {
     test('creates with items only', () {
-      final page = PullPage(
+      const page = PullPage(
         items: [
           {'id': '1', 'name': 'Item 1'},
           {'id': '2', 'name': 'Item 2'},
@@ -17,7 +17,7 @@ void main() {
     });
 
     test('creates with items and nextPageToken', () {
-      final page = PullPage(
+      const page = PullPage(
         items: [
           {'id': '1'},
         ],
@@ -29,14 +29,14 @@ void main() {
     });
 
     test('creates with empty items', () {
-      final page = PullPage(items: []);
+      const page = PullPage(items: []);
 
       expect(page.items, isEmpty);
       expect(page.nextPageToken, isNull);
     });
 
     test('items can contain complex objects', () {
-      final page = PullPage(
+      const page = PullPage(
         items: [
           {
             'id': '1',

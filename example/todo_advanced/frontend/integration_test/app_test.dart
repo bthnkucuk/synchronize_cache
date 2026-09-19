@@ -19,7 +19,7 @@ import 'package:todo_advanced_frontend/ui/screens/todo_list_screen.dart';
 ///   flutter test integration_test/app_test.dart
 ///
 /// Or on a specific device:
-///   flutter test integration_test/app_test.dart -d <device_id>
+///   `flutter test integration_test/app_test.dart -d <device_id>`
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 

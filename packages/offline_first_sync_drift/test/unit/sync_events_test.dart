@@ -23,14 +23,14 @@ void main() {
 
   group('FullResyncStarted', () {
     test('creates with reason', () {
-      final event = FullResyncStarted(FullResyncReason.scheduled);
+      const event = FullResyncStarted(FullResyncReason.scheduled);
 
       expect(event, isA<SyncEvent>());
       expect(event.reason, equals(FullResyncReason.scheduled));
     });
 
     test('toString includes reason', () {
-      final event = FullResyncStarted(FullResyncReason.manual);
+      const event = FullResyncStarted(FullResyncReason.manual);
 
       expect(
         event.toString(),
@@ -41,20 +41,20 @@ void main() {
 
   group('SyncStarted', () {
     test('creates with push phase', () {
-      final event = SyncStarted(SyncPhase.push);
+      const event = SyncStarted(SyncPhase.push);
 
       expect(event, isA<SyncEvent>());
       expect(event.phase, equals(SyncPhase.push));
     });
 
     test('creates with pull phase', () {
-      final event = SyncStarted(SyncPhase.pull);
+      const event = SyncStarted(SyncPhase.pull);
 
       expect(event.phase, equals(SyncPhase.pull));
     });
 
     test('toString includes phase', () {
-      final event = SyncStarted(SyncPhase.push);
+      const event = SyncStarted(SyncPhase.push);
 
       expect(event.toString(), equals('SyncStarted(SyncPhase.push)'));
     });
@@ -62,7 +62,7 @@ void main() {
 
   group('SyncProgress', () {
     test('creates with phase, done and total', () {
-      final event = SyncProgress(SyncPhase.pull, 50, 100);
+      const event = SyncProgress(SyncPhase.pull, 50, 100);
 
       expect(event, isA<SyncEvent>());
       expect(event.phase, equals(SyncPhase.pull));
@@ -71,25 +71,25 @@ void main() {
     });
 
     test('progress returns correct ratio', () {
-      final event = SyncProgress(SyncPhase.push, 25, 100);
+      const event = SyncProgress(SyncPhase.push, 25, 100);
 
       expect(event.progress, equals(0.25));
     });
 
     test('progress returns 0 when total is 0', () {
-      final event = SyncProgress(SyncPhase.push, 0, 0);
+      const event = SyncProgress(SyncPhase.push, 0, 0);
 
       expect(event.progress, equals(0));
     });
 
     test('progress returns 1.0 when done equals total', () {
-      final event = SyncProgress(SyncPhase.pull, 50, 50);
+      const event = SyncProgress(SyncPhase.pull, 50, 50);
 
       expect(event.progress, equals(1.0));
     });
 
     test('toString includes phase and progress', () {
-      final event = SyncProgress(SyncPhase.push, 30, 60);
+      const event = SyncProgress(SyncPhase.push, 30, 60);
 
       expect(event.toString(), equals('SyncProgress(SyncPhase.push, 30/60)'));
     });
@@ -317,7 +317,7 @@ void main() {
       final event = ConflictResolvedEvent(
         conflict: conflict,
         resolution: const AcceptMerged({'merged': true}),
-        resultData: {'merged': true, 'from': 'both'},
+        resultData: const {'merged': true, 'from': 'both'},
       );
 
       expect(event.resultData, equals({'merged': true, 'from': 'both'}));
@@ -395,7 +395,7 @@ void main() {
 
   group('DataMergedEvent', () {
     test('creates with all parameters', () {
-      final event = DataMergedEvent(
+      const event = DataMergedEvent(
         kind: 'users',
         entityId: 'user-1',
         localFields: {'name', 'email'},
@@ -412,7 +412,7 @@ void main() {
     });
 
     test('toString includes kind, entityId and field counts', () {
-      final event = DataMergedEvent(
+      const event = DataMergedEvent(
         kind: 'tasks',
         entityId: 'task-5',
         localFields: {'title', 'description', 'status'},
@@ -429,7 +429,7 @@ void main() {
 
   group('CacheUpdateEvent', () {
     test('creates with kind only', () {
-      final event = CacheUpdateEvent('users');
+      const event = CacheUpdateEvent('users');
 
       expect(event, isA<SyncEvent>());
       expect(event.kind, equals('users'));
@@ -438,14 +438,14 @@ void main() {
     });
 
     test('creates with upserts and deletes', () {
-      final event = CacheUpdateEvent('tasks', upserts: 10, deletes: 3);
+      const event = CacheUpdateEvent('tasks', upserts: 10, deletes: 3);
 
       expect(event.upserts, equals(10));
       expect(event.deletes, equals(3));
     });
 
     test('toString includes kind, upserts and deletes', () {
-      final event = CacheUpdateEvent('items', upserts: 5, deletes: 2);
+      const event = CacheUpdateEvent('items', upserts: 5, deletes: 2);
 
       expect(
         event.toString(),
@@ -456,7 +456,7 @@ void main() {
 
   group('OperationPushedEvent', () {
     test('creates with all parameters', () {
-      final event = OperationPushedEvent(
+      const event = OperationPushedEvent(
         opId: 'op-123',
         kind: 'users',
         entityId: 'user-1',
@@ -471,7 +471,7 @@ void main() {
     });
 
     test('toString includes operation type, kind and entityId', () {
-      final event = OperationPushedEvent(
+      const event = OperationPushedEvent(
         opId: 'op-456',
         kind: 'tasks',
         entityId: 'task-99',
@@ -541,7 +541,7 @@ void main() {
 
   group('New progress events', () {
     test('PullPageProcessedEvent stores values', () {
-      final event = PullPageProcessedEvent(
+      const event = PullPageProcessedEvent(
         kind: 'users',
         pageSize: 20,
         totalDone: 60,
@@ -553,7 +553,7 @@ void main() {
     });
 
     test('PushBatchProcessedEvent stores values', () {
-      final event = PushBatchProcessedEvent(
+      const event = PushBatchProcessedEvent(
         batchSize: 10,
         successCount: 7,
         errorCount: 2,
@@ -580,9 +580,9 @@ void main() {
       );
 
       final events = <SyncEvent>[
-        FullResyncStarted(FullResyncReason.manual),
-        SyncStarted(SyncPhase.push),
-        SyncProgress(SyncPhase.pull, 1, 10),
+        const FullResyncStarted(FullResyncReason.manual),
+        const SyncStarted(SyncPhase.push),
+        const SyncProgress(SyncPhase.pull, 1, 10),
         SyncCompleted(const Duration(seconds: 1), DateTime.now()),
         SyncErrorEvent(SyncPhase.push, 'error'),
         ConflictDetectedEvent(
@@ -594,15 +594,15 @@ void main() {
           resolution: const AcceptServer(),
         ),
         ConflictUnresolvedEvent(conflict: conflict, reason: 'reason'),
-        DataMergedEvent(
+        const DataMergedEvent(
           kind: 'k',
           entityId: 'id',
           localFields: {},
           serverFields: {},
           mergedData: {},
         ),
-        CacheUpdateEvent('kind'),
-        OperationPushedEvent(
+        const CacheUpdateEvent('kind'),
+        const OperationPushedEvent(
           opId: 'op',
           kind: 'k',
           entityId: 'id',

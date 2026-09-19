@@ -5,6 +5,7 @@ import 'package:offline_first_sync_drift/src/tables/cursors.drift.dart' as i1;
 import 'package:offline_first_sync_drift/src/tables/outbox_meta.drift.dart'
     as i2;
 import 'package:offline_first_sync_drift/src/tables/outbox.drift.dart' as i3;
+
 import 'test_database.drift.dart' as i4;
 import 'test_database.dart' as i5;
 
@@ -153,13 +154,12 @@ class $$TestItemsTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i4.$$TestItemsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer:
-              () => i4.$$TestItemsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer:
-              () =>
-                  i4.$$TestItemsTableAnnotationComposer($db: db, $table: table),
+          createFilteringComposer: () =>
+              i4.$$TestItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i4.$$TestItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              i4.$$TestItemsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 i0.Value<DateTime> updatedAt = const i0.Value.absent(),
@@ -192,16 +192,18 @@ class $$TestItemsTableTableManager
                 name: name,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<i4.$TestItemsTable, i5.TestItem>(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i4.$TestItemsTable,
+                    i5.TestItem
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -392,16 +394,14 @@ class $TestItemsTable extends i5.TestItems
   i5.TestItem map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i5.TestItem(
-      id:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}id'],
-          )!,
-      updatedAt:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.dateTime,
-            data['${effectivePrefix}updated_at'],
-          )!,
+      id: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
       deletedAt: attachedDatabase.typeMapping.read(
         i0.DriftSqlType.dateTime,
         data['${effectivePrefix}deleted_at'],
@@ -410,11 +410,10 @@ class $TestItemsTable extends i5.TestItems
         i0.DriftSqlType.dateTime,
         data['${effectivePrefix}deleted_at_local'],
       ),
-      name:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}name'],
-          )!,
+      name: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
     );
   }
 

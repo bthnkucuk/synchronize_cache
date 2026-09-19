@@ -17,10 +17,7 @@ String _formatDate(DateTime? date) {
 /// Shows local and server versions side by side,
 /// allows user to choose local, server, or merge.
 class ConflictDialog extends StatefulWidget {
-  const ConflictDialog({
-    super.key,
-    required this.conflict,
-  });
+  const ConflictDialog({super.key, required this.conflict});
 
   final ConflictInfo conflict;
 
@@ -97,8 +94,9 @@ class _ConflictDialogState extends State<ConflictDialog> {
         // Merge button
         if (!_showMergeEditor)
           OutlinedButton.icon(
-            onPressed:
-                _isResolving ? null : () => setState(() => _showMergeEditor = true),
+            onPressed: _isResolving
+                ? null
+                : () => setState(() => _showMergeEditor = true),
             icon: const Icon(Icons.merge),
             label: const Text('Merge'),
           )
@@ -165,10 +163,7 @@ class _MergeEditor extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Merge Editor',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+        Text('Merge Editor', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Text(
           'Choose which value to use for each field:',
@@ -183,8 +178,10 @@ class _MergeEditor extends StatelessWidget {
             localValue: localTodo.title,
             serverValue: serverTodo.title,
             currentValue: mergedTodo.title,
-            onLocalSelected: () => onChanged(mergedTodo.copyWith(title: localTodo.title)),
-            onServerSelected: () => onChanged(mergedTodo.copyWith(title: serverTodo.title)),
+            onLocalSelected: () =>
+                onChanged(mergedTodo.copyWith(title: localTodo.title)),
+            onServerSelected: () =>
+                onChanged(mergedTodo.copyWith(title: serverTodo.title)),
           ),
 
         // Description
@@ -194,8 +191,12 @@ class _MergeEditor extends StatelessWidget {
             localValue: localTodo.description ?? '(empty)',
             serverValue: serverTodo.description ?? '(empty)',
             currentValue: mergedTodo.description ?? '(empty)',
-            onLocalSelected: () => onChanged(mergedTodo.copyWith(description: localTodo.description)),
-            onServerSelected: () => onChanged(mergedTodo.copyWith(description: serverTodo.description)),
+            onLocalSelected: () => onChanged(
+              mergedTodo.copyWith(description: localTodo.description),
+            ),
+            onServerSelected: () => onChanged(
+              mergedTodo.copyWith(description: serverTodo.description),
+            ),
           ),
 
         // Completed
@@ -205,8 +206,10 @@ class _MergeEditor extends StatelessWidget {
             localValue: localTodo.completed.toString(),
             serverValue: serverTodo.completed.toString(),
             currentValue: mergedTodo.completed.toString(),
-            onLocalSelected: () => onChanged(mergedTodo.copyWith(completed: localTodo.completed)),
-            onServerSelected: () => onChanged(mergedTodo.copyWith(completed: serverTodo.completed)),
+            onLocalSelected: () =>
+                onChanged(mergedTodo.copyWith(completed: localTodo.completed)),
+            onServerSelected: () =>
+                onChanged(mergedTodo.copyWith(completed: serverTodo.completed)),
           ),
 
         // Priority
@@ -216,8 +219,10 @@ class _MergeEditor extends StatelessWidget {
             localValue: localTodo.priority.toString(),
             serverValue: serverTodo.priority.toString(),
             currentValue: mergedTodo.priority.toString(),
-            onLocalSelected: () => onChanged(mergedTodo.copyWith(priority: localTodo.priority)),
-            onServerSelected: () => onChanged(mergedTodo.copyWith(priority: serverTodo.priority)),
+            onLocalSelected: () =>
+                onChanged(mergedTodo.copyWith(priority: localTodo.priority)),
+            onServerSelected: () =>
+                onChanged(mergedTodo.copyWith(priority: serverTodo.priority)),
           ),
 
         // Due date
@@ -227,8 +232,10 @@ class _MergeEditor extends StatelessWidget {
             localValue: _formatDate(localTodo.dueDate),
             serverValue: _formatDate(serverTodo.dueDate),
             currentValue: _formatDate(mergedTodo.dueDate),
-            onLocalSelected: () => onChanged(mergedTodo.copyWith(dueDate: localTodo.dueDate)),
-            onServerSelected: () => onChanged(mergedTodo.copyWith(dueDate: serverTodo.dueDate)),
+            onLocalSelected: () =>
+                onChanged(mergedTodo.copyWith(dueDate: localTodo.dueDate)),
+            onServerSelected: () =>
+                onChanged(mergedTodo.copyWith(dueDate: serverTodo.dueDate)),
           ),
       ],
     );
@@ -264,9 +271,8 @@ class _FieldMerger extends StatelessWidget {
         children: [
           Text(
             fieldName,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            style: Theme.of(context).textTheme.labelMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
           Row(
@@ -321,10 +327,12 @@ class _SelectableValue extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.1) : Colors.grey.withOpacity(0.05),
+          color: isSelected
+              ? color.withValues(alpha: 0.1)
+              : Colors.grey.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? color : Colors.grey.withOpacity(0.3),
+            color: isSelected ? color : Colors.grey.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -334,7 +342,9 @@ class _SelectableValue extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
                   size: 16,
                   color: isSelected ? color : Colors.grey,
                 ),
@@ -344,7 +354,9 @@ class _SelectableValue extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     color: isSelected ? color : Colors.grey,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
               ],

@@ -3,8 +3,6 @@ import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../database/database.dart';
-import '../models/todo.dart';
-import '../sync/todo_sync.dart';
 
 /// Repository for managing todos with offline-first sync support.
 ///
@@ -12,12 +10,11 @@ import '../sync/todo_sync.dart';
 /// 1. Update local database immediately
 /// 2. Enqueue operation for sync to server
 class TodoRepository {
-  TodoRepository(this._db, this._syncTable)
-      : _writer = SyncWriter<AppDatabase>(_db).forTable(_syncTable);
+  TodoRepository(this._db, SyncableTable<Todo> syncTable)
+    : _writer = SyncWriter<AppDatabase>(_db).forTable(syncTable);
 
   final AppDatabase _db;
   final _uuid = const Uuid();
-  final SyncableTable<Todo> _syncTable;
   final SyncEntityWriter<Todo, AppDatabase> _writer;
 
   /// Watches all non-deleted todos, ordered by priority and title.
@@ -44,8 +41,9 @@ class TodoRepository {
 
   /// Gets a todo by ID.
   Future<Todo?> getById(String id) {
-    return (_db.select(_db.todos)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+    return (_db.select(
+      _db.todos,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
   /// Creates a new todo.
@@ -149,10 +147,9 @@ class TodoRepository {
 
   /// Hard deletes all soft-deleted todos (cleanup after sync).
   Future<int> cleanupDeleted() async {
-    return (_db.delete(_db.todos)
-          ..where(
-            (t) => t.deletedAt.isNotNull() | t.deletedAtLocal.isNotNull(),
-          ))
+    return (_db.delete(
+          _db.todos,
+        )..where((t) => t.deletedAt.isNotNull() | t.deletedAtLocal.isNotNull()))
         .go();
   }
 
@@ -172,11 +169,11 @@ class TodoRepository {
 
   /// Gets IDs of all soft-deleted todos.
   Future<List<String>> getDeletedIds() async {
-    final rows = await (_db.select(_db.todos)
-          ..where(
-            (t) => t.deletedAt.isNotNull() | t.deletedAtLocal.isNotNull(),
-          ))
-        .get();
+    final rows =
+        await (_db.select(_db.todos)..where(
+              (t) => t.deletedAt.isNotNull() | t.deletedAtLocal.isNotNull(),
+            ))
+            .get();
     return rows.map((t) => t.id).toList();
   }
 

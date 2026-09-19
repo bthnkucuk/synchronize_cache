@@ -16,71 +16,66 @@ void main() {
     });
 
     test('changed() marks field when from != to', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.changed<String>('title', from: 'a', to: 'b');
+      final tracker = ChangedFieldsTracker()
+        ..changed<String>('title', from: 'a', to: 'b');
       expect(tracker.fields, equals({'title'}));
     });
 
     test('changed() does NOT mark field when from == to', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.changed<String>('title', from: 'same', to: 'same');
+      final tracker = ChangedFieldsTracker()
+        ..changed<String>('title', from: 'same', to: 'same');
       expect(tracker.fields, isEmpty);
     });
 
     test('changed() treats nulls as equal', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.changed<String?>('title', from: null, to: null);
+      final tracker = ChangedFieldsTracker()
+        ..changed<String?>('title', from: null, to: null);
       expect(tracker.fields, isEmpty);
     });
 
     test('changed() detects null -> value transition', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.changed<String?>('title', from: null, to: 'x');
+      final tracker = ChangedFieldsTracker()
+        ..changed<String?>('title', from: null, to: 'x');
       expect(tracker.fields, equals({'title'}));
     });
 
     test('markIf() marks when condition is true', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.markIf('title', true);
+      final tracker = ChangedFieldsTracker()..markIf('title', true);
       expect(tracker.fields, equals({'title'}));
     });
 
     test('markIf() does nothing when condition is false', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.markIf('title', false);
+      final tracker = ChangedFieldsTracker()..markIf('title', false);
       expect(tracker.fields, isEmpty);
     });
 
     test('mark() unconditionally adds a field', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.mark('title');
+      final tracker = ChangedFieldsTracker()..mark('title');
       expect(tracker.fields, equals({'title'}));
     });
 
     test('mark() is idempotent (set semantics)', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.mark('title');
-      tracker.mark('title');
+      final tracker = ChangedFieldsTracker()
+        ..mark('title')
+        ..mark('title');
       expect(tracker.fields, hasLength(1));
     });
 
     test('fields getter returns an unmodifiable set', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.mark('title');
+      final tracker = ChangedFieldsTracker()..mark('title');
       expect(() => tracker.fields.add('other'), throwsUnsupportedError);
     });
 
     test('fieldsOrNull returns the set when non-empty', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.mark('title');
+      final tracker = ChangedFieldsTracker()..mark('title');
       expect(tracker.fieldsOrNull, equals({'title'}));
     });
 
     test('multiple marks accumulate distinct fields', () {
-      final tracker = ChangedFieldsTracker();
-      tracker.mark('a');
-      tracker.changed<int>('b', from: 1, to: 2);
-      tracker.markIf('c', true);
+      final tracker = ChangedFieldsTracker()
+        ..mark('a')
+        ..changed<int>('b', from: 1, to: 2)
+        ..markIf('c', true);
       expect(tracker.fields, equals({'a', 'b', 'c'}));
     });
   });
@@ -103,42 +98,27 @@ void main() {
     });
 
     test('detects added keys', () {
-      final result = ChangedFieldsDiff.diffMaps(
-        {'a': 1},
-        {'a': 1, 'b': 2},
-      );
+      final result = ChangedFieldsDiff.diffMaps({'a': 1}, {'a': 1, 'b': 2});
       expect(result, equals({'b'}));
     });
 
     test('detects removed keys', () {
-      final result = ChangedFieldsDiff.diffMaps(
-        {'a': 1, 'b': 2},
-        {'a': 1},
-      );
+      final result = ChangedFieldsDiff.diffMaps({'a': 1, 'b': 2}, {'a': 1});
       expect(result, equals({'b'}));
     });
 
     test('detects type mismatches (string vs int)', () {
-      final result = ChangedFieldsDiff.diffMaps(
-        {'val': '1'},
-        {'val': 1},
-      );
+      final result = ChangedFieldsDiff.diffMaps({'val': '1'}, {'val': 1});
       expect(result, equals({'val'}));
     });
 
     test('detects null -> value transition', () {
-      final result = ChangedFieldsDiff.diffMaps(
-        {'val': null},
-        {'val': 'x'},
-      );
+      final result = ChangedFieldsDiff.diffMaps({'val': null}, {'val': 'x'});
       expect(result, equals({'val'}));
     });
 
     test('treats null == null as equal', () {
-      final result = ChangedFieldsDiff.diffMaps(
-        {'val': null},
-        {'val': null},
-      );
+      final result = ChangedFieldsDiff.diffMaps({'val': null}, {'val': null});
       expect(result, isEmpty);
     });
 
@@ -318,26 +298,29 @@ void main() {
   });
 
   group('ChangedFieldsDiff NaN handling', () {
-    test('diffMaps reports no change for two NaN doubles in the same field', () {
-      // Two distinct NaN expressions; without the fix, `identical` may be
-      // false and `NaN == NaN` is always false, so this would falsely
-      // report a change.
-      final before = <String, Object?>{'score': double.nan};
-      final after = <String, Object?>{'score': double.nan + 0.0};
+    test(
+      'diffMaps reports no change for two NaN doubles in the same field',
+      () {
+        // Two distinct NaN expressions; without the fix, `identical` may be
+        // false and `NaN == NaN` is always false, so this would falsely
+        // report a change.
+        final before = <String, Object?>{'score': double.nan};
+        final after = <String, Object?>{'score': double.nan + 0.0};
 
-      expect(
-        ChangedFieldsDiff.diffMaps(before, after, ignoredFields: const {}),
-        isEmpty,
-      );
-      expect(
-        ChangedFieldsDiff.diffOrNullMaps(
-          before,
-          after,
-          ignoredFields: const {},
-        ),
-        isNull,
-      );
-    });
+        expect(
+          ChangedFieldsDiff.diffMaps(before, after, ignoredFields: const {}),
+          isEmpty,
+        );
+        expect(
+          ChangedFieldsDiff.diffOrNullMaps(
+            before,
+            after,
+            ignoredFields: const {},
+          ),
+          isNull,
+        );
+      },
+    );
 
     test('diffMaps reports change when NaN flips to a real number', () {
       final before = <String, Object?>{'score': double.nan};

@@ -1,13 +1,15 @@
 import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:developer';
+
 import 'package:drift/drift.dart';
+import 'package:meta/meta.dart';
 
 /// TypeConverter for JSON/jsonb columns
 /// Stores JSON as text in SQLite and handles JSON serialization/deserialization
-class JsonConverter extends TypeConverter<Map<String, dynamic>?, String?>
+@immutable
+final class const JsonConverter()
+    extends TypeConverter<Map<String, dynamic>?, String?>
     with JsonTypeConverter2<Map<String, dynamic>?, String?, Object?> {
-  const JsonConverter();
-
   // ---------- SQL <-> Dart ----------
   @override
   Map<String, dynamic>? fromSql(String? fromDb) {

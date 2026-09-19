@@ -247,7 +247,16 @@ class $$DailyFeelingsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), i0.BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<i2.$DailyFeelingsTable, i1.DailyFeeling>(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i2.$DailyFeelingsTable,
+                    i1.DailyFeeling
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),

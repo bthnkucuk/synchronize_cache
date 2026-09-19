@@ -1,22 +1,25 @@
 import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:developer';
+
 import 'package:drift/drift.dart';
 import 'package:meta/meta.dart';
 
 /// TypeConverter for jsonb arrays whose elements are objects.
 /// Stores `List<Map<String, dynamic>>?` as JSON text in SQLite.
 @immutable
-final class JsonListConverter extends TypeConverter<List<Map<String, dynamic>>?, String?>
+final class const JsonListConverter()
+    extends TypeConverter<List<Map<String, dynamic>>?, String?>
     with JsonTypeConverter2<List<Map<String, dynamic>>?, String?, Object?> {
-  const JsonListConverter();
-
   @override
   List<Map<String, dynamic>>? fromSql(String? fromDb) {
     if (fromDb == null || fromDb.isEmpty) return null;
     try {
       final decoded = jsonDecode(fromDb);
       if (decoded is! List) return null;
-      return decoded.whereType<Map>().map(Map<String, dynamic>.from).toList();
+      return decoded
+          .whereType<Map<dynamic, dynamic>>()
+          .map(Map<String, dynamic>.from)
+          .toList();
     } catch (e, st) {
       log('JsonListConverter catch block: $e\n$st');
       return null;
@@ -33,7 +36,10 @@ final class JsonListConverter extends TypeConverter<List<Map<String, dynamic>>?,
   List<Map<String, dynamic>>? fromJson(Object? json) {
     if (json == null) return null;
     if (json is List) {
-      return json.whereType<Map>().map(Map<String, dynamic>.from).toList();
+      return json
+          .whereType<Map<dynamic, dynamic>>()
+          .map(Map<String, dynamic>.from)
+          .toList();
     }
     return null;
   }

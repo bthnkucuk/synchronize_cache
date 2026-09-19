@@ -2,7 +2,6 @@
 @Timeout(Duration(minutes: 3))
 library;
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -99,10 +98,7 @@ void main() {
       todo = (await repo.getById(todo.id))!;
 
       // Server modifies the todo (simulates another client)
-      await updateOnServer(
-        id: todo.id,
-        title: 'Server Changed Title',
-      );
+      await updateOnServer(id: todo.id, title: 'Server Changed Title');
 
       // Local modifies the same todo (using synced version with correct timestamp)
       await repo.update(todo, title: 'Local Changed Title');
@@ -119,8 +115,14 @@ void main() {
       // Verify conflict was detected
       expect(conflictHandler.hasConflicts, isTrue);
       expect(conflictHandler.currentConflict, isNotNull);
-      expect(conflictHandler.currentConflict!.localTodo.title, 'Local Changed Title');
-      expect(conflictHandler.currentConflict!.serverTodo.title, 'Server Changed Title');
+      expect(
+        conflictHandler.currentConflict!.localTodo.title,
+        'Local Changed Title',
+      );
+      expect(
+        conflictHandler.currentConflict!.serverTodo.title,
+        'Server Changed Title',
+      );
 
       // Resolve with server version
       conflictHandler.resolveWithServer();
@@ -296,10 +298,7 @@ void main() {
     });
 
     test('server simulation triggers conflict', () async {
-      var todo = await repo.create(
-        title: 'Test Todo',
-        completed: false,
-      );
+      var todo = await repo.create(title: 'Test Todo', completed: false);
       await syncService.sync();
 
       // Refetch todo after sync to get server timestamp
@@ -355,10 +354,7 @@ void main() {
       // Server changes description
       final response = await http.put(
         Uri.parse('${server.baseUrl}/todos/${todo.id}'),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Force-Update': 'true',
-        },
+        headers: {'Content-Type': 'application/json', 'X-Force-Update': 'true'},
         body: jsonEncode({
           'title': 'Original',
           'description': 'Server desc',
@@ -463,11 +459,7 @@ void main() {
       todo = (await repo.getById(todo.id))!;
 
       // Server sets high priority
-      await updateOnServer(
-        id: todo.id,
-        title: todo.title,
-        priority: 1,
-      );
+      await updateOnServer(id: todo.id, title: todo.title, priority: 1);
 
       // Local sets low priority
       await repo.update(todo, priority: 5);
@@ -481,7 +473,10 @@ void main() {
       expect(conflictHandler.hasConflicts, isTrue);
       expect(conflictHandler.currentConflict!.serverTodo.priority, 1);
       expect(conflictHandler.currentConflict!.localTodo.priority, 5);
-      expect(conflictHandler.currentConflict!.conflictingFields, contains('priority'));
+      expect(
+        conflictHandler.currentConflict!.conflictingFields,
+        contains('priority'),
+      );
 
       // Resolve with merged - take average priority
       final info = conflictHandler.currentConflict!;
@@ -507,10 +502,7 @@ void main() {
       // Server changes title and completed
       await http.put(
         Uri.parse('${server.baseUrl}/todos/${todo.id}'),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Force-Update': 'true',
-        },
+        headers: {'Content-Type': 'application/json', 'X-Force-Update': 'true'},
         body: jsonEncode({
           'title': 'Server Title',
           'description': 'Original Desc',
@@ -520,11 +512,7 @@ void main() {
       );
 
       // Local changes description and priority
-      await repo.update(
-        todo,
-        description: 'Local Desc',
-        priority: 1,
-      );
+      await repo.update(todo, description: 'Local Desc', priority: 1);
 
       final syncFuture = syncService.sync();
 
@@ -557,13 +545,11 @@ void main() {
       // Server adds more info to description
       await http.put(
         Uri.parse('${server.baseUrl}/todos/${todo.id}'),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Force-Update': 'true',
-        },
+        headers: {'Content-Type': 'application/json', 'X-Force-Update': 'true'},
         body: jsonEncode({
           'title': 'Important Task',
-          'description': 'Initial notes\n\nServer added: Meeting notes from John',
+          'description':
+              'Initial notes\n\nServer added: Meeting notes from John',
           'priority': 2,
           'completed': false,
         }),
@@ -585,7 +571,8 @@ void main() {
 
       // Manual merge to preserve both additions
       final info = conflictHandler.currentConflict!;
-      final mergedDesc = 'Initial notes\n\n'
+      const mergedDesc =
+          'Initial notes\n\n'
           'Server added: Meeting notes from John\n\n'
           'Local added: Remember to call client';
       final merged = info.localTodo.copyWith(description: mergedDesc);
@@ -606,10 +593,7 @@ void main() {
 
       // Server updates the todo
       final fetchedTodo = (await repo.getById(todo.id))!;
-      await updateOnServer(
-        id: fetchedTodo.id,
-        title: 'Server Modified',
-      );
+      await updateOnServer(id: fetchedTodo.id, title: 'Server Modified');
 
       // Local modifies
       await repo.update(fetchedTodo, title: 'Client Modified Again');
@@ -687,10 +671,7 @@ void main() {
       // Server only changes title
       await http.put(
         Uri.parse('${server.baseUrl}/todos/${todo.id}'),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Force-Update': 'true',
-        },
+        headers: {'Content-Type': 'application/json', 'X-Force-Update': 'true'},
         body: jsonEncode({
           'title': 'Server Title',
           'description': 'Test description',
@@ -728,20 +709,14 @@ void main() {
     });
 
     test('unicode preserved through conflict resolution', () async {
-      var todo = await repo.create(
-        title: '日本語タスク',
-        description: 'Описание 🚀',
-      );
+      var todo = await repo.create(title: '日本語タスク', description: 'Описание 🚀');
       await syncService.sync();
       todo = (await repo.getById(todo.id))!;
 
       // Server changes
       await http.put(
         Uri.parse('${server.baseUrl}/todos/${todo.id}'),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Force-Update': 'true',
-        },
+        headers: {'Content-Type': 'application/json', 'X-Force-Update': 'true'},
         body: jsonEncode({
           'title': '更新されたタスク',
           'description': 'Новое описание 🎉',
