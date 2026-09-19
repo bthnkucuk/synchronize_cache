@@ -7,6 +7,7 @@ import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/exceptions.dart';
+import 'package:offline_first_sync_drift/src/internal/server_timestamp.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/services/conflict_service.dart';
 import 'package:offline_first_sync_drift/src/services/outbox_service.dart';
@@ -81,16 +82,18 @@ final class PushService {
         );
         if (outboxOps.isEmpty) break;
 
-        // Re-stamp each op's `baseUpdatedAt` from the latest local row so the
-        // wire-level `_baseUpdatedAt` reflects the server-known version Round 1
-        // wrote back after the previous successful push. Frozen outbox values
-        // would otherwise produce stale-base 409s on rapid back-to-back edits.
-        final ops = await _reStampBaseUpdatedAt(outboxOps);
+        // One op per entity per batch: later ops of the same entity wait for
+        // the next pass, after the server version the earlier one produced
+        // has been written into their base (see the re-base below). Sent in
+        // the same batch they would all carry the same, by then stale, base.
+        final ops = await _withPreciseBases(_firstOpPerEntity(outboxOps));
 
         final result = await _pushBatch(ops);
 
         final successOpIds = <String>[];
         final conflictOps = <Op, PushConflict>{};
+        // Versions the server reported in this pass, per (kind, entity id).
+        final serverVersions = <(String, String), DateTime>{};
         final failed = <String, String>{};
         var hadPushErrors = false;
         var batchSuccessCount = 0;
@@ -110,6 +113,7 @@ final class PushService {
               // reflects the server-authoritative state immediately.
               if (serverData != null) {
                 await _applyServerRow(op.kind, serverData);
+                _noteServerVersion(serverVersions, op, serverData);
               }
               successOpIds.add(opResult.opId);
               counters.pushed++;
@@ -169,6 +173,10 @@ final class PushService {
           if (result.resolved) {
             counters.conflictsResolved++;
             successOpIds.add(entry.key.opId);
+            final serverData = result.serverData;
+            if (serverData != null) {
+              _noteServerVersion(serverVersions, entry.key, serverData);
+            }
           } else if (_config.skipConflictingOps) {
             successOpIds.add(entry.key.opId);
           } else {
@@ -185,6 +193,18 @@ final class PushService {
                       _config.skipConflictingOps,
                 )
                 .map((op) => op.opId),
+          );
+        }
+
+        // Ops still queued for these entities were enqueued against the
+        // version we just replaced; without this they would be rejected as
+        // conflicts with our own write.
+        for (final MapEntry(key: (kind, id), value: version)
+            in serverVersions.entries) {
+          await _outbox.rebase(
+            kind: kind,
+            entityId: id,
+            serverVersion: version,
           );
         }
 
@@ -210,60 +230,79 @@ final class PushService {
     return counters.toStats();
   }
 
-  /// Re-stamp each op's [Op.baseUpdatedAt] from the latest local row's
-  /// `updated_at` so the wire-level optimistic-concurrency token reflects the
-  /// version Round 1 wrote back to local on the previous successful push.
+  /// Keeps the first queued op of every `(kind, id)` and drops the rest for
+  /// this pass; [ops] is ordered oldest first, so per-entity order is kept.
   ///
-  /// Three-state rule (preserves original semantics; never fabricates a base):
-  ///   1. `op.baseUpdatedAt` non-null + local row found → override with row's
-  ///      `updated_at` (the new, fresh, server-known version).
-  ///   2. `op.baseUpdatedAt` non-null + local row missing → keep
-  ///      `op.baseUpdatedAt` as-is (defensive: should not happen in practice).
-  ///   3. `op.baseUpdatedAt` null (regardless of local row) → keep null.
-  ///      First-write semantics (`isNewRecord`) — the consumer asked the server
-  ///      to reject if the row already exists. Don't lie by inventing a base.
-  ///
-  /// Force-update is **not** routed through this method: `forcePush()` is a
-  /// separate transport entrypoint used only by `ConflictService` for the
-  /// `clientWins` strategy and does not emit `_baseUpdatedAt` on the wire.
-  ///
-  /// If the kind is not registered, the op is left unchanged (mirrors the
-  /// defensive no-op in `_applyServerRow`).
-  Future<List<Op>> _reStampBaseUpdatedAt(List<Op> ops) async {
-    if (ops.isEmpty) return ops;
-    final result = <Op>[];
-    for (final op in ops) {
-      result.add(await _reStampOne(op));
-    }
-    return result;
+  /// Ops of one entity must reach the server one at a time and in order:
+  /// each successful write moves the server version the next one has to be
+  /// based on, and an op must not be applied when an earlier one failed.
+  List<Op> _firstOpPerEntity(List<Op> ops) {
+    final seen = <(String, String)>{};
+    return [
+      for (final op in ops)
+        if (seen.add((op.kind, op.id))) op,
+    ];
   }
 
-  Future<Op> _reStampOne(Op op) async {
-    // Rule 3: never fabricate a base for first-write ops.
-    if (op is UpsertOp && op.baseUpdatedAt == null) return op;
-    if (op is DeleteOp && op.baseUpdatedAt == null) return op;
+  Future<List<Op>> _withPreciseBases(List<Op> ops) async => [
+    for (final op in ops) await _recoverBasePrecision(op),
+  ];
+
+  /// Restores sub-millisecond digits of a base that lost them.
+  ///
+  /// An op's base is the version the app edited, exactly as the app passed
+  /// it. It is NOT replaced by the local row's `updated_at`: that column
+  /// belongs to the app (many bump it on every edit, which used to turn each
+  /// edit into a conflict), and a pull may have stored another client's
+  /// write there — using it would push over that write without the conflict
+  /// the server must report.
+  ///
+  /// The one thing the local row is good for: ops enqueued before the outbox
+  /// stored microseconds carry a millisecond base. When the row still holds
+  /// that same version, its full-precision value is what the server has.
+  Future<Op> _recoverBasePrecision(Op op) async {
+    final base = _baseOf(op);
+    if (base == null || base.microsecond != 0) return op;
 
     final tableConfig = _tables[op.kind];
     if (tableConfig == null) return op;
 
-    final freshUpdatedAt = await _readLocalUpdatedAt(tableConfig, op.id);
-    // Rule 2: row missing → keep op.baseUpdatedAt as-is.
-    if (freshUpdatedAt == null) return op;
+    final local = await _readLocalUpdatedAt(tableConfig, op.id);
+    if (local == null || local.microsecond == 0) return op;
+    if (local.millisecondsSinceEpoch != base.millisecondsSinceEpoch) return op;
 
-    // Rule 1: override with fresh local value.
-    if (op is UpsertOp) {
-      return op.copyWith(baseUpdatedAt: freshUpdatedAt);
-    }
-    if (op is DeleteOp) {
-      return DeleteOp(
+    return switch (op) {
+      UpsertOp() => op.copyWith(baseUpdatedAt: local),
+      DeleteOp() => DeleteOp(
         opId: op.opId,
         kind: op.kind,
         id: op.id,
         localTimestamp: op.localTimestamp,
-        baseUpdatedAt: freshUpdatedAt,
-      );
+        baseUpdatedAt: local,
+      ),
+    };
+  }
+
+  DateTime? _baseOf(Op op) => switch (op) {
+    UpsertOp(:final baseUpdatedAt) => baseUpdatedAt,
+    DeleteOp(:final baseUpdatedAt) => baseUpdatedAt,
+  };
+
+  /// Records the version carried by a canonical row the server returned.
+  void _noteServerVersion(
+    Map<(String, String), DateTime> versions,
+    Op op,
+    Map<String, Object?> serverData,
+  ) {
+    final raw =
+        serverData[SyncFields.updatedAt] ??
+        serverData[SyncFields.updatedAtSnake];
+    if (raw == null) return;
+    try {
+      versions[(op.kind, op.id)] = parseServerTimestamp(raw);
+    } on FormatException {
+      // No usable version: queued ops keep their own base.
     }
-    return op;
   }
 
   /// Read the local row's `updated_at` for `(kind, id)` via a generic SELECT

@@ -11,13 +11,22 @@ import 'package:offline_first_sync_drift/src/transport_adapter.dart';
 
 /// Result of conflict resolution.
 final class ConflictResolutionResult {
-  const ConflictResolutionResult({required this.resolved, this.resultData});
+  const ConflictResolutionResult({
+    required this.resolved,
+    this.resultData,
+    this.serverData,
+  });
 
   /// Whether the conflict was resolved.
   final bool resolved;
 
   /// Data after resolution.
   final Map<String, Object?>? resultData;
+
+  /// The entity as the server holds it after the resolution, when known: the
+  /// server's row for `AcceptServer`, the row returned by the force push
+  /// otherwise. Its `updated_at` is the version later ops must be based on.
+  final Map<String, Object?>? serverData;
 }
 
 /// Service for sync conflict resolution.
@@ -157,10 +166,12 @@ class ConflictService<DB extends GeneratedDatabase> {
         return ConflictResolutionResult(
           resolved: true,
           resultData: conflict.serverData,
+          serverData: conflict.serverData,
         );
 
       case AcceptClient():
-        final success = await _forcePushOp(op);
+        final pushed = await _forcePushOp(op);
+        final success = pushed != null;
         if (success) {
           _events.add(
             ConflictResolvedEvent(
@@ -173,10 +184,12 @@ class ConflictService<DB extends GeneratedDatabase> {
         return ConflictResolutionResult(
           resolved: success,
           resultData: success ? conflict.localData : null,
+          serverData: pushed?.serverData,
         );
 
       case AcceptMerged(:final mergedData):
-        final success = await _pushMergedData(op, mergedData);
+        final pushed = await _pushMergedData(op, mergedData);
+        final success = pushed != null;
         if (success) {
           _events.add(
             ConflictResolvedEvent(
@@ -189,6 +202,7 @@ class ConflictService<DB extends GeneratedDatabase> {
         return ConflictResolutionResult(
           resolved: success,
           resultData: success ? mergedData : null,
+          serverData: pushed?.serverData,
         );
 
       case DeferResolution():
@@ -208,6 +222,19 @@ class ConflictService<DB extends GeneratedDatabase> {
     }
   }
 
+  /// Writes a row the server returned into the local table, so the local
+  /// entity carries the server's version of it. No-op without data or for an
+  /// unregistered kind.
+  Future<void> _applyServerRow(String kind, Map<String, Object?>? row) async {
+    final tableConfig = _tables[kind];
+    if (row == null || tableConfig == null) return;
+
+    final entity = tableConfig.fromJson(row);
+    await _db
+        .into(tableConfig.table)
+        .insertOnConflictUpdate(tableConfig.getInsertable(entity));
+  }
+
   Future<void> _applyServerData(Conflict conflict) async {
     final tableConfig = _tables[conflict.kind];
     if (tableConfig == null) return;
@@ -218,13 +245,15 @@ class ConflictService<DB extends GeneratedDatabase> {
         .insertOnConflictUpdate(tableConfig.getInsertable(entity));
   }
 
-  Future<bool> _forcePushOp(Op op) async {
+  /// Force-pushes [op]; returns the server's success, or `null` on failure.
+  Future<PushSuccess?> _forcePushOp(Op op) async {
     var retries = 0;
     while (retries < _config.maxConflictRetries) {
       final result = await _transport.forcePush(op);
 
       if (result is PushSuccess) {
-        return true;
+        await _applyServerRow(op.kind, result.serverData);
+        return result;
       }
 
       if (result is PushConflict) {
@@ -235,13 +264,17 @@ class ConflictService<DB extends GeneratedDatabase> {
         continue;
       }
 
-      return false;
+      return null;
     }
-    return false;
+    return null;
   }
 
-  Future<bool> _pushMergedData(Op op, Map<String, Object?> mergedData) async {
-    if (op is! UpsertOp) return false;
+  /// Force-pushes [mergedData]; returns the server's success, or `null`.
+  Future<PushSuccess?> _pushMergedData(
+    Op op,
+    Map<String, Object?> mergedData,
+  ) async {
+    if (op is! UpsertOp) return null;
 
     final mergedOp = UpsertOp(
       opId: op.opId,
@@ -256,14 +289,10 @@ class ConflictService<DB extends GeneratedDatabase> {
       final result = await _transport.forcePush(mergedOp);
 
       if (result is PushSuccess) {
-        final tableConfig = _tables[op.kind];
-        if (tableConfig != null) {
-          final entity = tableConfig.fromJson(mergedData);
-          await _db
-              .into(tableConfig.table)
-              .insertOnConflictUpdate(tableConfig.getInsertable(entity));
-        }
-        return true;
+        // Prefer the row the server returned: it carries the version the
+        // write produced. The merged data still has the version it replaced.
+        await _applyServerRow(op.kind, result.serverData ?? mergedData);
+        return result;
       }
 
       if (result is PushConflict) {
@@ -274,8 +303,8 @@ class ConflictService<DB extends GeneratedDatabase> {
         continue;
       }
 
-      return false;
+      return null;
     }
-    return false;
+    return null;
   }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/cursor.dart';
+import 'package:offline_first_sync_drift/src/internal/outbox_timestamp.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/tables/cursors.drift.dart';
 import 'package:offline_first_sync_drift/src/tables/outbox.drift.dart';
@@ -84,7 +85,8 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     final ts = op.localTimestamp.toUtc().millisecondsSinceEpoch;
 
     if (op is UpsertOp) {
-      final baseTs = op.baseUpdatedAt?.toUtc().millisecondsSinceEpoch;
+      final base = op.baseUpdatedAt;
+      final baseTs = base == null ? null : encodeOutboxTimestamp(base);
       final changedFieldsJson = op.changedFields != null
           ? jsonEncode(op.changedFields!.toList())
           : null;
@@ -103,7 +105,8 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
         ),
       );
     } else if (op is DeleteOp) {
-      final baseTs = op.baseUpdatedAt?.toUtc().millisecondsSinceEpoch;
+      final base = op.baseUpdatedAt;
+      final baseTs = base == null ? null : encodeOutboxTimestamp(base);
 
       await into(_outbox).insertOnConflictUpdate(
         SyncOutboxCompanion.insert(
@@ -171,7 +174,9 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     return customSelect(
       'SELECT * FROM ${TableNames.syncOutbox} '
       '$whereClause'
-      'ORDER BY ${TableColumns.ts} LIMIT ?',
+      // `ts` has millisecond resolution; rowid keeps ops enqueued in the
+      // same millisecond in insertion order instead of an arbitrary one.
+      'ORDER BY ${TableColumns.ts}, rowid LIMIT ?',
       variables: variables,
       readsFrom: {_outbox},
     ).get();
@@ -360,7 +365,7 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     final rows = await customSelect(
       'SELECT * FROM ${TableNames.syncOutbox} '
       'WHERE $whereClause '
-      'ORDER BY ${TableColumns.ts} LIMIT ?',
+      'ORDER BY ${TableColumns.ts}, rowid LIMIT ?',
       variables: variables,
       readsFrom: {_outbox},
     ).get();
@@ -373,14 +378,12 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     final entityId = row.read<String>(TableColumns.entityId);
     final opType = row.read<String>(TableColumns.op);
     final tsMillis = row.read<int>(TableColumns.ts);
-    final baseUpdatedAtMillis = row.readNullable<int>(
-      TableColumns.baseUpdatedAt,
-    );
+    final storedBase = row.readNullable<int>(TableColumns.baseUpdatedAt);
 
     final ts = DateTime.fromMillisecondsSinceEpoch(tsMillis, isUtc: true);
-    final baseUpdatedAt = baseUpdatedAtMillis != null
-        ? DateTime.fromMillisecondsSinceEpoch(baseUpdatedAtMillis, isUtc: true)
-        : null;
+    final baseUpdatedAt = storedBase == null
+        ? null
+        : decodeOutboxTimestamp(storedBase);
 
     if (opType == OpType.delete) {
       return DeleteOp(
@@ -415,6 +418,34 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
       changedFields: changedFields,
     );
   }).toList();
+
+  /// Re-bases the queued ops of one entity onto [serverVersion].
+  ///
+  /// Call this when the server reports a new version of the entity (a
+  /// successful push or a resolved conflict). Ops that were enqueued against
+  /// the previous version would otherwise be pushed with a stale
+  /// `_baseUpdatedAt` and be rejected as conflicts with our own write.
+  ///
+  /// Ops without a base keep none: a null base means "create, fail if it
+  /// exists", and inventing one would change that meaning. Returns the number
+  /// of re-based ops.
+  Future<int> rebaseOutboxOps({
+    required String kind,
+    required String entityId,
+    required DateTime serverVersion,
+  }) => customUpdate(
+    'UPDATE ${TableNames.syncOutbox} '
+    'SET ${TableColumns.baseUpdatedAt} = ? '
+    'WHERE ${TableColumns.kind} = ? AND ${TableColumns.entityId} = ? '
+    'AND ${TableColumns.baseUpdatedAt} IS NOT NULL',
+    variables: [
+      Variable.withInt(encodeOutboxTimestamp(serverVersion)),
+      Variable.withString(kind),
+      Variable.withString(entityId),
+    ],
+    updates: {_outbox},
+    updateKind: UpdateKind.update,
+  );
 
   /// Acknowledge sent operations (remove from queue).
   Future<void> ackOutbox(Iterable<String> opIds) async {

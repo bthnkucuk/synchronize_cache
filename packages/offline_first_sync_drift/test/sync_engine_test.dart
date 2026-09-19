@@ -3109,7 +3109,16 @@ void main() {
     );
   });
 
-  group('Re-stamp baseUpdatedAt on dispatch (Round 2)', () {
+  // History: "Round 2" (#4) overwrote every op's base with the local row's
+  // `updated_at` right before dispatch, to fix stale-base 409s on rapid
+  // back-to-back edits. That treated an app-owned column as the server-known
+  // version, which breaks when the app stamps `updated_at` on edit (every edit
+  // became a conflict) or when a pull stores another client's write there (a
+  // real conflict was swallowed). The stale-base problem is now solved where
+  // the version is actually learned: a successful push re-bases the entity's
+  // queued ops (see test/server_version_chain_test.dart). These tests keep
+  // the guarantees of Round 2 that still hold and pin the ones that changed.
+  group('Base version on dispatch (formerly Round 2 re-stamp)', () {
     SyncableTable<TestItem> testItemTable(TestDatabase db) =>
         SyncableTable<TestItem>(
           kind: 'test_item',
@@ -3119,66 +3128,66 @@ void main() {
           toInsertable: (item) => item.toInsertable(),
         );
 
-    test(
-      'stale outbox base + fresh local row → wire uses fresh local updatedAt',
-      () async {
-        // Bug repro. Outbox was enqueued at T_old. Round 1 wrote the server's
-        // bumped value to local in a previous push, so local now sits at
-        // T_new. The next op for the same id must dispatch with T_new, not
-        // the frozen outbox T_old (otherwise: stale-base 409).
-        final tOld = DateTime.utc(2026, 4, 1, 10);
-        final tNew = DateTime.utc(2026, 4, 1, 10, 0, 5);
+    test('local row moved on without the op → wire keeps the base the op was '
+        'made against', () async {
+      // CHANGED. This state (row at T_new, queued op based on T_old) used
+      // to be "fixed" by dispatching T_new. But the engine cannot know the
+      // row's version came from OUR previous push: a pull writes another
+      // client's version into the same column, and dispatching that would
+      // overwrite their write without the conflict the server must report.
+      // When the newer version IS ours, the successful push has already
+      // re-based this op in the outbox, so this state no longer arises
+      // from back-to-back edits (covered by the happy-path test below).
+      final tOld = DateTime.utc(2026, 4, 1, 10);
+      final tNew = DateTime.utc(2026, 4, 1, 10, 0, 5);
 
-        final transport = MockTransport();
-        final engine = SyncEngine(
-          db: db,
-          transport: transport,
-          tables: [testItemTable(db)],
-        );
-        addTearDown(engine.dispose);
+      final transport = MockTransport();
+      final engine = SyncEngine(
+        db: db,
+        transport: transport,
+        tables: [testItemTable(db)],
+      );
+      addTearDown(engine.dispose);
 
-        // Local row sits at the fresh (Round-1-written-back) value.
-        await db
-            .into(db.testItems)
-            .insertOnConflictUpdate(
-              TestItem(
-                id: 'item-1',
-                updatedAt: tNew,
-                name: 'Local',
-              ).toInsertable(),
-            );
+      // Local row holds a newer version the queued op knows nothing about.
+      await db
+          .into(db.testItems)
+          .insertOnConflictUpdate(
+            TestItem(
+              id: 'item-1',
+              updatedAt: tNew,
+              name: 'Local',
+            ).toInsertable(),
+          );
 
-        // Outbox op was frozen with the stale base from before Round 1's
-        // write-back — exactly the scenario tup-api saw with
-        // delta_us = 80,856,823.
-        await db.enqueue(
-          UpsertOp(
-            opId: 'stale-base-op',
-            kind: 'test_item',
-            id: 'item-1',
-            localTimestamp: tOld,
-            baseUpdatedAt: tOld,
-            payloadJson: {
-              'id': 'item-1',
-              'name': 'Local',
-              'updated_at': tOld.toIso8601String(),
-            },
-          ),
-        );
+      // The op was enqueued against T_old and never re-based.
+      await db.enqueue(
+        UpsertOp(
+          opId: 'stale-base-op',
+          kind: 'test_item',
+          id: 'item-1',
+          localTimestamp: tOld,
+          baseUpdatedAt: tOld,
+          payloadJson: {
+            'id': 'item-1',
+            'name': 'Local',
+            'updated_at': tOld.toIso8601String(),
+          },
+        ),
+      );
 
-        await engine.sync();
+      await engine.sync();
 
-        expect(transport.pushedOps, hasLength(1));
-        final dispatched = transport.pushedOps.single as UpsertOp;
-        expect(
-          dispatched.baseUpdatedAt,
-          tNew,
-          reason:
-              'Re-stamp must override frozen outbox base with the latest '
-              'local updated_at written back by Round 1.',
-        );
-      },
-    );
+      expect(transport.pushedOps, hasLength(1));
+      final dispatched = transport.pushedOps.single as UpsertOp;
+      expect(
+        dispatched.baseUpdatedAt,
+        tOld,
+        reason:
+            'The base is the version the edit was made against; the server '
+            'decides whether that is still current.',
+      );
+    });
 
     test(
       'outbox base equals local base → wire matches both (non-stale baseline)',
@@ -3377,10 +3386,10 @@ void main() {
     });
 
     test(
-      'DeleteOp with stale base + fresh local → wire uses fresh local',
+      'DeleteOp: local row moved on without the op → wire keeps its base',
       () async {
-        // Symmetric to the upsert case: a delete with a frozen base must
-        // pick up the freshest local updatedAt before dispatch.
+        // CHANGED, symmetric to the upsert case above: deleting on top of a
+        // version this client never saw must surface as a conflict.
         final tOld = DateTime.utc(2026, 4, 6, 10);
         final tNew = DateTime.utc(2026, 4, 6, 10, 0, 7);
 
@@ -3416,12 +3425,12 @@ void main() {
 
         expect(transport.pushedOps, hasLength(1));
         final dispatched = transport.pushedOps.single as DeleteOp;
-        expect(dispatched.baseUpdatedAt, tNew);
+        expect(dispatched.baseUpdatedAt, tOld);
       },
     );
 
     test(
-      'Round 1 + Round 2 happy path: write-back feeds re-stamp on next op',
+      'happy path: the version returned for op-1 becomes the base of op-2',
       () async {
         // The integration test the task describes. Two ops in flight on the
         // same id with stale bases. After op1 succeeds:
@@ -3504,21 +3513,16 @@ void main() {
           ),
         );
 
-        // Two flush passes: outbox.take returns a batch; PushService loops
-        // until the outbox is drained. We rely on the engine's loop to
-        // process op1 (writeback s1 to local) and then op2 on the next pass
-        // (re-stamp picks up s1).
-        //
-        // To force two batches (and thus two re-stamps with different state
-        // observed for op2), set pageSize=1 via the transport's batching
-        // doesn't apply — the page size is on _config. So instead we just
-        // configure the engine accordingly.
-
+        // Both ops sit in the outbox together and, with the default page
+        // size, are taken together. PushService sends only the first op of
+        // an entity per pass; when op-1 succeeds, the version the server
+        // returned (s1) is written into op-2's base, and the next pass sends
+        // op-2. This used to need `pageSize: 1` to work: sent in one batch,
+        // both ops carried the same base and op-2 was rejected as stale.
         final engine2 = SyncEngine(
           db: db,
           transport: transport,
           tables: [testItemTable(db)],
-          config: const SyncConfig(pageSize: 1),
         );
         addTearDown(engine2.dispose);
 
@@ -3533,9 +3537,7 @@ void main() {
         expect(
           (transport.recordedOps[0] as UpsertOp).baseUpdatedAt,
           t0,
-          reason:
-              'op-1 dispatches first; local is still at t0, re-stamp '
-              'produces t0.',
+          reason: 'op-1 dispatches first, with the base it was made against.',
         );
 
         // After op-1 succeeds, Round 1 writes s1 back to local. When op-2
@@ -3544,9 +3546,8 @@ void main() {
           (transport.recordedOps[1] as UpsertOp).baseUpdatedAt,
           s1,
           reason:
-              'op-2 is dispatched after Round 1 write-back lands s1. '
-              'Re-stamp must read s1 from local, eliminating the '
-              'stale-base 409 the live tup-api saw.',
+              'op-2 is re-based onto the version the server returned for '
+              'op-1, eliminating the stale-base 409 the live tup-api saw.',
         );
 
         // Outbox should be drained (both succeeded).
