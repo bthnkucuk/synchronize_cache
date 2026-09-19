@@ -7,6 +7,7 @@ final _simulationService = SimulationService(_todoRepository);
 
 Handler middleware(Handler handler) {
   return handler
+      .use(_bareConflictMiddleware())
       .use(_delayMiddleware())
       .use(_corsMiddleware())
       .use(_requestLogger())
@@ -26,6 +27,23 @@ Middleware _delayMiddleware() {
         if (delay > Duration.zero) {
           await Future<void>.delayed(delay);
         }
+      }
+      return handler(context);
+    };
+  };
+}
+
+/// Answers writes with the bare `409` armed via
+/// `POST /simulate/bare_conflict`.
+Middleware _bareConflictMiddleware() {
+  const writes = {HttpMethod.put, HttpMethod.post, HttpMethod.delete};
+  return (handler) {
+    return (context) async {
+      final request = context.request;
+      if (writes.contains(request.method) &&
+          request.uri.path.startsWith('/todos') &&
+          _simulationService.takeBareConflict()) {
+        return Response.json(statusCode: 409, body: {'error': 'conflict'});
       }
       return handler(context);
     };

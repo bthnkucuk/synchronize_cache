@@ -30,6 +30,39 @@ class SimulationService {
     return _pendingDelay;
   }
 
+  int _bareConflicts = 0;
+  int _emptyPages = 0;
+
+  /// Makes the next [count] writes answer `409` with an error body instead
+  /// of the current record.
+  ///
+  /// This is what a proxy, an API gateway or a framework's default error
+  /// handler puts in front of a real backend: a conflict status that does
+  /// not carry the row the client would need to resolve it.
+  void answerNextWritesWithBareConflict({int count = 1}) =>
+      _bareConflicts = count;
+
+  /// Whether the current write must be answered with a bare `409`.
+  bool takeBareConflict() {
+    if (_bareConflicts <= 0) return false;
+    _bareConflicts--;
+    return true;
+  }
+
+  /// Makes the next [count] list requests return an empty page that still
+  /// names a next page.
+  ///
+  /// Servers that filter rows after paginating (row-level permissions, a
+  /// DynamoDB `FilterExpression`) legitimately produce such pages.
+  void answerNextListsWithEmptyPage({int count = 1}) => _emptyPages = count;
+
+  /// Whether the current list request must return an empty page.
+  bool takeEmptyPage() {
+    if (_emptyPages <= 0) return false;
+    _emptyPages--;
+    return true;
+  }
+
   /// Adds a reminder to a todo's description.
   ///
   /// Simulates a server-side process that adds a reminder notice.

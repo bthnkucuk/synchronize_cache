@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:todo_advanced_backend/models/todo.dart';
 import 'package:todo_advanced_backend/repositories/todo_repository.dart';
+import 'package:todo_advanced_backend/services/simulation_service.dart';
 import 'package:todo_advanced_backend/utils/server_clock.dart';
 import 'package:uuid/uuid.dart';
 
@@ -27,6 +28,16 @@ Response _get(RequestContext context) {
 
   final limit = (int.tryParse(params['limit'] ?? '') ?? 500).clamp(1, 1000);
   final pageToken = params['pageToken'];
+
+  // Armed via `POST /simulate/empty_page`: nothing on this page, more behind
+  // it. The token matches no todo, so the next request starts from the top.
+  if (context.read<SimulationService>().takeEmptyPage()) {
+    const next = 'after-the-empty-page';
+    return Response(
+      body: jsonEncode({'items': <Object>[], 'nextPageToken': next}),
+      headers: {'Content-Type': 'application/json', 'X-Next-Page-Token': next},
+    );
+  }
 
   final todos = repository.list(
     updatedSince: updatedSince,

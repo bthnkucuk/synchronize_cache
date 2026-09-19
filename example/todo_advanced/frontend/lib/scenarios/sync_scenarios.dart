@@ -1,7 +1,11 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart';
 import 'package:http/http.dart' as http;
-import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
+// The app's generated database declares its own companions for the sync
+// tables; those are the ones that fit `db.syncOutbox`.
+import 'package:offline_first_sync_drift/offline_first_sync_drift.dart'
+    hide SyncOutboxCompanion;
 import 'package:offline_first_sync_drift_rest/offline_first_sync_drift_rest.dart';
 import 'package:uuid/uuid.dart';
 
@@ -65,6 +69,25 @@ final List<Scenario> syncScenarios = [
     run: _zoneLessTimestampsKeepTheCursor,
   ),
   const Scenario(
+    id: 'K1-7c',
+    title: 'An empty page that names a next page is not the end of a pull',
+    expectation:
+        'When the server answers the first page with no items but a next '
+        'page token, the pull follows the token and still stores the rows '
+        'behind it.',
+    run: _emptyPageWithNextTokenIsFollowed,
+  ),
+  const Scenario(
+    id: 'K1-8',
+    title: 'A 409 without the current record is an error, not a conflict',
+    expectation:
+        'A 409 whose body carries no record (a proxy or a default error '
+        'handler) must not be "resolved" against made-up server data: no '
+        'forced overwrite is sent, the operation stays queued and the next '
+        'sync delivers it.',
+    run: _bareConflictIsNotResolved,
+  ),
+  const Scenario(
     id: 'K1-10',
     title: 'Your own edits never conflict with yourself',
     expectation:
@@ -73,7 +96,29 @@ final List<Scenario> syncScenarios = [
         'although the app stamps updatedAt with "now" on every edit.',
     run: _ownEditsDoNotConflict,
   ),
+  const Scenario(
+    id: 'P1',
+    title: 'Outbox queries use indexes, also on a database from before them',
+    expectation:
+        'On a database created without the outbox indexes, the first sync '
+        'adds them; with $_queuedOps operations queued, taking a batch and '
+        're-basing an entity read the queue through an index instead of '
+        'scanning and sorting it.',
+    run: _outboxQueriesAreIndexed,
+  ),
+  const Scenario(
+    id: 'P3',
+    title: 'A pushed batch is written back in one transaction',
+    expectation:
+        'After pushing $_batchOps operations in one batch, the server rows, '
+        'the acknowledgement and the re-base are committed together: one '
+        'transaction instead of one commit per statement.',
+    run: _batchIsCommittedOnce,
+  ),
 ];
+
+const _queuedOps = 5000;
+const _batchOps = 25;
 
 // ---------------------------------------------------------------------------
 // K1-1
@@ -398,6 +443,136 @@ Future<ScenarioOutcome> _zoneLessTimestampsKeepTheCursor(
 }
 
 // ---------------------------------------------------------------------------
+// K1-7c
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _emptyPageWithNextTokenIsFollowed(
+  ScenarioContext ctx,
+) async {
+  final client = RecordingClient(maxRequests: 40);
+  final engine = _engine(ctx, client, config: const SyncConfig());
+
+  try {
+    // Two todos that exist on the server only: the client has to pull them.
+    final ids = <String>[];
+    for (final title in [
+      'Behind the empty page 1',
+      'Behind the empty page 2',
+    ]) {
+      final id = 'scenario-${_uuid.v4()}';
+      ids.add(id);
+      final response = await http.post(
+        Uri.parse('${ctx.backendUrl}/$_kind'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'id': id, 'title': title}),
+      );
+      if (response.statusCode >= 300) {
+        throw StateError('creating a todo failed: ${response.statusCode}');
+      }
+    }
+
+    await _simulate(ctx, 'empty_page', {'pages': 1});
+    await engine.sync(pushKinds: const {}, pullKinds: {_kind});
+
+    final pulls = client.requests
+        .where((r) => r.method == 'GET' && r.url.path.endsWith('/$_kind'))
+        .toList();
+    final followed = pulls.any(
+      (r) => r.url.queryParameters['pageToken'] == 'after-the-empty-page',
+    );
+    final local = [
+      for (final id in ids)
+        if (await _localTodo(ctx, id) != null) id,
+    ];
+
+    final evidence =
+        'The first page was empty with nextPageToken="after-the-empty-page"; '
+        'the client sent ${pulls.length} list request(s), followed the '
+        'token: $followed; ${local.length} of ${ids.length} server rows '
+        'arrived locally.';
+
+    if (followed && local.length == ids.length) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The pull stopped at the empty page. Rows behind it are never '
+      'downloaded: the cursor does not move, so every later sync stops at '
+      'the same place. $evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K1-8
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _bareConflictIsNotResolved(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 40);
+  // Default configuration: ConflictStrategy.autoPreserve.
+  final engine = _engine(ctx, client, config: const SyncConfig());
+
+  try {
+    final synced = await _createAndSync(ctx, engine, title: 'Original title');
+    await _editLocally(
+      ctx,
+      _copy(synced, title: 'Edited offline'),
+      base: synced,
+      changedFields: {'title'},
+    );
+
+    await _simulate(ctx, 'bare_conflict', {'requests': 1});
+    final requestsBefore = client.requests.length;
+    final stats = await engine.sync(pushKinds: {_kind}, pullKinds: const {});
+
+    final forced = client.requests
+        .skip(requestsBefore)
+        .where((r) => r.headers.containsKey('X-Force-Update'))
+        .length;
+    final queuedAfterFirst = (await ctx.db.takeOutbox()).length;
+    final serverAfterFirst = (await _serverTodo(ctx, synced.id))['title'];
+
+    // Nothing is simulated any more: the queued edit must simply go through.
+    final retry = await engine.sync(pushKinds: {_kind}, pullKinds: const {});
+    final queuedAfterRetry = (await ctx.db.takeOutbox()).length;
+    final serverAfterRetry = (await _serverTodo(ctx, synced.id))['title'];
+
+    final evidence =
+        'Server answered 409 {"error":"conflict"}. First sync: '
+        'conflicts=${stats.conflicts}, resolved=${stats.conflictsResolved}, '
+        'errors=${stats.errors}, forced overwrites sent=$forced, '
+        '$queuedAfterFirst op(s) still queued, server title='
+        '"$serverAfterFirst". Next sync: pushed=${retry.pushed}, '
+        '$queuedAfterRetry op(s) queued, server title="$serverAfterRetry".';
+
+    final treatedAsError =
+        stats.conflicts == 0 &&
+        stats.errors == 1 &&
+        forced == 0 &&
+        queuedAfterFirst == 1 &&
+        serverAfterFirst == 'Original title';
+    final delivered =
+        retry.pushed == 1 &&
+        queuedAfterRetry == 0 &&
+        serverAfterRetry == 'Edited offline';
+
+    if (treatedAsError && delivered) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The error body was taken for the server\'s record: a conflict was '
+      '"resolved" against data the server never sent, and the result was '
+      'forced onto the server past its version check. $evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // K1-10
 // ---------------------------------------------------------------------------
 
@@ -523,6 +698,277 @@ class _FixedPageTransport implements TransportAdapter {
 }
 
 // ---------------------------------------------------------------------------
+// P1
+// ---------------------------------------------------------------------------
+
+const _outboxIndexes = [
+  'idx_sync_outbox_kind_entity',
+  'idx_sync_outbox_kind_ts',
+  'idx_sync_outbox_ts',
+];
+
+Future<ScenarioOutcome> _outboxQueriesAreIndexed(ScenarioContext ctx) async {
+  final probe = _StatementProbe();
+  final db = AppDatabase.open(name: _probeDatabase, interceptor: probe);
+  final client = RecordingClient(maxRequests: 40);
+  final engine = SyncEngine<AppDatabase>(
+    db: db,
+    transport: _transport(ctx, client),
+    tables: [todoSyncTable(db)],
+  );
+
+  try {
+    await _wipe(db);
+    // A database as versions before the indexes created it.
+    for (final index in _outboxIndexes) {
+      await db.customStatement('DROP INDEX IF EXISTS $index');
+    }
+    await engine.sync();
+    final indexes = await _indexesOf(db);
+
+    final base = DateTime.utc(2026).microsecondsSinceEpoch;
+    await db.batch(
+      (b) => b.insertAll(db.syncOutbox, [
+        for (var i = 0; i < _queuedOps; i++)
+          SyncOutboxCompanion.insert(
+            opId: 'probe-$i',
+            kind: i.isEven ? _kind : 'notes',
+            entityId: 'entity-${i % (_queuedOps ~/ 3)}',
+            op: 'upsert',
+            ts: 1700000000000 + i * 37 % 100000,
+            payload: Value(jsonEncode({'id': 'entity-$i', 'title': 'x' * 300})),
+            baseUpdatedAt: Value(base),
+          ),
+      ]),
+    );
+
+    probe.statements.clear();
+    const runs = 20;
+    final take = Stopwatch()..start();
+    for (var i = 0; i < runs; i++) {
+      await db.takeOutbox(limit: 100, kinds: {_kind}, maxTryCountExclusive: 5);
+    }
+    take.stop();
+    final takeAll = Stopwatch()..start();
+    for (var i = 0; i < runs; i++) {
+      await db.takeOutbox(limit: 100, maxTryCountExclusive: 5);
+    }
+    takeAll.stop();
+    final rebase = Stopwatch()..start();
+    for (var i = 0; i < runs; i++) {
+      await db.rebaseOutboxOps(
+        kind: _kind,
+        entityId: 'entity-${i * 2}',
+        serverVersion: DateTime.utc(2026, 1, 2),
+      );
+    }
+    rebase.stop();
+
+    // The plans of the statements the library really sent.
+    final issued = {
+      for (final (statement, args) in probe.statements)
+        if (statement.contains('sync_outbox')) statement: args,
+    };
+    final unindexed = <String>[];
+    for (final MapEntry(key: statement, value: args) in issued.entries) {
+      final plan = await _planOf(db, statement, args);
+      final scans = plan.any(
+        (step) =>
+            step.contains('TEMP B-TREE') ||
+            (step.contains('sync_outbox') && !step.contains('INDEX')),
+      );
+      if (scans) unindexed.add('${statement.split(' WHERE ').first}: $plan');
+    }
+
+    String ms(Stopwatch watch) =>
+        (watch.elapsedMicroseconds / runs / 1000).toStringAsFixed(2);
+    final evidence =
+        'Indexes after the first sync: '
+        '${indexes.isEmpty ? 'none' : indexes.join(', ')}. With $_queuedOps '
+        'operations queued (average of $runs runs): take 100 of one kind '
+        '${ms(take)} ms, take 100 of any kind ${ms(takeAll)} ms, re-base one '
+        'entity ${ms(rebase)} ms. ${issued.length} distinct outbox '
+        'statement(s) checked, ${unindexed.length} without an index.';
+
+    if (indexes.length == _outboxIndexes.length && unindexed.isEmpty) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The queue is scanned (and sorted) for every batch and for every '
+      'pushed operation, so draining N operations costs N². $evidence '
+      '${unindexed.join(' | ')}',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+    await _wipe(db);
+    await db.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// P3
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _batchIsCommittedOnce(ScenarioContext ctx) async {
+  final probe = _StatementProbe();
+  final db = AppDatabase.open(name: _probeDatabase, interceptor: probe);
+  final client = RecordingClient(maxRequests: 200);
+  final engine = SyncEngine<AppDatabase>(
+    db: db,
+    transport: _transport(ctx, client),
+    tables: [todoSyncTable(db)],
+  );
+  final writer = SyncWriter<AppDatabase>(db).forTable(todoSyncTable(db));
+
+  try {
+    await _wipe(db);
+    // The first sync of a database is a full resync; get it out of the way.
+    await engine.sync();
+
+    final now = DateTime.now().toUtc();
+    for (var i = 0; i < _batchOps; i++) {
+      await writer.insertAndEnqueue(
+        Todo(id: 'scenario-${_uuid.v4()}', title: 'Batch $i', updatedAt: now),
+        localTimestamp: now,
+      );
+    }
+
+    probe.reset();
+    final stopwatch = Stopwatch()..start();
+    final stats = await engine.sync(pushKinds: {_kind}, pullKinds: const {});
+    stopwatch.stop();
+
+    final commits = probe.transactions + probe.writesOutsideTransaction;
+    final evidence =
+        'Pushed ${stats.pushed} operations in one batch in '
+        '${stopwatch.elapsedMilliseconds} ms. Local commits while doing so: '
+        '$commits (${probe.transactions} transaction(s), '
+        '${probe.writesOutsideTransaction} write(s) committed on their own); '
+        'operations left in the outbox: ${(await db.takeOutbox()).length}.';
+
+    if (stats.pushed == _batchOps && commits <= 2) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'Every server row, the acknowledgement and every re-base was '
+      'committed separately: slow on disk, and a crash in between leaves '
+      'rows written back whose operations are still queued. $evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+    await _wipe(db);
+    await db.close();
+  }
+}
+
+/// A second scratch database, opened with a [_StatementProbe].
+const _probeDatabase = 'todo_advanced_scenarios_probe';
+
+/// Sees every statement sent to the database it is attached to.
+class _StatementProbe extends QueryInterceptor {
+  final List<(String, List<Object?>)> statements = [];
+  int transactions = 0;
+  int writesOutsideTransaction = 0;
+
+  void reset() {
+    statements.clear();
+    transactions = 0;
+    writesOutsideTransaction = 0;
+  }
+
+  void _see(QueryExecutor executor, String statement, List<Object?> args) {
+    statements.add((statement, args));
+    final isWrite = !statement.trimLeft().toUpperCase().startsWith('SELECT');
+    if (isWrite && executor is! TransactionExecutor) {
+      writesOutsideTransaction++;
+    }
+  }
+
+  @override
+  TransactionExecutor beginTransaction(QueryExecutor parent) {
+    // Nested transactions are savepoints of the outer one, not commits.
+    if (parent is! TransactionExecutor) transactions++;
+    return super.beginTransaction(parent);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    _see(executor, statement, args);
+    return super.runSelect(executor, statement, args);
+  }
+
+  @override
+  Future<int> runInsert(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    _see(executor, statement, args);
+    return super.runInsert(executor, statement, args);
+  }
+
+  @override
+  Future<int> runUpdate(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    _see(executor, statement, args);
+    return super.runUpdate(executor, statement, args);
+  }
+
+  @override
+  Future<int> runDelete(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    _see(executor, statement, args);
+    return super.runDelete(executor, statement, args);
+  }
+
+  @override
+  Future<void> runCustom(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    _see(executor, statement, args);
+    return super.runCustom(executor, statement, args);
+  }
+}
+
+Future<List<String>> _indexesOf(AppDatabase db) async {
+  final rows = await db
+      .customSelect(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND tbl_name = 'sync_outbox' AND name LIKE 'idx_%' ORDER BY name",
+      )
+      .get();
+  return [for (final row in rows) row.read<String>('name')];
+}
+
+Future<List<String>> _planOf(
+  AppDatabase db,
+  String statement,
+  List<Object?> args,
+) async {
+  final rows = await db
+      .customSelect(
+        'EXPLAIN QUERY PLAN $statement',
+        variables: [for (final arg in args) Variable<Object>(arg!)],
+      )
+      .get();
+  return [for (final row in rows) row.read<String>('detail')];
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
@@ -622,6 +1068,24 @@ Future<void> _serverSidePriorityChange(
   if (response.statusCode != 200) {
     throw StateError(
       'simulate/prioritize failed: ${response.statusCode} ${response.body}',
+    );
+  }
+}
+
+/// Arms one of the backend's `POST /simulate/<what>` switches.
+Future<void> _simulate(
+  ScenarioContext ctx,
+  String what,
+  Map<String, Object?> body,
+) async {
+  final response = await http.post(
+    Uri.parse('${ctx.backendUrl}/simulate/$what'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode(body),
+  );
+  if (response.statusCode != 200) {
+    throw StateError(
+      'simulate/$what failed: ${response.statusCode} ${response.body}',
     );
   }
 }
