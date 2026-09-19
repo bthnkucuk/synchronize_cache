@@ -7,10 +7,29 @@ final _simulationService = SimulationService(_todoRepository);
 
 Handler middleware(Handler handler) {
   return handler
+      .use(_delayMiddleware())
       .use(_corsMiddleware())
       .use(_requestLogger())
       .use(provider<TodoRepository>((_) => _todoRepository))
       .use(provider<SimulationService>((_) => _simulationService));
+}
+
+/// Applies the artificial latency armed via `POST /simulate/delay`.
+///
+/// Sits inside the CORS middleware so preflight requests are never delayed,
+/// and skips the `/simulate` routes themselves.
+Middleware _delayMiddleware() {
+  return (handler) {
+    return (context) async {
+      if (!context.request.uri.path.startsWith('/simulate')) {
+        final delay = _simulationService.takeDelay();
+        if (delay > Duration.zero) {
+          await Future<void>.delayed(delay);
+        }
+      }
+      return handler(context);
+    };
+  };
 }
 
 Middleware _corsMiddleware() {
@@ -31,7 +50,11 @@ Middleware _corsMiddleware() {
 const _corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Origin, Content-Type, Accept, X-Idempotency-Key, X-Force-Update, X-Force-Delete',
+  // RestTransport always sends Authorization (and If-Match once versions are
+  // used); without them here every browser request fails its CORS preflight.
+  'Access-Control-Allow-Headers':
+      'Origin, Content-Type, Accept, Authorization, If-Match, '
+      'X-Idempotency-Key, X-Force-Update, X-Force-Delete',
   'Access-Control-Expose-Headers': 'X-Next-Page-Token',
 };
 

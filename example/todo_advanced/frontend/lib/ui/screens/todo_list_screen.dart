@@ -8,6 +8,7 @@ import '../../services/sync_service.dart';
 import '../widgets/conflict_dialog.dart';
 import '../widgets/sync_status_indicator.dart';
 import '../widgets/todo_card.dart';
+import 'scenarios_screen.dart';
 import 'todo_edit_screen.dart';
 
 /// Main screen showing list of todos.
@@ -29,7 +30,18 @@ class _TodoListScreenState extends State<TodoListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Todo Advanced'),
-        actions: const [SyncStatusIndicator(), SizedBox(width: 8)],
+        actions: [
+          IconButton(
+            tooltip: 'Sync scenarios',
+            icon: const Icon(Icons.science_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const ScenariosScreen()),
+            ),
+          ),
+          const SyncStatusIndicator(),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Stack(
         children: [

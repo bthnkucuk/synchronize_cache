@@ -21,14 +21,21 @@ part 'database.g.dart';
 class AppDatabase extends _$AppDatabase with SyncDatabaseMixin {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
+  /// Locations of the SQLite WebAssembly module and the drift worker, both
+  /// served from `web/`. Only used when running in a browser.
+  static final _webOptions = DriftWebOptions(
+    sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+    driftWorker: Uri.parse('drift_worker.js'),
+  );
+
   /// Opens a persistent database for Flutter.
   static QueryExecutor _openConnection() {
-    return driftDatabase(name: 'todo_advanced');
+    return driftDatabase(name: 'todo_advanced', web: _webOptions);
   }
 
   /// Opens a persistent database with custom name.
   static AppDatabase open({String name = 'todo_advanced'}) {
-    return AppDatabase(driftDatabase(name: name));
+    return AppDatabase(driftDatabase(name: name, web: _webOptions));
   }
 
   @override
