@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SyncDatabaseMixin.rebaseOutboxOps` / `OutboxService.rebase`: re-base the
+  queued ops of one entity onto a version the server reported.
+- `ConflictResolutionResult.serverData`: the entity as the server holds it
+  after a resolved conflict.
 - Add opt-in `pushOnEnqueue` config (default `false`). When enabled, every
   outbox enqueue schedules a debounced per-kind auto-push (debounce window
   configurable via `enqueuePushDebounce`, default 250ms). Combines with the
@@ -40,8 +44,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   public names (`db:`), so nothing changes for callers.
 - Dependencies: `drift` ^2.35.0.
 
+### Changed — how the base version of an op is determined
+
+- The `baseUpdatedAt` you pass to `replaceAndEnqueue` & co. is authoritative
+  again. Since 0.1.x the engine replaced it, right before dispatch, with the
+  local row's `updated_at`. That column belongs to the app: stamping it with
+  "now" on edit — as most apps and this repo's examples do — made **every**
+  edit a conflict, and after a pull had stored another client's write there a
+  real conflict was silently swallowed (the queued edit overwrote it). Pass
+  the `updatedAt` of the entity as it was **before** the edit.
+- The stale-base problem that replacement was solving is now fixed where the
+  version is learned: after a successful push (or a resolved conflict) the
+  `updated_at` of the row the server returned is written into the base of
+  the entity's remaining queued ops. Servers must return the saved record for
+  this to work.
+- Ops of one entity are pushed one per batch, oldest first, and never past
+  one that failed. Two quick edits no longer need `pageSize: 1` to avoid a
+  stale-base conflict, and a transport with `pushConcurrency > 1` can no
+  longer race ops of the same entity.
+- After a conflict is resolved by a force push, the row the server returned
+  is written to the local table (it used to be the merged data, which still
+  carried the version it replaced, so the next edit conflicted again).
+- `sync_outbox.base_updated_at` stores **microseconds** (it truncated to
+  milliseconds, which never equals a microsecond `updated_at`). No schema
+  change: rows written by older versions are still read correctly.
+- Upgrade note: ops already queued with a base that went stale under the old
+  behaviour may be reported as a conflict once; your strategy resolves it.
+
 ### Fixed
 
+- Every edit of a synced entity was rejected as a conflict when the app
+  stamps `updatedAt` on edit (see "Changed" above).
+- Outbox ops enqueued within the same millisecond are returned in insertion
+  order (`ORDER BY ts, rowid`); ties used to be unordered.
 - `PushService.pushAll` no longer spins forever when a conflict stays
   unresolved (e.g. `ConflictStrategy.manual` with `DeferResolution`, or a
   `forcePush` that keeps conflicting). The operation was neither acked nor
