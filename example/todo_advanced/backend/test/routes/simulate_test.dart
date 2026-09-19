@@ -11,6 +11,7 @@ import 'package:todo_advanced_backend/services/simulation_service.dart';
 import '../../routes/simulate/bare_conflict.dart' as simulate_bare_conflict;
 import '../../routes/simulate/complete.dart' as simulate_complete;
 import '../../routes/simulate/empty_page.dart' as simulate_empty_page;
+import '../../routes/simulate/fail_writes.dart' as simulate_fail_writes;
 import '../../routes/simulate/prioritize.dart' as simulate_prioritize;
 import '../../routes/simulate/reminder.dart' as simulate_reminder;
 
@@ -303,6 +304,41 @@ void main() {
         (await simulate_bare_conflict.onRequest(context)).statusCode,
         HttpStatus.badRequest,
       );
+    });
+  });
+
+  group('POST /simulate/fail_writes', () {
+    test(
+      'arms the status for exactly the requested number of writes',
+      () async {
+        when(() => context.request).thenReturn(
+          Request.post(
+            Uri.parse('http://localhost/simulate/fail_writes'),
+            body: jsonEncode({'status': 401, 'requests': 2}),
+          ),
+        );
+
+        final response = await simulate_fail_writes.onRequest(context);
+
+        expect(response.statusCode, HttpStatus.ok);
+        expect(simulationService.takeWriteFailure(), 401);
+        expect(simulationService.takeWriteFailure(), 401);
+        expect(simulationService.takeWriteFailure(), isNull);
+      },
+    );
+
+    test('rejects a status that is not a failure', () async {
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/fail_writes'),
+          body: jsonEncode({'status': 200}),
+        ),
+      );
+
+      final response = await simulate_fail_writes.onRequest(context);
+
+      expect(response.statusCode, HttpStatus.badRequest);
+      expect(simulationService.takeWriteFailure(), isNull);
     });
   });
 

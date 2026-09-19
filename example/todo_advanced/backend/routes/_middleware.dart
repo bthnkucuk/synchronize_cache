@@ -33,17 +33,25 @@ Middleware _delayMiddleware() {
   };
 }
 
-/// Answers writes with the bare `409` armed via
-/// `POST /simulate/bare_conflict`.
+/// Answers writes with the failure armed via `POST /simulate/fail_writes`,
+/// or with the bare `409` armed via `POST /simulate/bare_conflict`.
 Middleware _bareConflictMiddleware() {
   const writes = {HttpMethod.put, HttpMethod.post, HttpMethod.delete};
   return (handler) {
     return (context) async {
       final request = context.request;
       if (writes.contains(request.method) &&
-          request.uri.path.startsWith('/todos') &&
-          _simulationService.takeBareConflict()) {
-        return Response.json(statusCode: 409, body: {'error': 'conflict'});
+          request.uri.path.startsWith('/todos')) {
+        final status = _simulationService.takeWriteFailure();
+        if (status != null) {
+          return Response.json(
+            statusCode: status,
+            body: {'error': 'simulated $status'},
+          );
+        }
+        if (_simulationService.takeBareConflict()) {
+          return Response.json(statusCode: 409, body: {'error': 'conflict'});
+        }
       }
       return handler(context);
     };
