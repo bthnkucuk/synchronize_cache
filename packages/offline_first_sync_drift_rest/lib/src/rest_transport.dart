@@ -214,6 +214,8 @@ class RestTransport implements TransportAdapter {
     }
 
     final results = <OpPushResult>[];
+    // Set once a result shows that no other op can get through either.
+    PushError? blocked;
 
     if (pushConcurrency > 1) {
       // Parallel push in chunks
@@ -223,6 +225,11 @@ class RestTransport implements TransportAdapter {
             : ops.length;
         final chunk = ops.sublist(i, end);
 
+        if (blocked != null) {
+          results.addAll(chunk.map((op) => _notAttempted(op, blocked!)));
+          continue;
+        }
+
         final chunkResults = await Future.wait(
           chunk.map((op) async {
             final result = await _pushSingleOp(op, auth);
@@ -230,17 +237,46 @@ class RestTransport implements TransportAdapter {
           }),
         );
         results.addAll(chunkResults);
+        blocked = _firstBlocking(chunkResults.map((r) => r.result));
       }
     } else {
       // Sequential push
       for (final op in ops) {
+        if (blocked != null) {
+          results.add(_notAttempted(op, blocked));
+          continue;
+        }
         final result = await _pushSingleOp(op, auth);
         results.add(OpPushResult(opId: op.opId, result: result));
+        blocked = _firstBlocking([result]);
       }
     }
 
     return BatchPushResult(results: results);
   }
+
+  /// The first of [results] that says the remaining ops would fail the same
+  /// way: the network is gone (after all retries), or the token — the same
+  /// one for the whole batch — was rejected.
+  ///
+  /// Sending them anyway costs every op its own retries and timeouts: with
+  /// the defaults more than half a minute per op, for a queue that cannot go
+  /// anywhere. A `403` or a `5xx` may be about one op and does not stop the
+  /// batch.
+  PushError? _firstBlocking(Iterable<PushResult> results) {
+    for (final result in results) {
+      if (result is! PushError) continue;
+      final error = result.error;
+      if (error is NetworkException ||
+          (error is TransportException && error.statusCode == 401)) {
+        return result;
+      }
+    }
+    return null;
+  }
+
+  OpPushResult _notAttempted(Op op, PushError blocked) =>
+      OpPushResult(opId: op.opId, result: blocked);
 
   Future<BatchPushResult> _pushBatch(List<Op> ops, String auth) async {
     final results = <OpPushResult>[];
@@ -336,7 +372,7 @@ class RestTransport implements TransportAdapter {
           return OpPushResult(
             opId: op.opId,
             result: PushError(
-              http.ClientException(
+              TransportException(
                 'No result for op ${op.opId} in batch response',
               ),
             ),
@@ -371,10 +407,18 @@ class RestTransport implements TransportAdapter {
       final conflictBody = (item['error'] as Map<String, Object?>?) ?? item;
       result = _parseConflictMap(conflictBody);
     } else {
-      result = PushError(http.ClientException('Batch op failed: $statusCode'));
+      result = PushError(
+        TransportException.httpError(statusCode, _batchItemError(item)),
+      );
     }
 
     return OpPushResult(opId: opId, result: result);
+  }
+
+  /// What a batch response says about a failed op, for the error's body.
+  String? _batchItemError(Map<String, Object?> item) {
+    final error = item['error'];
+    return error == null ? null : jsonEncode(error);
   }
 
   Future<PushResult> _pushSingleOp(
@@ -418,10 +462,27 @@ class RestTransport implements TransportAdapter {
       payload['_baseUpdatedAt'] = op.baseUpdatedAt!.toUtc().toIso8601String();
     }
 
+    // Encoded once, outside the retry loop: a payload that cannot be encoded
+    // fails the same way on every attempt, and it is this op's problem — not
+    // a network failure that would stop the batch and be retried forever.
+    final String body;
+    try {
+      body = jsonEncode(payload);
+    } on Object catch (e, st) {
+      return PushError(
+        TransportException(
+          'Payload of ${op.kind}/$id cannot be encoded as JSON: $e',
+          cause: e,
+          stackTrace: st,
+        ),
+        st,
+      );
+    }
+
     final res = await _withRetry(() async {
       final req = http.Request(method, uri)
         ..headers.addAll(headers)
-        ..body = jsonEncode(payload);
+        ..body = body;
       return http.Response.fromStream(await client.send(req));
     });
 
@@ -463,9 +524,7 @@ class RestTransport implements TransportAdapter {
     if (res.statusCode == 409) {
       return _parseConflict(res);
     }
-    return PushError(
-      http.ClientException('Delete failed ${res.statusCode}', res.request?.url),
-    );
+    return PushError(TransportException.httpError(res.statusCode, res.body));
   }
 
   PushResult _parseResponse(http.Response res, String kind, String id) {
@@ -492,9 +551,7 @@ class RestTransport implements TransportAdapter {
       return _parseConflict(res);
     }
 
-    return PushError(
-      http.ClientException('Push failed ${res.statusCode}', res.request?.url),
-    );
+    return PushError(TransportException.httpError(res.statusCode, res.body));
   }
 
   /// Turns a 409 response into a [PushConflict], or into a [PushError] when

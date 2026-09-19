@@ -266,9 +266,14 @@ void main() {
 
       expect(res.results[0].isError, isTrue);
       final err = res.results[0].result as PushError;
-      // 500 is not "exceptional" enough to throw — _parseResponse turns it
-      // into a PushError wrapping a ClientException once retries are spent.
-      expect(err.error, isA<http.ClientException>());
+      // 500 is not "exceptional" enough to throw — once retries are spent
+      // _parseResponse turns it into a PushError that keeps the status.
+      expect(
+        err.error,
+        isA<TransportException>()
+            .having((e) => e.statusCode, 'statusCode', 500)
+            .having((e) => e.responseBody, 'responseBody', 'boom'),
+      );
     });
 
     test('upsert 400 returns PushError (no retry)', () async {
@@ -625,7 +630,11 @@ void main() {
       expect(res.results[0].isError, isTrue);
       expect(
         (res.results[0].result as PushError).error,
-        isA<http.ClientException>(),
+        isA<TransportException>().having(
+          (e) => e.statusCode,
+          'statusCode',
+          418,
+        ),
       );
     });
 
