@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:search_engine/src/transport/drift_fts_search_transport.dart';
 import 'package:synchronized/synchronized.dart';
 import 'package:search_engine/src/models/global_search.dart';
 import 'package:search_engine/src/models/pending_search_item.dart';
@@ -36,7 +37,14 @@ class SearchEngine {
     this._normalizer,
     this._errorHandler,
     this._maxPendingTries = 5,
-  }) : _tables = {for (final t in tables) t.kind: t},
+  }) : assert(
+         _transport is! DriftFtsSearchTransport ||
+             (_transport.normalizer == null) == (_normalizer == null),
+         'SearchEngine and DriftFtsSearchTransport must both get the '
+         'normalizer, or neither: rows are indexed normalized, so queries '
+         'must be normalized the same way to match them.',
+       ),
+       _tables = {for (final t in tables) t.kind: t},
        _jsonDecoder = jsonDecoder ?? _defaultJsonDecoder;
 
   final SearchTransport _transport;

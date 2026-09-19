@@ -11,6 +11,8 @@ class _FakeGlobalSearch extends Fake implements GlobalSearch {}
 
 class _FakeHighlight extends Fake implements SearchHighlightConfig {}
 
+String _upper(String input) => input.toUpperCase();
+
 void main() {
   setUpAll(() {
     registerFallbackValue(_FakeGlobalSearch());
@@ -31,7 +33,7 @@ void main() {
 
   setUp(() {
     db = _MockDb();
-    transport = DriftFtsSearchTransport(db);
+    transport = DriftFtsSearchTransport(db, normalizer: _upper);
   });
 
   test('upsert delegates to SearchDatabaseMixin.upsertSearchItem', () async {
@@ -66,6 +68,7 @@ void main() {
         offset: any(named: 'offset'),
         limit: any(named: 'limit'),
         highlight: any(named: 'highlight'),
+        normalizer: any(named: 'normalizer'),
       ),
     ).thenAnswer((_) async => const [item]);
 
@@ -88,6 +91,7 @@ void main() {
         offset: 5,
         limit: 25,
         highlight: cfg,
+        normalizer: _upper,
       ),
     ).called(1);
   });
@@ -101,6 +105,7 @@ void main() {
         offset: any(named: 'offset'),
         limit: any(named: 'limit'),
         highlight: any(named: 'highlight'),
+        normalizer: any(named: 'normalizer'),
       ),
     ).thenAnswer((_) async => const []);
 
@@ -114,6 +119,7 @@ void main() {
         offset: captureAny(named: 'offset'),
         limit: captureAny(named: 'limit'),
         highlight: captureAny(named: 'highlight'),
+        normalizer: _upper,
       ),
     ).captured;
 
@@ -132,6 +138,7 @@ void main() {
         offset: any(named: 'offset'),
         limit: any(named: 'limit'),
         highlight: any(named: 'highlight'),
+        normalizer: any(named: 'normalizer'),
       ),
     ).thenAnswer((_) => Stream.value(const [item]));
 
@@ -152,6 +159,7 @@ void main() {
         offset: 1,
         limit: 2,
         highlight: any(named: 'highlight'),
+        normalizer: any(named: 'normalizer'),
       ),
     ).called(1);
   });
