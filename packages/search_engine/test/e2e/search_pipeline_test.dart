@@ -43,6 +43,18 @@ PendingSearchItem makeItem({
   deleted: deleted,
 );
 
+/// A typical Turkish normalizer: fold the letters SQLite cannot, then lowercase.
+String _foldTurkish(String input) => input
+    .replaceAll('İ', 'i')
+    .replaceAll('I', 'i')
+    .replaceAll('ı', 'i')
+    .replaceAll(RegExp('[şŞ]'), 's')
+    .replaceAll(RegExp('[ğĞ]'), 'g')
+    .replaceAll(RegExp('[üÜ]'), 'u')
+    .replaceAll(RegExp('[öÖ]'), 'o')
+    .replaceAll(RegExp('[çÇ]'), 'c')
+    .toLowerCase();
+
 void main() {
   late TestSearchDatabase db;
   late SearchEngine engine;
@@ -135,5 +147,75 @@ void main() {
       jsonDecoder: (s) async => jsonDecode(s),
     );
     expect(pending, isEmpty);
+  });
+  group('diacritic-insensitive search through the transport', () {
+    // Regression: SearchEngine normalized what it WROTE, but the transport
+    // had no way to normalize the QUERY. The trigram tokenizer does not fold
+    // `I`→`ı` or `İ`→`i`, so Turkish queries found nothing on the documented
+    // read path (`engine.transport.search`).
+    late SearchEngine turkish;
+
+    setUp(() async {
+      turkish = SearchEngine(
+        transport: DriftFtsSearchTransport(db, normalizer: _foldTurkish),
+        database: db,
+        normalizer: _foldTurkish,
+        tables: [
+          searchableTable<GeneratedDatabase, Map<String, dynamic>>(
+            kind: 'note',
+            watch: (_, _) => const Stream.empty(),
+            idOf: (row) => row['id'] as String,
+            toJson: (row) => row,
+          ),
+        ],
+        jsonDecoder: (s) async => jsonDecode(s),
+      );
+      await turkish.addSearchItems([
+        makeItem(
+          data: const {
+            'title': 'Işık Raporu',
+            'description': 'İstanbul şubesi',
+            'content': 'Çalışma özeti',
+          },
+        ),
+      ], processNow: true);
+    });
+
+    for (final query in [
+      'ışık',
+      'isik',
+      'IŞIK',
+      'istanbul',
+      'İstanbul',
+      'calisma',
+    ]) {
+      test('finds the Turkish row for the query "$query"', () async {
+        final hits = await turkish.transport.search(userId: 'u', query: query);
+
+        expect(hits, hasLength(1));
+        expect(hits.single.title, 'Işık Raporu');
+      });
+    }
+
+    test('watchSearch normalizes the query too', () async {
+      final hits = await turkish.transport
+          .watchSearch(userId: 'u', query: 'ışık')
+          .first;
+
+      expect(hits, hasLength(1));
+    });
+
+    test('an engine with a normalizer rejects a default transport without '
+        'one', () {
+      expect(
+        () => SearchEngine(
+          transport: DriftFtsSearchTransport(db),
+          database: db,
+          normalizer: _foldTurkish,
+          tables: const [],
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+    });
   });
 }

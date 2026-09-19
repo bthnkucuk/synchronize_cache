@@ -8,8 +8,15 @@ import 'package:search_engine/src/transport/search_transport.dart';
 /// existing [SearchDatabaseMixin] CRUD methods so the engine never has to
 /// know about FTS5 SQL directly.
 @immutable
-final class const DriftFtsSearchTransport(final SearchDatabaseMixin _db)
-    implements SearchTransport {
+final class const DriftFtsSearchTransport(
+  final SearchDatabaseMixin _db, {
+
+  /// Applied to every query before it reaches FTS5. Pass the same function
+  /// you give to `SearchEngine(normalizer: …)`: the engine normalizes what it
+  /// writes, and a query that is not normalized the same way cannot match it
+  /// (the trigram tokenizer does not fold Turkish `ı`/`İ`, for instance).
+  final String Function(String)? normalizer,
+}) implements SearchTransport {
   @override
   Future<void> upsert(GlobalSearch item) => _db.upsertSearchItem(item);
 
@@ -36,6 +43,7 @@ final class const DriftFtsSearchTransport(final SearchDatabaseMixin _db)
     offset: offset,
     limit: limit,
     highlight: highlight,
+    normalizer: normalizer,
   );
 
   @override
@@ -53,5 +61,6 @@ final class const DriftFtsSearchTransport(final SearchDatabaseMixin _db)
     offset: offset,
     limit: limit,
     highlight: highlight,
+    normalizer: normalizer,
   );
 }
