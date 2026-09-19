@@ -49,6 +49,7 @@ class RestTransport implements TransportAdapter {
     this.enableBatch = false,
     this.batchSize = 100,
     this.batchPath = 'batch',
+    this.requestTimeout = const Duration(seconds: 30),
   }) : client = client ?? http.Client();
 
   /// Base URL for all API requests.
@@ -84,9 +85,58 @@ class RestTransport implements TransportAdapter {
   /// Batch endpoint path (relative to [base]).
   final String batchPath;
 
-  Uri _url(String path, [Map<String, String>? q]) =>
-      Uri.parse('${base.toString().replaceAll(RegExp(r"/+$"), '')}/$path')
-          .replace(queryParameters: q);
+  /// Upper bound for a single HTTP attempt: connecting, sending the request
+  /// and reading the **whole** response body.
+  ///
+  /// Without a bound a half-open connection (captive portal, carrier NAT
+  /// drop, app suspended mid-request) never completes and never fails, so no
+  /// retry is triggered and `SyncEngine.sync()` never returns. A timed-out
+  /// attempt counts as a network failure and is retried like one.
+  ///
+  /// `package:http` cannot cancel an in-flight request, so the abandoned
+  /// request is left to the client to clean up. Pass `null` to disable.
+  final Duration? requestTimeout;
+
+  Future<http.Response> _bounded(Future<http.Response> request) {
+    final limit = requestTimeout;
+    return limit == null ? request : request.timeout(limit);
+  }
+
+  /// URL below [base] for a developer-supplied [path]: a kind or a configured
+  /// endpoint such as [batchPath], which may contain `/`.
+  Uri _url(String path, [Map<String, String>? query]) =>
+      _resolve(path.split('/'), query);
+
+  /// URL of a single entity.
+  ///
+  /// [id] is user data, so it is always encoded as exactly one path segment.
+  /// Interpolating it raw let `a#b` lose its fragment (request hits `a`),
+  /// `a?b` become a query, `a/b` a different route, and `..` resolve to the
+  /// parent — a `DELETE` against the collection root.
+  ///
+  /// Throws a [TransportException] for ids no encoding can make safe: RFC 3986
+  /// treats `%2E%2E` exactly like `..`, and an empty id is the collection.
+  Uri _entityUrl(String kind, String id, [Map<String, String>? query]) {
+    if (id.isEmpty || id == '.' || id == '..') {
+      throw TransportException(
+        'Entity id ${jsonEncode(id)} of kind "$kind" cannot be addressed as a '
+        'URL path segment',
+      );
+    }
+    return _resolve([...kind.split('/'), id], query);
+  }
+
+  Uri _resolve(List<String> segments, Map<String, String>? query) {
+    final parameters = {...base.queryParameters, ...?query};
+    return base.replace(
+      pathSegments: [
+        ...base.pathSegments.where((segment) => segment.isNotEmpty),
+        ...segments.where((segment) => segment.isNotEmpty),
+      ],
+      // `null` keeps whatever [base] carries (nothing, when this is empty).
+      queryParameters: parameters.isEmpty ? null : parameters,
+    );
+  }
 
   Map<String, String> _headers(String auth, {String? version}) {
     final headers = {
@@ -353,8 +403,8 @@ class RestTransport implements TransportAdapter {
   }) async {
     final id = op.id;
     final method = id.isEmpty ? 'POST' : 'PUT';
-    final path = id.isEmpty ? op.kind : '${op.kind}/$id';
-    final uri = _url(path);
+    // An upsert without an id is a create: POST to the collection.
+    final uri = id.isEmpty ? _url(op.kind) : _entityUrl(op.kind, id);
 
     final headers = _headers(auth);
     headers['X-Idempotency-Key'] = op.opId;
@@ -383,8 +433,6 @@ class RestTransport implements TransportAdapter {
     String auth, {
     bool force = false,
   }) async {
-    final uri = _url('${op.kind}/${op.id}');
-
     final headers = _headers(auth);
     headers['X-Idempotency-Key'] = op.opId;
     if (force) {
@@ -399,9 +447,7 @@ class RestTransport implements TransportAdapter {
       };
     }
 
-    final deleteUri = queryParams != null
-        ? uri.replace(queryParameters: queryParams)
-        : uri;
+    final deleteUri = _entityUrl(op.kind, op.id, queryParams);
 
     final res = await _withRetry(() async {
       final req = http.Request('DELETE', deleteUri)..headers.addAll(headers);
@@ -520,7 +566,7 @@ class RestTransport implements TransportAdapter {
   Future<FetchResult> fetch({required String kind, required String id}) async {
     try {
       final auth = await token();
-      final uri = _url('$kind/$id');
+      final uri = _entityUrl(kind, id);
 
       final res = await _withRetry(
         () => client.get(uri, headers: _headers(auth)),
@@ -560,7 +606,7 @@ class RestTransport implements TransportAdapter {
     while (true) {
       attempt++;
       try {
-        final res = await send();
+        final res = await _bounded(send());
         if (_isRetryable(res.statusCode)) {
           if (attempt > maxRetries) return res;
           final ra = _retryAfter(res.headers['retry-after']);
@@ -611,7 +657,9 @@ class RestTransport implements TransportAdapter {
   Future<bool> health() async {
     try {
       final auth = await token();
-      final res = await client.get(_url('health'), headers: _headers(auth));
+      final res = await _bounded(
+        client.get(_url('health'), headers: _headers(auth)),
+      );
       return res.statusCode >= 200 && res.statusCode < 300;
     } catch (_) {
       return false;
