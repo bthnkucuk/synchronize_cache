@@ -70,7 +70,9 @@ final List<Scenario> syncScenarios = [
 // K1-1
 // ---------------------------------------------------------------------------
 
-Future<ScenarioOutcome> _deferredConflictDoesNotSpin(ScenarioContext ctx) async {
+Future<ScenarioOutcome> _deferredConflictDoesNotSpin(
+  ScenarioContext ctx,
+) async {
   // Bounds the damage if the push loop spins: the 31st request fails locally.
   final client = RecordingClient(maxRequests: 30);
   final engine = _engine(
@@ -83,7 +85,11 @@ Future<ScenarioOutcome> _deferredConflictDoesNotSpin(ScenarioContext ctx) async 
   );
 
   try {
-    final synced = await _createAndSync(ctx, engine, title: 'Deferred conflict');
+    final synced = await _createAndSync(
+      ctx,
+      engine,
+      title: 'Deferred conflict',
+    );
     await _editLocally(
       ctx,
       _copy(synced, title: 'Edited offline'),
@@ -267,9 +273,12 @@ Future<ScenarioOutcome> _idsAreEncodedIntoTheUrl(ScenarioContext ctx) async {
     final dotsOk =
         dotRequests.isEmpty && dotsResult.results.single.result is PushError;
 
+    // `runtimeType` is minified in release web builds, so name it explicitly.
+    final dotsOutcome = dotsResult.results.single.result is PushError
+        ? 'a PushError'
+        : 'a non-error result';
     final dotsEvidence = dotRequests.isEmpty
-        ? 'no request sent, reported as '
-              '${dotsResult.results.single.result.runtimeType}'
+        ? 'no request sent, reported as $dotsOutcome'
         : dotRequests.map((r) => '${r.method} <${r.url}>').join(', ');
     final evidence =
         'id "$hashId" -> ${upsert.method} <${upsert.url}> which targets the '
@@ -301,8 +310,7 @@ Future<ScenarioOutcome> _stalledServerIsBounded(ScenarioContext ctx) async {
   const bound = Duration(seconds: 1);
 
   final client = RecordingClient(maxRequests: 5);
-  // RestTransport offers no way to bound a request yet.
-  final transport = _transport(ctx, client);
+  final transport = _transport(ctx, client, requestTimeout: bound);
 
   try {
     // A request that fails instantly (server down, CORS) is not a timeout.
@@ -443,15 +451,19 @@ Future<void> _wipe(AppDatabase db) async {
   await db.customStatement('DELETE FROM sync_cursors');
 }
 
-RestTransport _transport(ScenarioContext ctx, http.Client client) =>
-    RestTransport(
-      base: Uri.parse(ctx.backendUrl),
-      token: () async => '',
-      client: client,
-      // Scenarios must fail fast and deterministically: no retries.
-      maxRetries: 0,
-      backoffMin: const Duration(milliseconds: 1),
-    );
+RestTransport _transport(
+  ScenarioContext ctx,
+  http.Client client, {
+  Duration? requestTimeout = const Duration(seconds: 30),
+}) => RestTransport(
+  base: Uri.parse(ctx.backendUrl),
+  token: () async => '',
+  client: client,
+  // Scenarios must fail fast and deterministically: no retries.
+  maxRetries: 0,
+  backoffMin: const Duration(milliseconds: 1),
+  requestTimeout: requestTimeout,
+);
 
 SyncEngine<AppDatabase> _engine(
   ScenarioContext ctx,

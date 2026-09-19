@@ -25,8 +25,9 @@ class ScenarioContext {
   final String backendUrl;
 }
 
-typedef ScenarioBody =
-    Future<ScenarioOutcome> Function(ScenarioContext context);
+typedef ScenarioBody = Future<ScenarioOutcome> Function(
+  ScenarioContext context,
+);
 
 /// A reproducible check of one sync behaviour, runnable from the UI.
 ///
