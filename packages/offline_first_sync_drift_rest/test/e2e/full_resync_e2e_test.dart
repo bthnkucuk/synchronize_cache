@@ -290,10 +290,12 @@ void main() {
 
       final stats = await engine.fullResync();
 
-      expect(stats.pulled, greaterThanOrEqualTo(4));
+      // Exactly the five seeded rows: the test server used to skip one row
+      // per page boundary, which this expectation had to tolerate (`>= 4`).
+      expect(stats.pulled, 5);
 
       final items = await db.select(db.testEntities).get();
-      expect(items.length, greaterThanOrEqualTo(4));
+      expect(items.length, 5);
 
       engine.dispose();
     });

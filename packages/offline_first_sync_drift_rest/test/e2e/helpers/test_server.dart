@@ -249,6 +249,10 @@ class TestServer {
           _sendError(request, 405, 'Method Not Allowed');
       }
     } catch (e, st) {
+      // A bare "HTTP 500" in a failed test says nothing about its cause.
+      stderr.writeln(
+        'TestServer: ${request.method} ${request.uri} failed with $e\n$st',
+      );
       _sendError(request, 500, 'Internal Server Error: $e\n$st');
     }
   }
@@ -380,24 +384,47 @@ class TestServer {
 
     var startIndex = 0;
     if (pageToken != null) {
-      startIndex = int.tryParse(pageToken) ?? 0;
+      startIndex = _indexAfter(items, pageToken);
     } else if (afterId != null) {
       final idx = items.indexWhere((item) => item['id'] == afterId);
       if (idx >= 0) startIndex = idx + 1;
     }
 
-    final endIndex = (startIndex + limit).clamp(0, items.length);
+    final endIndex = (startIndex + limit).clamp(startIndex, items.length);
     final pageItems = items.sublist(startIndex, endIndex);
 
     String? nextPageToken;
     if (endIndex < items.length) {
-      nextPageToken = endIndex.toString();
+      nextPageToken = _pageTokenFor(pageItems.last);
     }
 
     _sendJson(request, 200, {
       'items': pageItems,
       'nextPageToken': nextPageToken,
     });
+  }
+
+  // The page token is a keyset — the sort key of the last row served — as in
+  // docs/backend-transport.md. It used to be an index into the filtered list,
+  // but the client advances `updatedSince` after every page, so the list the
+  // index pointed into had already shrunk: one row per page boundary was
+  // skipped, and an index past the end made `sublist` throw (HTTP 500).
+  String _pageTokenFor(Map<String, Object?> item) =>
+      '${item['updated_at'] ?? ''}|${item['id']}';
+
+  /// Index of the first row that sorts after the row named by [pageToken].
+  int _indexAfter(List<Map<String, Object?>> sorted, String pageToken) {
+    final separator = pageToken.indexOf('|');
+    if (separator < 0) return 0;
+    final tokenTs = pageToken.substring(0, separator);
+    final tokenId = pageToken.substring(separator + 1);
+
+    final index = sorted.indexWhere((item) {
+      final byTs = (item['updated_at'] as String? ?? '').compareTo(tokenTs);
+      if (byTs != 0) return byTs > 0;
+      return (item['id'] as String).compareTo(tokenId) > 0;
+    });
+    return index < 0 ? sorted.length : index;
   }
 
   Future<void> _handleFetch(HttpRequest request, String kind, String id) async {
