@@ -210,6 +210,43 @@ void main() {
       expect(op.changedFields, {'name'});
       expect(op.opId, 'op-diff');
     });
+
+    test('replaceAndEnqueueDiff serializes each entity once', () async {
+      final db = TestDatabase();
+      addTearDown(db.close);
+
+      // `toJson` is the app's code; it can be arbitrarily expensive.
+      final serialized = <String>[];
+      final table = db.testItems.syncTable(
+        kind: 'test_items',
+        fromJson: TestItem.fromJson,
+        toJson: (e) {
+          serialized.add(e.name);
+          return e.toJson();
+        },
+        toInsertable: (e) => e.toInsertable(),
+        getId: (e) => e.id,
+        getUpdatedAt: (e) => e.updatedAt,
+      );
+
+      final base = DateTime.utc(2024);
+      final before = TestItem(id: 'id-1', updatedAt: base, name: 'A');
+      await db.into(db.testItems).insert(before.toInsertable());
+
+      await db
+          .syncWriter()
+          .forTable(table)
+          .replaceAndEnqueueDiff(
+            before: before,
+            after: TestItem(id: 'id-1', updatedAt: base, name: 'B'),
+            baseUpdatedAt: base,
+          );
+
+      expect(serialized..sort(), ['A', 'B']);
+      final op = (await db.takeOutbox()).single as UpsertOp;
+      expect(op.payloadJson['name'], 'B');
+      expect(op.changedFields, {'name'});
+    });
   });
 
   group('syncTable sugar', () {

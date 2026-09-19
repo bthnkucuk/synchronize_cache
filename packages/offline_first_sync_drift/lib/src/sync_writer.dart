@@ -65,8 +65,9 @@ class SyncEntityWriter<T, DB extends GeneratedDatabase> {
 
   String _entityId(T entity) => _table.idOf(entity);
 
-  Map<String, Object?> _payload(T entity) =>
-      _table.toJson(entity).cast<String, Object?>();
+  // `Map<String, dynamic>` already is a `Map<String, Object?>`: no `cast`,
+  // which would wrap the map and type-check every read of it.
+  Map<String, Object?> _payload(T entity) => _table.toJson(entity);
 
   /// Run a local write and enqueue [op] atomically.
   Future<void> writeAndEnqueueOp({
@@ -116,6 +117,22 @@ class SyncEntityWriter<T, DB extends GeneratedDatabase> {
     Set<String>? changedFields,
     String? opId,
     DateTime? localTimestamp,
+  }) => _replaceAndEnqueue(
+    entity,
+    payload: _payload(entity),
+    baseUpdatedAt: baseUpdatedAt,
+    changedFields: changedFields,
+    opId: opId,
+    localTimestamp: localTimestamp,
+  );
+
+  Future<void> _replaceAndEnqueue(
+    T entity, {
+    required Map<String, Object?> payload,
+    required DateTime baseUpdatedAt,
+    Set<String>? changedFields,
+    String? opId,
+    DateTime? localTimestamp,
   }) async {
     final ts = (localTimestamp ?? _clock()).toUtc();
     final id = _entityId(entity);
@@ -124,7 +141,7 @@ class SyncEntityWriter<T, DB extends GeneratedDatabase> {
       id: id,
       localTimestamp: ts,
       opId: opId ?? _opIdFactory(),
-      payloadJson: _payload(entity),
+      payloadJson: payload,
       baseUpdatedAt: baseUpdatedAt,
       changedFields: changedFields,
     );
@@ -147,14 +164,18 @@ class SyncEntityWriter<T, DB extends GeneratedDatabase> {
     String? opId,
     DateTime? localTimestamp,
   }) async {
+    // `toJson` is the app's code and may be costly: serialize `after` once,
+    // for the diff and for the op.
+    final payload = _payload(after);
     final changedFields = ChangedFieldsDiff.diffOrNullMaps(
       _payload(before),
-      _payload(after),
+      payload,
       ignoredFields: ignoredFields,
     );
 
-    await replaceAndEnqueue(
+    await _replaceAndEnqueue(
       after,
+      payload: payload,
       baseUpdatedAt: baseUpdatedAt,
       changedFields: changedFields,
       opId: opId,
