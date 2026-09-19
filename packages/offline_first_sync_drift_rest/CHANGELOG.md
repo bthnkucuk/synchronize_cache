@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-19
+
+### Breaking
+
+- The minimum Dart SDK is now **3.13** (was 3.7).
+- Requires `offline_first_sync_drift: ^0.2.0`.
+- Every HTTP attempt is now bounded by the new `requestTimeout`
+  (default **30 s**, covers reading the response body). Pass
+  `requestTimeout: null` to restore the previous unbounded behaviour.
+
+### Added
+
+- `RestTransport.requestTimeout`. Without a bound a half-open connection hung
+  `pull` / `push` / `fetch` / `health` — and with them `SyncEngine.sync()` —
+  forever, and no retry was ever triggered. A timed-out attempt is retried
+  like any other network failure.
+
+### Fixed
+
+- Entity ids are encoded as exactly one URL path segment. They were
+  interpolated raw, so `a#b` addressed `a`, `a?b` became a query, `a/b` another
+  route, and `..` resolved to the parent — a `DELETE` against the collection
+  root. Ids that no encoding can make safe (`.`, `..`, and an empty id for
+  delete / fetch) are rejected with a `TransportException` before any request
+  is sent.
+- A query string on the base URL (`https://api.example.com/v1?tenant=acme`) is
+  kept on every request.
+- `drift` is declared under `dependencies`: `lib/` imports it, but it was only
+  a dev dependency.
+
 ## [0.1.2] - 2026-02-13
 
 ### Changed
