@@ -73,14 +73,23 @@ class ConflictService<DB extends GeneratedDatabase> {
 
     _events.add(ConflictDetectedEvent(conflict: conflict, strategy: strategy));
 
-    final resolution = await _determineResolution(
-      conflict,
-      strategy,
-      tableConfig,
-    );
+    // A delete carries no local data, so there is nothing to merge: the only
+    // choices are to delete anyway or to keep what the other side wrote. The
+    // merging strategies exist to lose nothing, so the edit survives and the
+    // delete is dropped. They used to answer `AcceptMerged`, which cannot be
+    // pushed for a delete: the op was reported unresolved, never counted as
+    // an attempt, and retried by every sync forever — under `autoPreserve`,
+    // the default.
+    final resolution = op is DeleteOp && _merges(strategy)
+        ? const AcceptServer()
+        : await _determineResolution(conflict, strategy, tableConfig);
 
     return _applyResolution(op, conflict, resolution);
   }
+
+  bool _merges(ConflictStrategy strategy) =>
+      strategy == ConflictStrategy.merge ||
+      strategy == ConflictStrategy.autoPreserve;
 
   Future<ConflictResolution> _determineResolution(
     Conflict conflict,
@@ -188,6 +197,12 @@ class ConflictService<DB extends GeneratedDatabase> {
         );
 
       case AcceptMerged(:final mergedData):
+        if (op is DeleteOp) {
+          // What a manual resolver may answer for a delete: there is no
+          // merged delete to push, keeping the server's version is the
+          // closest thing that loses nothing.
+          return _applyResolution(op, conflict, const AcceptServer());
+        }
         final pushed = await _pushMergedData(op, mergedData);
         final success = pushed != null;
         if (success) {
