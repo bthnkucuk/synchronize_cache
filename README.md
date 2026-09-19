@@ -157,6 +157,13 @@ targets:
         options: *options
 ```
 
+> **`store_date_time_values_as_text: true` is required, not optional.** By
+> default drift stores `DateTime` as unix **seconds**, which truncates the
+> server's `updated_at`. Your app then sends that truncated value back as the
+> base version of every edit, it never equals the server's version, and each
+> edit is rejected as a conflict. Switching an existing database needs a
+> migration — see `example/todo_advanced/frontend/lib/database/database.dart`.
+
 ### 2. Database setup
 
 1. Describe your domain tables and add `SyncColumns` to automatically get `updatedAt/deletedAt/deletedAtLocal`.
