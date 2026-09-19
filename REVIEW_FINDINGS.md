@@ -11,7 +11,7 @@ Yöntem: 5 paralel inceleme ajanı (salt-okunur) + en ciddi iddiaların elle do�
 | ✅ okundu | İlgili kod okunarak doğrulandı |
 | 📋 ajan | Ajanın kendi kanıtıyla raporladığı; bağımsız olarak yeniden doğrulanmadı — düzeltmeden önce doğrula |
 
-## Durum (2026-09-19; çekirdek, REST ve search_engine 0.2.1 — diğer paketler 0.2.0)
+## Durum (2026-09-19; çekirdek ve REST 0.2.2, search_engine 0.2.1 — diğer paketler 0.2.0)
 
 **Düzeltildi** (her biri kırmızı→yeşil regresyon testiyle + `todo_advanced` "Sync scenarios" ekranında
 Playwright ile tarayıcıda önce FAIL, sonra PASS olarak kanıtlandı): **K1-1, K1-2, K1-3, K1-4, K1-6, K1-7(a,b)**.
@@ -44,6 +44,16 @@ Tarayıcı kanıtı — aynı senaryo kodu, aynı backend; "önce" = `main` (`fd
 
 P1 ölçümü (yerel SQLite, 20 000 op, ~1 KB payload): tek kind take 9,44 → 0,09 ms · filtresiz take 8,69 → 0,12 ms · rebase 6,30 → 0,16 ms. Tarayıcıda (wasm, 5000 op) fark küçük çünkü süreyi tarama değil worker gidiş-dönüşü ve commit belirliyor; asıl kazanç kuyruk büyüdükçe ortaya çıkan N² davranışının kalkması.
 Ajanın "`watchOutboxCount` her seferinde tam tarama" iddiası **ölçümle yanlış çıktı**: filtresiz `COUNT(*)` PK oto-indeksini kullanıyor (20 000 satırda 0,19 ms). `(tryCount)` indeksi eklenmedi: `countStuck` sync başına kind başına bir kez çalışıyor (doğrusal), batch/op başına değil.
+
+**İncelemede (`fix/outbox-retry-budget-cursor-tombstones`, 0.2.2)** — bağımsız rakip incelemesinin (bkz. `COMPETITIVE_ANALYSIS.md`, yerel) doğrulanan bulguları; her biri kırmızı→yeşil testle:
+**K1-11** (çevrimdışı kalmak kuyruğu kalıcı park ediyordu), **K2-42** (REST push hataları durum kodunu kaybediyordu), **K2-43** (`todo_advanced` backend'i tombstone yaymıyordu + doküman tersini söylüyordu), **K2-44** (cursor ms'e kırpılıyordu), **K2-45** (1973 öncesi damgalar yanlış okunuyordu), **K2-46** (ağ yokken batch'in her op'u ayrı ayrı deneniyordu).
+
+| Senaryo (tarayıcı, gerçek backend) | Düzeltme öncesi | Düzeltme sonrası |
+|---|---|---|
+| K1-11 · 6 sync ağ yok + 6 sync `401`, sonra sağlıklı sync | sayılan deneme **5**, stuck=1; ağ isteği 5'te kesildi; sağlıklı sync'te pushed=0, yazma sunucuya **hiç ulaşmadı** | sayılan deneme 0, stuck=0; ilk sağlıklı sync'te pushed=1 |
+| K2-43 · başka istemci todo'yu siliyor, sonra pull | pull 0 satır; yerel `deletedAt=null`, uygulama göstermeye devam ediyor | pull 1 satır (tombstone); `deletedAt` dolu, uygulama göstermiyor |
+
+K2-44 için tarayıcı senaryosu yok: tarayıcıda `DateTime` zaten ms hassasiyetinde, etki yalnızca native'de (motor testi: değişiklik yokken ikinci pull **2** satırı yeniden indiriyordu → 0).
 
 **Açık kalanlar:** Kademe 2 / Kademe 3'ün geri kalanı; aşağıdaki "Yeni açık maddeler".
 
@@ -134,6 +144,13 @@ Satır numaraları `ad04811` içindir.
 - Açık: `Todo.copyWith` `description ?? this.description` yazdığı için nullable alanları **temizleyemiyor** (repository yine de alanı "değişti" diye işaretliyor). `ConflictHandler`'daki alan adı listesi de `'dueDate'` kullanıyor (`conflict_handler.dart:239`).
 - Not: transport boş token'da bile `Authorization: ''` header'ı gönderiyor (gereksiz preflight + özensiz).
 
+### K1-11 · (YENİ) Çevrimdışı kalmak kuyruğun tamamını kalıcı olarak "stuck" yapıyor — ✅ çalıştırıldı · S–M · ✔ DÜZELTİLDİ (0.2.2)
+- **Yer:** `push_service.dart` (`pushAll` → `fail`), `sync_database.dart` (`recordOutboxFailures`, `takeOutbox(maxTryCountExclusive)`), `sync_error.dart`.
+- **Mekanizma:** `maxOutboxTryCount` (varsayılan 5) **her** başarısız push'u sayıyordu. `RestTransport` tek-op modunda ağ yokken her op için `PushError(NetworkException)` döndürür → `tryCount`+1. Ağsız 5 sync denemesinden sonra (`startAuto` varsayılanıyla 25 dk) kuyruktaki **bütün** yazmalar `take()`'ten kalıcı olarak çıkıyor; bağlantı gelince de gönderilmiyor. Süresi dolmuş token (`401`) ve sunucu kesintisi (`5xx`) aynı sonucu veriyor. Uygulama `retryStuckOperations()`'ı bilmiyorsa veri sessizce hiç senkronlanmıyor — özellik dokümanlarda da hiç geçmiyordu.
+- **Kanıt:** Birim probu: 6 başarısız sync + sağlıklı sync → `pushed=0, stuck=1` (ağ / 401 / 503 üçünde de). Tarayıcıda gerçek backend'le: yukarıdaki tablo.
+- **Düzeltme:** Bütçe yalnızca op'la ilgili hatalarda tükeniyor (`401/403/408/425/429` dışındaki `4xx`, durum kodu olmayan hata). Ağ, zaman aşımı, `401/403`, `408/425/429`, `5xx` sayılmıyor ama raporlanıyor (`OperationFailedEvent(willRetry: true)`, `SyncStats.errors`, `sync_outbox_meta.last_error`). Yeni public API: `SyncErrorInfo.isEnvironmental`, `recordOutboxFailures(countAttempts:)`. `403`'ü "çevresel" saymak bilinçli: birçok backend süresi dolmuş oturuma 403 döner; yanlış sınıflamanın bedeli bir yanda op başına sync başına 1 fazladan istek, diğer yanda sessiz veri kaybı.
+- **Yükseltme notu:** Eski davranışla park edilmiş op'lar park kalır → uygulama bir kez `retryStuckOperations()` çağırmalı (CHANGELOG'da). Otomatik iyileştirme (`last_error` metninden tanıyıp sıfırlamak) kırılgan bulunduğu için yapılmadı — **sahip kararı**.
+
 ### Yeni açık maddeler (2026-09-19 akşamı)
 - **`final class` API kırılması (PR #5 ile main'de):** uyarı temizliği sırasında 0.1.2'de düz `class` olan public sınıflar `final class` oldu — `PushService`, `PullService`, `OutboxService`, `CursorService`, `ConflictResolutionResult`, `NetworkSyncHandler`, `DriftFtsSearchTransport`, `PullPage`, `OpPushResult`, `FetchSuccess`/`FetchNotFound`/`FetchError`, `SyncStarted`, `FullResyncStarted`, `JsonConverter`. Kütüphane dışından `extends`/`implements` (mock dahil) artık derlenmez. Bilinçli değilse geri alınmalı; yayın öncesi `dart_apitool` ile tam API farkı önerilir.
 - **`todo_simple` ve `todo_simple_new` frontend'leri** de `store_date_time_values_as_text` kullanmıyor (saniyeye kırpma); backend'leri taban sürümü kontrolü yapıyor. `todo_advanced`'deki aynı `build.yaml` + göç uygulanmalı.
@@ -209,6 +226,11 @@ Satır numaraları `ad04811` içindir.
 | K2-39 | `catch` blokları `FormatException` mesajını (kaynak metnin ~78 karakteri: token/PII) ve stack trace'i `dart:developer.log` ile yazıyor; `log` release'te ayıklanmaz. Bozuk kolonda satır başına maliyet. | dört converter'ın `catch`'leri | 📋 ajan | S |
 | K2-40 | Aynı converter duruma göre `const []` ya da büyüyebilir liste döndürüyor → veriye bağlı `UnsupportedError`. | `list_string_converter.dart:23-34`, `list_int_converter.dart:15-25` | 📋 ajan | S |
 | K2-41 ✔ | Transport bir op için sonuç döndürmezse (`BatchPushResult.results` eksik) op ne ack'leniyor ne hata sayılıyor; `while (true)` aynı op'u yeniden alıp yeniden push ediyor → `sync()` dönmüyor, sunucu sürekli vuruluyor (K1-1'in transport kaynaklı ikizi). Düzeltme: yanıtsız op `TransportException` ile başarısız sayılıyor (`tryCount`+1, `OperationFailedEvent`) ve push bitiyor. Bilinmeyen `opId` için sonuç hâlâ fırlatıyor, artık op id'sini söyleyerek. | `push_service.dart` (`pushAll`) | ✅ çalıştırıldı (kırmızı→yeşil: `push_bookkeeping_test.dart`) | S |
+| K2-42 ✔ | REST push/delete/batch-öğesi hataları `http.ClientException('Push failed 401')` olarak dönüyordu: durum kodu yalnızca metnin içinde, `SyncErrorInfo.category` hep `unknown` → motor süresi dolmuş token'ı ya da kesintiyi reddedilmiş op'tan ayıramıyordu. Düzeltme: `TransportException.httpError(status, body)` (`FetchError` zaten böyleydi). İki birim testi eski tipi sabitliyordu, güncellendi. | `rest_transport.dart` (`_parseResponse`, `_pushDelete`, `_parseBatchItem`) | ✅ çalıştırıldı · 0.2.2 | S |
+| K2-43 ✔ | `todo_advanced` backend'i `includeDeleted`'ı yok sayıp silinenleri hiç döndürmüyordu → bir cihazdaki silme diğer cihazlara **hiç** ulaşmıyordu (diğer iki örnek backend doğru). Ayrıca `backend-transport.md` "tombstone gelen kayıt yerelden silinir" diyordu; kod ise satırı `deleted_at` ile **saklıyor** (tasarım: `SyncColumns.deletedAt/deletedAtLocal`, uygulama filtreler). Hard delete paragrafı da yanlıştı (varsayılan `clearData: false` ile full resync silmeyi yakınsamıyor). Backend + dokümanlar düzeltildi. **Açık (sahip kararı):** yerel tombstone temizliği için yardımcı API ve hard delete'i yakınsayan resync modu yok. | `example/todo_advanced/backend/lib/repositories/todo_repository.dart`, `routes/todos/index.dart`, `docs/backend-transport.md` | ✅ çalıştırıldı | S |
+| K2-44 ✔ | `sync_cursors.ts` ms saklıyordu (outbox'ta düzeltilen hatanın ikizi): µs sürümlü sunucuda cursor son satırın hemen **öncesine** düşüyor, o ms içindeki satırlar her pull'da yeniden iniyordu (kayıp yok, sonsuz israf). Düzeltme: outbox'la ortak µs kodlayıcı; şema değişmedi, eski ms cursor'lar büyüklükten tanınıyor. | `sync_database.dart` (`setCursor`/`getCursor`), `internal/timestamp_codec.dart` | ✅ çalıştırıldı · 0.2.2 | S |
+| K2-45 ✔ | 0.2.0'daki µs kodlamasında köşe durum: 1966–1973 arası bir damganın µs değeri `1e14` eşiğinin altında kaldığı için geri okunurken ms sanılıyordu (`1970-01-01T00:00:05Z` → `01:23:20Z`). `updated_at`'i epoch'a varsayılanlanmış eski satırlarda taban sürümü / cursor bozulurdu. Düzeltme: eşiğin altındaki değerler ms olarak **yazılıyor** → kodlama her tarih için tam tersinir. | `internal/timestamp_codec.dart` | ✅ çalıştırıldı · 0.2.2 | S |
+| K2-46 ✔ | Ağ yokken `RestTransport.push` batch'teki **her** op'u ayrı ayrı deniyordu; her biri kendi retry + backoff'unu (varsayılanlarla ≥31 sn, kara delik ağda ~3,5 dk) tüketiyordu → 100 op'luk kuyrukta tek bir çevrimdışı `sync()` ~1 saat sürebilir. Düzeltme: bir op ağ hatasıyla (retry'lardan sonra) ya da `401` ile düşünce kalan op'lar gönderilmeden aynı hatayı alıyor. `403`/`4xx`/`5xx` batch'i durdurmuyor (tek op'la ilgili olabilir). Ayrıca kodlanamayan payload retry döngüsünden çıkarılıp op'a özgü hata yapıldı (aksi hâlde yeni kuralla kuyruğu tıkardı). | `rest_transport.dart` (`push`, `_pushUpsert`) | ✅ çalıştırıldı · 0.2.2 | S |
 
 ---
 

@@ -998,7 +998,26 @@ The server must:
 
 ### Client-Side Handling
 
-The client supports both formats: `deletedAt` (camelCase) and `deleted_at` (snake_case). When the client receives a record with `deleted_at != null`, it deletes it from the local database.
+The client supports both formats: `deletedAt` (camelCase) and `deleted_at` (snake_case).
+
+A record with `deleted_at != null` is a **tombstone**. The client stores it like
+any other record — `deleted_at` included — it does **not** remove the local
+row. That is deliberate: the row keeps the version (`updated_at`) the delete
+produced, and your app decides when the data physically goes away. Two things
+follow:
+
+- Your queries must leave tombstones out. With the `SyncColumns` mixin:
+  `..where((t) => t.deletedAt.isNull() & t.deletedAtLocal.isNull())`
+  (`deletedAtLocal` marks a delete made on this device that is still queued).
+- Tombstones accumulate locally until you remove them, for example after a
+  successful sync:
+  `(db.delete(db.todos)..where((t) => t.deletedAt.isNotNull())).go()`.
+
+`CacheUpdateEvent.deletes` counts the tombstones a pull delivered.
+
+If your list endpoint ignores `includeDeleted` and never returns deleted
+records, a delete made on one device **never** reaches the user's other
+devices: they keep showing the record.
 
 ### Hard Delete vs Soft Delete
 
@@ -1009,7 +1028,12 @@ The client supports both formats: `deletedAt` (camelCase) and `deleted_at` (snak
 | **DB size** | Does not grow | Grows (cleanup needed) |
 | **Recommendation** | Single device | Multiple devices |
 
-If you use hard delete, the client will only learn about deletions during a full resync (`fullResyncInterval`, default 7 days).
+If you use hard delete, clients do not learn about deletions at all in normal
+operation: a pull only ever adds and updates rows, and the periodic full resync
+(`fullResyncInterval`, default 7 days) runs with `clearData: false`, so a row
+the server no longer returns simply stays. Only `engine.fullResync(clearData:
+true)` — which wipes the local tables first — removes it. Use soft delete for
+anything that syncs to more than one device.
 
 ---
 

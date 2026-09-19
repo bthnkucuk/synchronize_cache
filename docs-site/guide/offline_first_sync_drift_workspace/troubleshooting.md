@@ -150,6 +150,11 @@ engine.events.listen((event) {
 });
 ```
 
+An operation the server keeps rejecting (`400`, `422` …) is set aside after
+`maxOutboxTryCount` attempts and reported by `engine.getStuckOperations()`;
+see [Failed operations and the retry budget](sync-engine.md#failed-operations-the-retry-budget-and-stuck-operations).
+Being offline, an expired token or a `5xx` never uses up that budget.
+
 **Cause 2:** Conflicts are not resolved, `skipConflictingOps = false` (default).
 
 ```dart
