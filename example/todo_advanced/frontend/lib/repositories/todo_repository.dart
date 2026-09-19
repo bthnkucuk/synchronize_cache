@@ -102,7 +102,9 @@ class TodoRepository {
     if (validPriority != null && validPriority != todo.priority) {
       changedFields.add('priority');
     }
-    if (dueDate != todo.dueDate) changedFields.add('dueDate');
+    // changedFields are matched against the JSON payload, whose keys are
+    // snake_case (`FieldRename.snake`); 'dueDate' never matched anything.
+    if (dueDate != todo.dueDate) changedFields.add('due_date');
 
     final updated = todo.copyWith(
       title: title ?? todo.title,
