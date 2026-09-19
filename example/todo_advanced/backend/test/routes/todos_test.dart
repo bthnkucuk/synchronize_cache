@@ -99,6 +99,33 @@ void main() {
       expect(body['items'], hasLength(2));
     });
 
+    test('includes tombstones, unless includeDeleted=false', () async {
+      final now = DateTime.now().toUtc();
+      repository
+        ..create(Todo(id: 'alive', title: 'Alive', updatedAt: now))
+        ..create(Todo(id: 'gone', title: 'Gone', updatedAt: now))
+        ..delete('gone');
+
+      Future<List<Map<String, dynamic>>> items(String query) async {
+        when(() => context.request)
+            .thenReturn(Request.get(Uri.parse('http://localhost/todos$query')));
+        final response = await todos_index.onRequest(context);
+        final body = jsonDecode(await response.body()) as Map<String, dynamic>;
+        return (body['items'] as List).cast<Map<String, dynamic>>();
+      }
+
+      // What RestTransport sends, and what a client that says nothing gets.
+      for (final query in ['?includeDeleted=true', '']) {
+        final all = await items(query);
+        expect(all.map((t) => t['id']).toSet(), {'alive', 'gone'});
+        final tombstone = all.singleWhere((t) => t['id'] == 'gone');
+        expect(tombstone['deleted_at'], isNotNull);
+      }
+
+      final alive = await items('?includeDeleted=false');
+      expect(alive.map((t) => t['id']), ['alive']);
+    });
+
     test('an armed empty page has no items, names a next page, and the '
         'request for that page starts from the top', () async {
       repository.create(

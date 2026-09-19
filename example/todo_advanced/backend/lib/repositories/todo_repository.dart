@@ -37,13 +37,20 @@ class TodoRepository {
     }
   }
 
-  /// Lists all non-deleted todos, with optional pagination.
+  /// Lists todos in `(updated_at, id)` order, with optional pagination.
+  ///
+  /// With [includeDeleted] the soft-deleted todos are part of the result, as
+  /// tombstones (`deleted_at` set). A sync client needs them: they are the
+  /// only way it learns that another device deleted something.
   List<Todo> list({
     DateTime? updatedSince,
     int limit = 500,
     String? pageToken,
+    bool includeDeleted = false,
   }) {
-    var todos = _todos.values.where((t) => t.deletedAt == null);
+    var todos = _todos.values.where(
+      (t) => includeDeleted || t.deletedAt == null,
+    );
 
     if (updatedSince != null) {
       todos = todos.where((t) => t.updatedAt.isAfter(updatedSince));

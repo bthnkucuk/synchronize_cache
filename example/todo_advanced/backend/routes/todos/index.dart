@@ -39,10 +39,15 @@ Response _get(RequestContext context) {
     );
   }
 
+  // Sync clients ask for tombstones by default (`includeDeleted=true`);
+  // without them a delete never reaches the user's other devices.
+  final includeDeleted = params['includeDeleted'] != 'false';
+
   final todos = repository.list(
     updatedSince: updatedSince,
     limit: limit + 1,
     pageToken: pageToken,
+    includeDeleted: includeDeleted,
   );
 
   String? nextPageToken;

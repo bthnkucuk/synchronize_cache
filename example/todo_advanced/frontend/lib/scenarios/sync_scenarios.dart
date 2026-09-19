@@ -97,6 +97,24 @@ final List<Scenario> syncScenarios = [
     run: _ownEditsDoNotConflict,
   ),
   const Scenario(
+    id: 'K1-11',
+    title: 'Being offline or signed out never parks your queued writes',
+    expectation:
+        'A write queued while the server is unreachable for $_failedSyncs '
+        'syncs, and then rejected with 401 for $_failedSyncs more, is not '
+        'counted as a failed attempt of that write: it is never reported as '
+        'stuck and is delivered by the first sync that gets through.',
+    run: _outagesDoNotParkWrites,
+  ),
+  const Scenario(
+    id: 'K2-43',
+    title: 'A delete made on another device reaches this one',
+    expectation:
+        'After another client deletes a synced todo, the next pull marks the '
+        'local row as deleted, so the app stops showing it.',
+    run: _remoteDeleteArrives,
+  ),
+  const Scenario(
     id: 'P1',
     title: 'Outbox queries use indexes, also on a database from before them',
     expectation:
@@ -119,6 +137,7 @@ final List<Scenario> syncScenarios = [
 
 const _queuedOps = 5000;
 const _batchOps = 25;
+const _failedSyncs = 6;
 
 // ---------------------------------------------------------------------------
 // K1-1
@@ -695,6 +714,160 @@ class _FixedPageTransport implements TransportAdapter {
 
   @override
   Future<bool> health() async => true;
+}
+
+// ---------------------------------------------------------------------------
+// K1-11
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _outagesDoNotParkWrites(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 80);
+  const config = SyncConfig();
+  RestTransport transportTo(String url) => RestTransport(
+    base: Uri.parse(url),
+    token: () async => '',
+    client: client,
+    maxRetries: 0,
+    backoffMin: const Duration(milliseconds: 1),
+    requestTimeout: const Duration(seconds: 2),
+  );
+  SyncEngine<AppDatabase> engineFor(String url) => SyncEngine<AppDatabase>(
+    db: ctx.db,
+    transport: transportTo(url),
+    tables: [todoSyncTable(ctx.db)],
+    config: config,
+  );
+
+  // Nothing listens on the discard port: what a device without a network
+  // sees from the browser's point of view.
+  final offline = engineFor('http://localhost:9');
+  final online = engineFor(ctx.backendUrl);
+
+  try {
+    // The first sync of a database is a full resync; do it while online.
+    await online.sync();
+
+    final now = DateTime.now().toUtc();
+    final todo = Todo(
+      id: 'scenario-${_uuid.v4()}',
+      title: 'Written without a connection',
+      updatedAt: now,
+    );
+    await _writer(ctx).insertAndEnqueue(todo, localTimestamp: now);
+
+    Future<void> failing(SyncEngine<AppDatabase> engine) async {
+      for (var i = 0; i < _failedSyncs; i++) {
+        try {
+          await engine.sync(pushKinds: {_kind}, pullKinds: const {});
+        } catch (_) {
+          // A transport may throw instead of reporting per operation.
+        }
+      }
+    }
+
+    await failing(offline);
+    final stuckAfterOffline = (await online.getStuckOperations()).length;
+
+    await _simulate(ctx, 'fail_writes', {
+      'status': 401,
+      'requests': _failedSyncs,
+    });
+    await failing(online);
+    await _simulate(ctx, 'fail_writes', {'status': 401, 'requests': 0});
+    final stuckAfter401 = (await online.getStuckOperations()).length;
+
+    final attempts = await ctx.db
+        .customSelect('SELECT try_count FROM sync_outbox')
+        .get();
+    final tryCount = attempts.isEmpty
+        ? null
+        : attempts.first.read<int>('try_count');
+
+    final recovery = await online.sync(pushKinds: {_kind}, pullKinds: const {});
+    final queued = (await ctx.db.takeOutbox(limit: 10)).length;
+    final response = await http.get(
+      Uri.parse('${ctx.backendUrl}/$_kind/${todo.id}'),
+    );
+
+    final evidence =
+        '$_failedSyncs syncs without a network, then $_failedSyncs syncs '
+        'answered 401 (budget: ${config.maxOutboxTryCount} attempts). Counted '
+        'attempts afterwards: ${tryCount ?? 'op gone'}; reported stuck: '
+        '$stuckAfterOffline after the outage, $stuckAfter401 after the 401s. '
+        'First healthy sync: pushed=${recovery.pushed}, $queued op(s) still '
+        'queued, server has the todo: ${response.statusCode == 200}.';
+
+    if (recovery.pushed == 1 &&
+        queued == 0 &&
+        response.statusCode == 200 &&
+        stuckAfterOffline == 0 &&
+        stuckAfter401 == 0) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The write was parked as "stuck" although nothing was wrong with it: it '
+      'is never sent again unless the app calls retryStuckOperations(). '
+      '$evidence',
+    );
+  } finally {
+    offline.dispose();
+    online.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K2-43
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _remoteDeleteArrives(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 40);
+  final engine = _engine(ctx, client, config: const SyncConfig());
+
+  try {
+    final synced = await _createAndSync(
+      ctx,
+      engine,
+      title: 'Deleted elsewhere',
+    );
+
+    // Another device deletes the todo.
+    final deleted = await http.delete(
+      Uri.parse('${ctx.backendUrl}/$_kind/${synced.id}'),
+    );
+    if (deleted.statusCode >= 300) {
+      throw StateError('DELETE failed: ${deleted.statusCode}');
+    }
+
+    final stats = await engine.sync(pushKinds: const {}, pullKinds: {_kind});
+    final local = await _localTodo(ctx, synced.id);
+    final visible =
+        await (ctx.db.select(ctx.db.todos)..where(
+              (t) =>
+                  t.id.equals(synced.id) &
+                  t.deletedAt.isNull() &
+                  t.deletedAtLocal.isNull(),
+            ))
+            .get();
+
+    final evidence =
+        'The server answered the DELETE with ${deleted.statusCode}; the pull '
+        'brought ${stats.pulled} row(s); local deletedAt='
+        '${local?.deletedAt?.toIso8601String()}; still shown by the app: '
+        '${visible.isNotEmpty}.';
+
+    if (local?.deletedAt != null && visible.isEmpty) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The todo was deleted on the server, but this device never hears about '
+      'it and keeps showing it: the pull did not deliver the tombstone. '
+      '$evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+  }
 }
 
 // ---------------------------------------------------------------------------

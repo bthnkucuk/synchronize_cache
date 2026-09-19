@@ -49,6 +49,23 @@ class SimulationService {
     return true;
   }
 
+  int _failingWrites = 0;
+  int _failureStatus = 503;
+
+  /// Makes the next [count] writes fail with [status] (a `401` for an expired
+  /// token, a `503` for an outage) without applying them.
+  void failNextWrites({required int status, int count = 1}) {
+    _failureStatus = status;
+    _failingWrites = count;
+  }
+
+  /// The status the current write must fail with, or `null`.
+  int? takeWriteFailure() {
+    if (_failingWrites <= 0) return null;
+    _failingWrites--;
+    return _failureStatus;
+  }
+
   /// Makes the next [count] list requests return an empty page that still
   /// names a next page.
   ///
