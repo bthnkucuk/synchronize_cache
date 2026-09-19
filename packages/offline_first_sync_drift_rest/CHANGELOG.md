@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-19
+
+### Changed
+
+- Requires `offline_first_sync_drift: ^0.2.1`.
+
+### Fixed
+
+- A `409` that does not carry the server's record is a `PushError`
+  (`TransportException`, status 409) instead of a `PushConflict` built from
+  whatever the body was. An empty body, HTML from a proxy, a JSON array, an
+  error envelope such as `{"error": "conflict"}` or an empty `current` used to
+  become a conflict whose "server data" was that body and whose timestamp was
+  `DateTime.now()`. The default `autoPreserve` strategy then "resolved" it and
+  force-pushed the result past the server's version check. The op now stays
+  queued and is retried. A body is a record when it has a non-empty `current`
+  / `serverData` object, or is itself an object with an id or an `updatedAt`
+  field. The same applies to `409` entries of a batch response.
+- The timestamp of a conflict is read like every other server timestamp: a
+  value without a zone designator is UTC, not device-local time.
+
 ## [0.2.0] - 2026-09-19
 
 ### Breaking

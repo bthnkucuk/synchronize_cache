@@ -40,8 +40,8 @@ Dart/Flutter библиотека для offline-first работы с данн�
 
 ```yaml
 dependencies:
-  offline_first_sync_drift: ^0.2.0
-  offline_first_sync_drift_rest: ^0.2.0
+  offline_first_sync_drift: ^0.2.1
+  offline_first_sync_drift_rest: ^0.2.1
   drift: ^2.26.1
   json_annotation: ^4.8.0
 
