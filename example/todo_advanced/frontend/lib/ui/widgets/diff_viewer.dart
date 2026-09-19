@@ -17,7 +17,7 @@ class DiffViewer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.withOpacity(0.3)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -25,8 +25,10 @@ class DiffViewer extends StatelessWidget {
           // Header
           Container(
             decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.1),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+              color: Colors.grey.withValues(alpha: 0.1),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(7),
+              ),
             ),
             child: Row(
               children: [
@@ -35,14 +37,16 @@ class DiffViewer extends StatelessWidget {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       border: Border(
-                        right: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                        right: BorderSide(
+                          color: Colors.grey.withValues(alpha: 0.3),
+                        ),
                       ),
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
                         Icon(Icons.phone_android, size: 16, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        const Text(
+                        SizedBox(width: 8),
+                        Text(
                           'Local Version',
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
@@ -50,14 +54,14 @@ class DiffViewer extends StatelessWidget {
                     ),
                   ),
                 ),
-                Expanded(
+                const Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.all(12),
                     child: Row(
                       children: [
                         Icon(Icons.cloud, size: 16, color: Colors.green),
-                        const SizedBox(width: 8),
-                        const Text(
+                        SizedBox(width: 8),
+                        Text(
                           'Server Version',
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
@@ -138,11 +142,11 @@ class _DiffRow extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDifferent ? Colors.orange.withOpacity(0.05) : null,
+        color: isDifferent ? Colors.orange.withValues(alpha: 0.05) : null,
         border: isLast
             ? null
             : Border(
-                bottom: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
               ),
         borderRadius: isLast
             ? const BorderRadius.vertical(bottom: Radius.circular(7))
@@ -167,9 +171,12 @@ class _DiffRow extends StatelessWidget {
                 if (isDifferent) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.2),
+                      color: Colors.orange.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: const Text(
@@ -195,7 +202,9 @@ class _DiffRow extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     border: Border(
-                      right: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                      right: BorderSide(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                      ),
                     ),
                   ),
                   child: Text(

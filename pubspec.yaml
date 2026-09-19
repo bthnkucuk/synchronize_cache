@@ -2,7 +2,7 @@ name: offline_first_sync_drift_workspace
 publish_to: none
 
 environment:
-  sdk: ^3.7.0
+  sdk: ^3.13.0
 
 workspace:
   - packages/drift_helpers

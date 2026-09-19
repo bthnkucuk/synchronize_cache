@@ -54,23 +54,21 @@ abstract class SearchableTable<DB extends GeneratedDatabase, T> {
   /// Default: pulls `title` / `description` / `content` straight from the
   /// JSON map produced by [toJson]. Override for kinds that need to fetch
   /// remote text (e.g. transcription output URL).
-  FutureOr<GlobalSearch> toGlobalSearch(PendingSearchItem item) {
-    return GlobalSearch(
-      originalId: item.id,
-      userId: item.userId,
-      kind: item.kind,
-      title: (item.data['title'] as String?) ?? '',
-      description: (item.data['description'] as String?) ?? '',
-      content: (item.data['content'] as String?) ?? '',
-    );
-  }
+  FutureOr<GlobalSearch> toGlobalSearch(PendingSearchItem item) => GlobalSearch(
+    originalId: item.id,
+    userId: item.userId,
+    kind: item.kind,
+    title: (item.data['title'] as String?) ?? '',
+    description: (item.data['description'] as String?) ?? '',
+    content: (item.data['content'] as String?) ?? '',
+  );
 
   /// `updatedAt` of [row] — used by cursor-based incremental indexing.
   /// Default throws so misconfigured bindings fail fast at the indexer.
   DateTime updatedAtOf(T row) => throw UnsupportedError(
-        'updatedAtOf not implemented for kind=$kind. Override it before '
-        'enabling cursor-based incremental indexing.',
-      );
+    'updatedAtOf not implemented for kind=$kind. Override it before '
+    'enabling cursor-based incremental indexing.',
+  );
 
   /// Fetch the next batch of rows after the cursor `(since, lastId)`,
   /// ordered by `(updatedAt asc, id asc)` and capped at [limit].
@@ -88,34 +86,27 @@ abstract class SearchableTable<DB extends GeneratedDatabase, T> {
     DateTime since,
     String? lastId,
     int limit,
-  ) =>
-      throw UnsupportedError(
-        'readSince not implemented for kind=$kind. Override it before '
-        'enabling cursor-based incremental indexing.',
-      );
+  ) => throw UnsupportedError(
+    'readSince not implemented for kind=$kind. Override it before '
+    'enabling cursor-based incremental indexing.',
+  );
 }
 
 /// Lambda-based [SearchableTable] — no subclass required for the common
 /// case. Reach for a custom subclass only when the binding needs internal
 /// state, helper methods, or its own dependency injection seams.
-class _CallbackSearchableTable<DB extends GeneratedDatabase, T> extends SearchableTable<DB, T> {
+class _CallbackSearchableTable<DB extends GeneratedDatabase, T>
+    extends SearchableTable<DB, T> {
   const _CallbackSearchableTable({
-    required String kind,
-    required Stream<List<T>> Function(DB, String) watch,
-    required String Function(T) idOf,
-    required Map<String, dynamic> Function(T) toJson,
-    bool Function(T)? isDeleted,
-    FutureOr<GlobalSearch> Function(PendingSearchItem)? toGlobalSearch,
-    DateTime Function(T)? updatedAtOf,
-    Future<List<T>> Function(DB, String userId, DateTime since, String? lastId, int limit)? readSince,
-  }) : _kind = kind,
-       _watch = watch,
-       _idOf = idOf,
-       _toJson = toJson,
-       _isDeleted = isDeleted,
-       _toGlobalSearch = toGlobalSearch,
-       _updatedAtOf = updatedAtOf,
-       _readSince = readSince;
+    required this._kind,
+    required this._watch,
+    required this._idOf,
+    required this._toJson,
+    this._isDeleted,
+    this._toGlobalSearch,
+    this._updatedAtOf,
+    this._readSince,
+  });
 
   final String _kind;
   final Stream<List<T>> Function(DB, String) _watch;
@@ -124,7 +115,8 @@ class _CallbackSearchableTable<DB extends GeneratedDatabase, T> extends Searchab
   final bool Function(T)? _isDeleted;
   final FutureOr<GlobalSearch> Function(PendingSearchItem)? _toGlobalSearch;
   final DateTime Function(T)? _updatedAtOf;
-  final Future<List<T>> Function(DB, String, DateTime, String?, int)? _readSince;
+  final Future<List<T>> Function(DB, String, DateTime, String?, int)?
+  _readSince;
 
   @override
   String get kind => _kind;
@@ -150,8 +142,15 @@ class _CallbackSearchableTable<DB extends GeneratedDatabase, T> extends Searchab
       _updatedAtOf?.call(row) ?? super.updatedAtOf(row);
 
   @override
-  Future<List<T>> readSince(DB db, String userId, DateTime since, String? lastId, int limit) =>
-      _readSince?.call(db, userId, since, lastId, limit) ?? super.readSince(db, userId, since, lastId, limit);
+  Future<List<T>> readSince(
+    DB db,
+    String userId,
+    DateTime since,
+    String? lastId,
+    int limit,
+  ) =>
+      _readSince?.call(db, userId, since, lastId, limit) ??
+      super.readSince(db, userId, since, lastId, limit);
 }
 
 /// Build a [SearchableTable] from inline callbacks — avoids one boilerplate
@@ -173,16 +172,21 @@ SearchableTable<DB, T> searchableTable<DB extends GeneratedDatabase, T>({
   bool Function(T row)? isDeleted,
   FutureOr<GlobalSearch> Function(PendingSearchItem item)? toGlobalSearch,
   DateTime Function(T row)? updatedAtOf,
-  Future<List<T>> Function(DB db, String userId, DateTime since, String? lastId, int limit)? readSince,
-}) {
-  return _CallbackSearchableTable<DB, T>(
-    kind: kind,
-    watch: watch,
-    idOf: idOf,
-    toJson: toJson,
-    isDeleted: isDeleted,
-    toGlobalSearch: toGlobalSearch,
-    updatedAtOf: updatedAtOf,
-    readSince: readSince,
-  );
-}
+  Future<List<T>> Function(
+    DB db,
+    String userId,
+    DateTime since,
+    String? lastId,
+    int limit,
+  )?
+  readSince,
+}) => _CallbackSearchableTable<DB, T>(
+  kind: kind,
+  watch: watch,
+  idOf: idOf,
+  toJson: toJson,
+  isDeleted: isDeleted,
+  toGlobalSearch: toGlobalSearch,
+  updatedAtOf: updatedAtOf,
+  readSince: readSince,
+);

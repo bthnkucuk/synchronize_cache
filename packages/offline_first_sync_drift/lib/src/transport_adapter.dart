@@ -1,27 +1,19 @@
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 
 /// Pull result: list of JSON items and next page pointer.
-class PullPage {
-  PullPage({required this.items, this.nextPageToken});
-
-  /// Page items as JSON objects.
-  final List<Map<String, Object?>> items;
-
-  /// Next page token; null if this is the last page.
-  final String? nextPageToken;
-}
+@immutable
+final class const PullPage({
+  required final List<Map<String, Object?>> items,
+  final String? nextPageToken,
+}) {}
 
 /// Push result for a single operation.
-class OpPushResult {
-  const OpPushResult({required this.opId, required this.result});
-
-  /// Operation ID.
-  final String opId;
-
-  /// Push result.
-  final PushResult result;
-
+final class const OpPushResult({
+  required final String opId,
+  required final PushResult result,
+}) {
   bool get isSuccess => result is PushSuccess;
   bool get isConflict => result is PushConflict;
   bool get isNotFound => result is PushNotFound;
@@ -81,27 +73,17 @@ abstract interface class TransportAdapter {
 }
 
 /// Result of fetching a single entity.
-sealed class FetchResult {
-  const FetchResult();
-}
+sealed class const FetchResult();
 
 /// Entity found.
-class FetchSuccess extends FetchResult {
-  const FetchSuccess({required this.data, this.version});
-
-  final Map<String, Object?> data;
-  final String? version;
-}
+final class const FetchSuccess({
+  required final Map<String, Object?> data,
+  final String? version,
+}) extends FetchResult;
 
 /// Entity not found.
-class FetchNotFound extends FetchResult {
-  const FetchNotFound();
-}
+final class const FetchNotFound() extends FetchResult;
 
 /// Fetch error.
-class FetchError extends FetchResult {
-  const FetchError(this.error, [this.stackTrace]);
-
-  final Object error;
-  final StackTrace? stackTrace;
-}
+final class const FetchError(final Object error, [final StackTrace? stackTrace])
+    extends FetchResult;

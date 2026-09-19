@@ -134,19 +134,12 @@ class $$SearchLookupTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () =>
-                  i1.$$SearchLookupTableFilterComposer($db: db, $table: table),
-          createOrderingComposer:
-              () => i1.$$SearchLookupTableOrderingComposer(
-                $db: db,
-                $table: table,
-              ),
-          createComputedFieldComposer:
-              () => i1.$$SearchLookupTableAnnotationComposer(
-                $db: db,
-                $table: table,
-              ),
+          createFilteringComposer: () =>
+              i1.$$SearchLookupTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i1.$$SearchLookupTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              i1.$$SearchLookupTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 i0.Value<String> originalId = const i0.Value.absent(),
@@ -175,16 +168,20 @@ class $$SearchLookupTableTableManager
                 ftsRowid: ftsRowid,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<i1.$SearchLookupTable, i1.SearchLookupData>(
+                    table,
+                  ),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i1.$SearchLookupTable,
+                    i1.SearchLookupData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -321,26 +318,22 @@ class $SearchLookupTable extends i2.SearchLookup
   i1.SearchLookupData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i1.SearchLookupData(
-      originalId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}original_id'],
-          )!,
-      kind:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}kind'],
-          )!,
-      userId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}user_id'],
-          )!,
-      ftsRowid:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.int,
-            data['${effectivePrefix}fts_rowid'],
-          )!,
+      originalId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}original_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      ftsRowid: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.int,
+        data['${effectivePrefix}fts_rowid'],
+      )!,
     );
   }
 
@@ -417,8 +410,9 @@ class SearchLookupData extends i0.DataClass
   );
   SearchLookupData copyWithCompanion(i1.SearchLookupCompanion data) {
     return SearchLookupData(
-      originalId:
-          data.originalId.present ? data.originalId.value : this.originalId,
+      originalId: data.originalId.present
+          ? data.originalId.value
+          : this.originalId,
       kind: data.kind.present ? data.kind.value : this.kind,
       userId: data.userId.present ? data.userId.value : this.userId,
       ftsRowid: data.ftsRowid.present ? data.ftsRowid.value : this.ftsRowid,

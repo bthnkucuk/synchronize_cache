@@ -34,13 +34,9 @@ class MockTransport implements TransportAdapter {
     pushCallCount++;
     pushedOps.addAll(ops);
     return BatchPushResult(
-      results:
-          ops
-              .map(
-                (op) =>
-                    OpPushResult(opId: op.opId, result: const PushSuccess()),
-              )
-              .toList(),
+      results: ops
+          .map((op) => OpPushResult(opId: op.opId, result: const PushSuccess()))
+          .toList(),
     );
   }
 
@@ -91,7 +87,6 @@ void main() {
 
       // Pull вызывается для каждого зарегистрированного kind
       expect(transport.pullCallCount, 1);
-
     });
 
     test('sync pushes outbox operations', () async {
@@ -117,7 +112,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -125,7 +120,6 @@ void main() {
 
       expect(transport.pushedOps.length, 1);
       expect(transport.pushedOps.first.opId, 'test-op-1');
-
     });
 
     test('sync pulls and inserts items', () async {
@@ -158,7 +152,6 @@ void main() {
       final items = await db.select(db.testItems).get();
       expect(items.length, 1);
       expect(items.first.name, 'Pulled Item');
-
     });
 
     test('sync emits SyncStarted events', () async {
@@ -188,7 +181,6 @@ void main() {
 
       // Должно быть 2 SyncStarted: один для push, один для pull
       expect(events.whereType<SyncStarted>().length, 2);
-
     });
 
     test('sync emits SyncCompleted event', () async {
@@ -217,7 +209,6 @@ void main() {
       await sub.cancel();
 
       expect(events.whereType<SyncCompleted>().length, 1);
-
     });
 
     test('sync updates cursor after pull', () async {
@@ -251,7 +242,6 @@ void main() {
       final cursor = await db.getCursor('test_item');
       expect(cursor != null, isTrue);
       expect(cursor!.lastId, 'cursor-test-1');
-
     });
 
     test('sync clears outbox after successful push', () async {
@@ -277,7 +267,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {},
+          payloadJson: const {},
         ),
       );
 
@@ -286,7 +276,6 @@ void main() {
       await engine.sync();
 
       expect((await db.takeOutbox()).length, 0);
-
     });
 
     test('sync can filter by kinds', () async {
@@ -317,7 +306,6 @@ void main() {
       expect(transport.pullCallCount, 0);
       // Should not push test_item either because legacy kinds applies to both.
       expect(transport.pushCallCount, 0);
-
     });
 
     test('sync supports independent pushKinds and pullKinds', () async {
@@ -343,7 +331,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -357,7 +345,6 @@ void main() {
       expect(transport.pushCallCount, 1);
       expect(transport.pullCallCount, 0);
       expect((await db.takeOutbox()).length, 0);
-
     });
 
     test('startAuto and stopAuto', () async {
@@ -407,7 +394,6 @@ void main() {
       addTearDown(engine.dispose);
 
       await expectLater(engine.sync(), throwsA(isA<Exception>()));
-
     });
 
     test('sync emits error event before throwing', () async {
@@ -440,7 +426,6 @@ void main() {
       await sub.cancel();
 
       expect(events.whereType<SyncErrorEvent>().length, greaterThan(0));
-
     });
 
     test('sync stops current run after PushError and does not spin', () async {
@@ -466,7 +451,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -475,7 +460,6 @@ void main() {
 
       // Item stays queued for a future sync attempt.
       expect((await db.takeOutbox()).length, 1);
-
     });
 
     test('push emits OperationFailedEvent on PushError', () async {
@@ -502,7 +486,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -520,51 +504,52 @@ void main() {
       expect(failedEvents.first.kind, 'test_item');
       expect(failedEvents.first.entityId, 'item-1');
       expect(failedEvents.first.willRetry, true);
-
     });
 
-    test('skipConflictingOps removes unresolved conflicts from outbox', () async {
-      final transport = ErrorPushTransport(
-        serverData: {'id': 'item-1', 'name': 'Server'},
-        serverTimestamp: DateTime.now().toUtc(),
-      );
-      final engine = SyncEngine(
-        db: db,
-        transport: transport,
-        tables: [
-          SyncableTable<TestItem>(
-            kind: 'test_item',
-            table: db.testItems,
-            fromJson: TestItem.fromJson,
-            toJson: (item) => item.toJson(),
-            toInsertable: (item) => item.toInsertable(),
+    test(
+      'skipConflictingOps removes unresolved conflicts from outbox',
+      () async {
+        final transport = ErrorPushTransport(
+          serverData: {'id': 'item-1', 'name': 'Server'},
+          serverTimestamp: DateTime.now().toUtc(),
+        );
+        final engine = SyncEngine(
+          db: db,
+          transport: transport,
+          tables: [
+            SyncableTable<TestItem>(
+              kind: 'test_item',
+              table: db.testItems,
+              fromJson: TestItem.fromJson,
+              toJson: (item) => item.toJson(),
+              toInsertable: (item) => item.toInsertable(),
+            ),
+          ],
+          config: const SyncConfig(
+            // With manual strategy and no resolver, conflicts won't be resolved
+            conflictStrategy: ConflictStrategy.manual,
+            skipConflictingOps: true,
           ),
-        ],
-        config: const SyncConfig(
-          // With manual strategy and no resolver, conflicts won't be resolved
-          conflictStrategy: ConflictStrategy.manual,
-          skipConflictingOps: true,
-        ),
-      );
-      addTearDown(engine.dispose);
+        );
+        addTearDown(engine.dispose);
 
-      await db.enqueue(
-        UpsertOp(
-          opId: 'op-conflict-1',
-          kind: 'test_item',
-          id: 'item-1',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Local'},
-        ),
-      );
+        await db.enqueue(
+          UpsertOp(
+            opId: 'op-conflict-1',
+            kind: 'test_item',
+            id: 'item-1',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: const {'id': 'item-1', 'name': 'Local'},
+          ),
+        );
 
-      await engine.sync();
+        await engine.sync();
 
-      // Verify outbox is empty (skipConflictingOps removed the unresolved conflict)
-      final remainingOps = await db.takeOutbox();
-      expect(remainingOps.length, 0);
-
-    });
+        // Verify outbox is empty (skipConflictingOps removed the unresolved conflict)
+        final remainingOps = await db.takeOutbox();
+        expect(remainingOps.length, 0);
+      },
+    );
 
     test(
       'push throws MaxRetriesExceededException after retries exhausted',
@@ -597,7 +582,7 @@ void main() {
             kind: 'test_item',
             id: 'item-1',
             localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {'id': 'item-1', 'name': 'Test'},
+            payloadJson: const {'id': 'item-1', 'name': 'Test'},
           ),
         );
 
@@ -605,7 +590,6 @@ void main() {
           engine.sync(),
           throwsA(isA<MaxRetriesExceededException>()),
         );
-
       },
     );
   });
@@ -640,7 +624,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -650,7 +634,6 @@ void main() {
 
       // Verify outbox is empty
       expect((await db.takeOutbox()).length, 0);
-
     });
 
     test('sync gives up after max retries', () async {
@@ -682,7 +665,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -692,7 +675,6 @@ void main() {
 
       // Verify outbox is NOT empty
       expect((await db.takeOutbox()).length, 1);
-
     });
   });
 
@@ -720,7 +702,6 @@ void main() {
           () => engine.syncRun(kinds: {'test_item'}, pushKinds: {'test_item'}),
           throwsArgumentError,
         );
-
       },
     );
 
@@ -758,7 +739,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Local'},
+          payloadJson: const {'id': 'item-1', 'name': 'Local'},
         ),
       );
 
@@ -773,7 +754,6 @@ void main() {
       expect(result.kindsPulled, {'test_item'});
       expect(result.stuckOpsCount, 0);
       expect(result.hadErrors, isFalse);
-
     });
 
     test('syncRun scheduled fullResync keeps push/pull stats', () async {
@@ -805,7 +785,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Local'},
+          payloadJson: const {'id': 'item-1', 'name': 'Local'},
         ),
       );
 
@@ -815,7 +795,6 @@ void main() {
       expect(result.pull.pulled, 1);
       expect(result.stats.pushed, 1);
       expect(result.stats.pulled, 1);
-
     });
 
     test('syncRun captures firstError on PushError', () async {
@@ -845,7 +824,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Local'},
+          payloadJson: const {'id': 'item-1', 'name': 'Local'},
         ),
       );
 
@@ -857,7 +836,6 @@ void main() {
       expect(result.stats.errors, 1);
       expect(result.firstError != null, isTrue);
       expect(result.hadErrors, isTrue);
-
     });
 
     test(
@@ -886,7 +864,7 @@ void main() {
             kind: 'test_item',
             id: 'item-1',
             localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {'id': 'item-1', 'name': 'Local'},
+            payloadJson: const {'id': 'item-1', 'name': 'Local'},
           ),
         );
 
@@ -898,12 +876,12 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 20));
 
         final pendingAfter = await engine.watchPendingPushCount().first;
-        final pendingIncludingStuck =
-            await engine.watchPendingPushCount(includeStuck: true).first;
+        final pendingIncludingStuck = await engine
+            .watchPendingPushCount(includeStuck: true)
+            .first;
 
         expect(pendingAfter, 0);
         expect(pendingIncludingStuck, 1);
-
       },
     );
   });
@@ -916,7 +894,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -948,7 +926,7 @@ void main() {
             kind: 'test_item',
             id: 'item-$i',
             localTimestamp: DateTime.now().toUtc(),
-            payloadJson: {},
+            payloadJson: const {},
           ),
         );
       }
@@ -964,7 +942,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {},
+          payloadJson: const {},
         ),
       );
       await db.enqueue(
@@ -973,7 +951,7 @@ void main() {
           kind: 'test_item',
           id: 'item-2',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {},
+          payloadJson: const {},
         ),
       );
 
@@ -992,31 +970,29 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1'},
+          payloadJson: const {'id': 'item-1'},
         ),
       );
 
       await outboxService.recordFailures({'meta-op-1': 'boom'});
 
-      final metaRows =
-          await db
-              .customSelect(
-                'SELECT last_error FROM sync_outbox_meta WHERE op_id = ?',
-                variables: [Variable.withString('meta-op-1')],
-              )
-              .get();
+      final metaRows = await db
+          .customSelect(
+            'SELECT last_error FROM sync_outbox_meta WHERE op_id = ?',
+            variables: [Variable.withString('meta-op-1')],
+          )
+          .get();
       expect(metaRows.length, 1);
       expect(metaRows.first.read<String>('last_error'), 'boom');
 
       await db.ackOutbox(['meta-op-1']);
 
-      final metaAfterAck =
-          await db
-              .customSelect(
-                'SELECT op_id FROM sync_outbox_meta WHERE op_id = ?',
-                variables: [Variable.withString('meta-op-1')],
-              )
-              .get();
+      final metaAfterAck = await db
+          .customSelect(
+            'SELECT op_id FROM sync_outbox_meta WHERE op_id = ?',
+            variables: [Variable.withString('meta-op-1')],
+          )
+          .get();
       expect(metaAfterAck, isEmpty);
     });
 
@@ -1217,7 +1193,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Local Name', 'mood': 5},
+          payloadJson: const {'id': 'item-1', 'name': 'Local Name', 'mood': 5},
         ),
       );
 
@@ -1233,7 +1209,6 @@ void main() {
       expect(events.whereType<ConflictDetectedEvent>().length, 1);
       expect(events.whereType<DataMergedEvent>().length, 1);
       expect(events.whereType<ConflictResolvedEvent>().length, 1);
-
     });
 
     test('autoPreserve emits DataMergedEvent with correct fields', () async {
@@ -1272,7 +1247,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'mood': 5},
+          payloadJson: const {'id': 'item-1', 'mood': 5},
         ),
       );
 
@@ -1288,7 +1263,6 @@ void main() {
       expect(mergeEvent.kind, 'test_item');
       expect(mergeEvent.entityId, 'item-1');
       expect(mergeEvent.localFields, contains('mood'));
-
     });
   });
 
@@ -1333,7 +1307,6 @@ void main() {
       final items = await db.select(db.testItems).get();
       expect(items.length, 1);
       expect(items.first.name, 'Full Resync Item');
-
     });
 
     test(
@@ -1366,7 +1339,6 @@ void main() {
         final fullResyncEvents = events.whereType<FullResyncStarted>().toList();
         expect(fullResyncEvents.length, 1);
         expect(fullResyncEvents.first.reason, FullResyncReason.manual);
-
       },
     );
 
@@ -1399,7 +1371,6 @@ void main() {
       final fullResyncEvents = events.whereType<FullResyncStarted>().toList();
       expect(fullResyncEvents.length, 1);
       expect(fullResyncEvents.first.reason, FullResyncReason.scheduled);
-
     });
 
     test(
@@ -1437,7 +1408,6 @@ void main() {
 
         final fullResyncEvents = events.whereType<FullResyncStarted>().toList();
         expect(fullResyncEvents, isEmpty);
-
       },
     );
 
@@ -1464,7 +1434,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -1475,7 +1445,6 @@ void main() {
 
       final outbox = await db.takeOutbox();
       expect(outbox, isEmpty);
-
     });
 
     test('fullResync with clearData clears tables', () async {
@@ -1524,7 +1493,6 @@ void main() {
       expect(itemsAfter.length, 1);
       expect(itemsAfter.first.id, 'new-item');
       expect(itemsAfter.first.name, 'New Item After Clear');
-
     });
 
     test('fullResync saves lastFullResync timestamp', () async {
@@ -1558,7 +1526,6 @@ void main() {
         cursor.ts.isBefore(afterSync.add(const Duration(seconds: 1))),
         isTrue,
       );
-
     });
 
     test('fullResync returns SyncStats', () async {
@@ -1590,7 +1557,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -1598,7 +1565,6 @@ void main() {
 
       expect(stats.pushed, 1);
       expect(stats.pulled, 2);
-
     });
 
     test('concurrent fullResync calls are prevented', () async {
@@ -1625,7 +1591,6 @@ void main() {
 
       expect(results[1].pushed, 0);
       expect(results[1].pulled, 0);
-
     });
   });
 
@@ -1639,7 +1604,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
           baseUpdatedAt: baseTime,
         ),
       );
@@ -1659,8 +1624,8 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test', 'mood': 5},
-          changedFields: {'mood'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test', 'mood': 5},
+          changedFields: const {'mood'},
         ),
       );
 
@@ -1678,7 +1643,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'New'},
+          payloadJson: const {'id': 'item-1', 'name': 'New'},
         ),
       );
 
@@ -1742,7 +1707,6 @@ void main() {
       final items = await db.select(db.testItems).get();
       expect(items.length, 1);
       expect(items.first.name, 'Server Name');
-
     });
 
     test('clientWins force pushes client data', () async {
@@ -1794,12 +1758,12 @@ void main() {
 
       expect(events.whereType<ConflictDetectedEvent>().length, 1);
       expect(transport.forcePushCalled, isTrue);
-
     });
 
     test('lastWriteWins accepts client when local is newer', () async {
-      final oldServerTime =
-          DateTime.now().subtract(const Duration(hours: 2)).toUtc();
+      final oldServerTime = DateTime.now()
+          .subtract(const Duration(hours: 2))
+          .toUtc();
       final serverData = {
         'id': 'item-3',
         'name': 'Old Server Name',
@@ -1850,12 +1814,12 @@ void main() {
 
       expect(events.whereType<ConflictDetectedEvent>().length, 1);
       expect(transport.forcePushCalled, isTrue);
-
     });
 
     test('lastWriteWins accepts server when server is newer', () async {
-      final newServerTime =
-          DateTime.now().add(const Duration(hours: 1)).toUtc();
+      final newServerTime = DateTime.now()
+          .add(const Duration(hours: 1))
+          .toUtc();
       final serverData = {
         'id': 'item-4',
         'name': 'New Server Name',
@@ -1887,8 +1851,9 @@ void main() {
 
       engine.events.listen(events.add);
 
-      final oldLocalTime =
-          DateTime.now().subtract(const Duration(hours: 2)).toUtc();
+      final oldLocalTime = DateTime.now()
+          .subtract(const Duration(hours: 2))
+          .toUtc();
       await db.enqueue(
         UpsertOp(
           opId: 'lww-server-op',
@@ -1912,7 +1877,6 @@ void main() {
       final items = await db.select(db.testItems).get();
       expect(items.length, 1);
       expect(items.first.name, 'New Server Name');
-
     });
 
     test('merge strategy merges data', () async {
@@ -1967,7 +1931,6 @@ void main() {
 
       expect(events.whereType<ConflictDetectedEvent>().length, 1);
       expect(transport.forcePushCalled, isTrue);
-
     });
 
     test('manual strategy with resolver', () async {
@@ -2026,7 +1989,6 @@ void main() {
 
       expect(resolverCalled, isTrue);
       expect(events.whereType<ConflictResolvedEvent>().length, 1);
-
     });
 
     test('resolver can return DiscardOperation', () async {
@@ -2080,7 +2042,6 @@ void main() {
       await engine.sync();
 
       expect(events.whereType<ConflictResolvedEvent>().length, 1);
-
     });
   });
 
@@ -2141,7 +2102,6 @@ void main() {
 
       final outbox = await db.takeOutbox();
       expect(outbox, isEmpty);
-
     });
   });
 
@@ -2182,7 +2142,6 @@ void main() {
 
       final outbox = await db.takeOutbox();
       expect(outbox, isEmpty);
-
     });
   });
 
@@ -2194,7 +2153,7 @@ void main() {
           kind: 'users',
           id: 'user-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'user-1', 'name': 'User 1'},
+          payloadJson: const {'id': 'user-1', 'name': 'User 1'},
         ),
       );
 
@@ -2204,7 +2163,7 @@ void main() {
           kind: 'posts',
           id: 'post-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'post-1', 'title': 'Post 1'},
+          payloadJson: const {'id': 'post-1', 'title': 'Post 1'},
         ),
       );
 
@@ -2221,7 +2180,7 @@ void main() {
           kind: 'users',
           id: 'user-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'user-1'},
+          payloadJson: const {'id': 'user-1'},
         ),
       );
       await db.enqueue(
@@ -2230,7 +2189,7 @@ void main() {
           kind: 'posts',
           id: 'post-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'post-1'},
+          payloadJson: const {'id': 'post-1'},
         ),
       );
 
@@ -2252,7 +2211,7 @@ void main() {
           kind: 'test_item',
           id: 'item-3',
           localTimestamp: time3,
-          payloadJson: {'id': 'item-3', 'name': 'Third'},
+          payloadJson: const {'id': 'item-3', 'name': 'Third'},
         ),
       );
 
@@ -2262,7 +2221,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: time1,
-          payloadJson: {'id': 'item-1', 'name': 'First'},
+          payloadJson: const {'id': 'item-1', 'name': 'First'},
         ),
       );
 
@@ -2272,7 +2231,7 @@ void main() {
           kind: 'test_item',
           id: 'item-2',
           localTimestamp: time2,
-          payloadJson: {'id': 'item-2', 'name': 'Second'},
+          payloadJson: const {'id': 'item-2', 'name': 'Second'},
         ),
       );
 
@@ -2353,7 +2312,6 @@ void main() {
       expect(cursor != null, isTrue);
       expect(cursor!.ts.millisecondsSinceEpoch, 0);
       expect(cursor.lastId, '');
-
     });
 
     test('getLastFullResync returns null when not set', () async {
@@ -2393,7 +2351,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -2413,12 +2371,13 @@ void main() {
           kind: 'test_item',
           id: 'item-old',
           localTimestamp: oldTime,
-          payloadJson: {'id': 'item-old', 'name': 'Old'},
+          payloadJson: const {'id': 'item-old', 'name': 'Old'},
         ),
       );
 
-      final threshold =
-          DateTime.now().subtract(const Duration(days: 7)).toUtc();
+      final threshold = DateTime.now()
+          .subtract(const Duration(days: 7))
+          .toUtc();
       final deleted = await outboxService.purgeOlderThan(threshold);
 
       expect(deleted, 1);
@@ -2436,7 +2395,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: oldTime,
-          payloadJson: {'id': 'item-1', 'name': 'Old'},
+          payloadJson: const {'id': 'item-1', 'name': 'Old'},
         ),
       );
 
@@ -2446,12 +2405,13 @@ void main() {
           kind: 'test_item',
           id: 'item-2',
           localTimestamp: newTime,
-          payloadJson: {'id': 'item-2', 'name': 'New'},
+          payloadJson: const {'id': 'item-2', 'name': 'New'},
         ),
       );
 
-      final threshold =
-          DateTime.now().subtract(const Duration(days: 7)).toUtc();
+      final threshold = DateTime.now()
+          .subtract(const Duration(days: 7))
+          .toUtc();
       final deleted = await db.purgeOutboxOlderThan(threshold);
 
       expect(deleted, 1);
@@ -2468,7 +2428,7 @@ void main() {
           kind: 'test_item',
           id: 'item-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'item-1', 'name': 'Test'},
+          payloadJson: const {'id': 'item-1', 'name': 'Test'},
         ),
       );
 
@@ -2530,7 +2490,6 @@ void main() {
 
       final outbox = engine.outbox;
       expect(outbox, isA<OutboxService>());
-
     });
 
     test('cursors returns CursorService', () async {
@@ -2551,7 +2510,6 @@ void main() {
 
       final cursors = engine.cursors;
       expect(cursors, isA<CursorService>());
-
     });
   });
 
@@ -2586,8 +2544,9 @@ void main() {
 
   group('Pull with deleted items', () {
     test('pull handles items with deletedAt', () async {
-      final deletedItemTime =
-          DateTime.now().subtract(const Duration(days: 1)).toUtc();
+      final deletedItemTime = DateTime.now()
+          .subtract(const Duration(days: 1))
+          .toUtc();
 
       final transport = DeletedItemsTransport(
         items: [
@@ -2629,7 +2588,6 @@ void main() {
       expect(cacheUpdateEvents, isNotEmpty);
       expect(cacheUpdateEvents.first.deletes, 1);
       expect(cacheUpdateEvents.first.upserts, 1);
-
     });
   });
 
@@ -2652,12 +2610,11 @@ void main() {
           SyncableTable<TestItem>(
             kind: 'test_item',
             table: db.testItems,
-            fromJson:
-                (json) => TestItem(
-                  id: json['uuid'] as String? ?? json['id'] as String,
-                  name: json['name'] as String,
-                  updatedAt: DateTime.parse(json['updated_at'] as String),
-                ),
+            fromJson: (json) => TestItem(
+              id: json['uuid'] as String? ?? json['id'] as String,
+              name: json['name'] as String,
+              updatedAt: DateTime.parse(json['updated_at'] as String),
+            ),
             toJson: (item) => item.toJson(),
             toInsertable: (item) => item.toInsertable(),
           ),
@@ -2666,7 +2623,6 @@ void main() {
       addTearDown(engine.dispose);
 
       await engine.sync();
-
     });
   });
 
@@ -2678,22 +2634,20 @@ void main() {
     SyncEngine makeEngine({
       required TransportAdapter transport,
       SyncConfig config = const SyncConfig(),
-    }) {
-      return SyncEngine(
-        db: db,
-        transport: transport,
-        tables: [
-          SyncableTable<TestItem>(
-            kind: 'test_item',
-            table: db.testItems,
-            fromJson: TestItem.fromJson,
-            toJson: (item) => item.toJson(),
-            toInsertable: (item) => item.toInsertable(),
-          ),
-        ],
-        config: config,
-      );
-    }
+    }) => SyncEngine(
+      db: db,
+      transport: transport,
+      tables: [
+        SyncableTable<TestItem>(
+          kind: 'test_item',
+          table: db.testItems,
+          fromJson: TestItem.fromJson,
+          toJson: (item) => item.toJson(),
+          toInsertable: (item) => item.toInsertable(),
+        ),
+      ],
+      config: config,
+    );
 
     // Sets a fresh full-resync cursor so tests don't trigger a scheduled resync.
     Future<void> seedFullResyncCursor(TestDatabase db) async {
@@ -2703,145 +2657,129 @@ void main() {
       );
     }
 
-    test(
-      'same kind: five concurrent sync calls share one Future',
-      () async {
-        final transport = _KindTrackingSlowTransport();
-        final engine = makeEngine(transport: transport);
-        await seedFullResyncCursor(db);
+    test('same kind: five concurrent sync calls share one Future', () async {
+      final transport = _KindTrackingSlowTransport();
+      final engine = makeEngine(transport: transport);
+      await seedFullResyncCursor(db);
 
-        // Launch 5 concurrent syncs for the same kind.
-        final futures = List.generate(
-          5,
-          (_) => engine.sync(pullKinds: {'test_item'}),
-        );
-        final results = await Future.wait(futures);
+      // Launch 5 concurrent syncs for the same kind.
+      final futures = List.generate(
+        5,
+        (_) => engine.sync(pullKinds: {'test_item'}),
+      );
+      final results = await Future.wait(futures);
 
-        // Only 1 pull call expected — all 5 callers share the same Future.
-        expect(transport.pullCallCount, 1);
-        // All callers receive the same (zero) pulled count.
-        expect(results.every((s) => s.pulled == 0), isTrue);
+      // Only 1 pull call expected — all 5 callers share the same Future.
+      expect(transport.pullCallCount, 1);
+      // All callers receive the same (zero) pulled count.
+      expect(results.every((s) => s.pulled == 0), isTrue);
+    });
 
-      },
-    );
+    test('different kinds: concurrent syncs run in parallel (both complete)', () async {
+      // A slow transport that records which kinds were pulled.
+      final transport = _KindTrackingSlowTransport();
+      final engine = SyncEngine(
+        db: db,
+        transport: transport,
+        tables: [
+          SyncableTable<TestItem>(
+            kind: 'kind_a',
+            table: db.testItems,
+            fromJson: TestItem.fromJson,
+            toJson: (item) => item.toJson(),
+            toInsertable: (item) => item.toInsertable(),
+          ),
+        ],
+      );
+      addTearDown(engine.dispose);
 
-    test(
-      'different kinds: concurrent syncs run in parallel (both complete)',
-      () async {
-        // A slow transport that records which kinds were pulled.
-        final transport = _KindTrackingSlowTransport();
-        final engine = SyncEngine(
-          db: db,
-          transport: transport,
-          tables: [
-            SyncableTable<TestItem>(
-              kind: 'kind_a',
-              table: db.testItems,
-              fromJson: TestItem.fromJson,
-              toJson: (item) => item.toJson(),
-              toInsertable: (item) => item.toInsertable(),
-            ),
-          ],
-        );
-        addTearDown(engine.dispose);
+      await db.setCursor(
+        CursorKinds.fullResync,
+        Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+      );
 
-        await db.setCursor(
-          CursorKinds.fullResync,
-          Cursor(ts: DateTime.now().toUtc(), lastId: ''),
-        );
+      // Both calls are issued before either completes (SlowTransport delays).
+      final f1 = engine.sync(pullKinds: {'kind_a'});
+      final f2 = engine.sync(pushKinds: {'kind_a'});
 
-        // Both calls are issued before either completes (SlowTransport delays).
-        final f1 = engine.sync(pullKinds: {'kind_a'});
-        final f2 = engine.sync(pushKinds: {'kind_a'});
+      await Future.wait([f1, f2]);
 
-        await Future.wait([f1, f2]);
+      // Both pull calls eventually complete successfully.
+      // kind_a was requested in both calls — they should share the same future.
+      expect(transport.pullCallCount, 1);
+    });
 
-        // Both pull calls eventually complete successfully.
-        // kind_a was requested in both calls — they should share the same future.
-        expect(transport.pullCallCount, 1);
+    test('disjoint kinds: concurrent syncs each do their own pull', () async {
+      // Two-table engine.
+      final transport = _KindTrackingSlowTransport();
+      final engine = SyncEngine(
+        db: db,
+        transport: transport,
+        tables: [
+          SyncableTable<TestItem>(
+            kind: 'kind_a',
+            table: db.testItems,
+            fromJson: TestItem.fromJson,
+            toJson: (item) => item.toJson(),
+            toInsertable: (item) => item.toInsertable(),
+          ),
+        ],
+      );
+      addTearDown(engine.dispose);
 
-      },
-    );
+      await db.setCursor(
+        CursorKinds.fullResync,
+        Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+      );
 
-    test(
-      'disjoint kinds: concurrent syncs each do their own pull',
-      () async {
-        // Two-table engine.
-        final transport = _KindTrackingSlowTransport();
-        final engine = SyncEngine(
-          db: db,
-          transport: transport,
-          tables: [
-            SyncableTable<TestItem>(
-              kind: 'kind_a',
-              table: db.testItems,
-              fromJson: TestItem.fromJson,
-              toJson: (item) => item.toJson(),
-              toInsertable: (item) => item.toInsertable(),
-            ),
-          ],
-        );
-        addTearDown(engine.dispose);
+      // kind_a and kind_b are registered; issue parallel pulls for each.
+      final f1 = engine.sync(pullKinds: {'kind_a'});
+      // pull for a non-registered kind → transport won't actually get called,
+      // but the future must still complete without error.
+      final f2 = engine.sync(pullKinds: {'unregistered_kind'});
 
-        await db.setCursor(
-          CursorKinds.fullResync,
-          Cursor(ts: DateTime.now().toUtc(), lastId: ''),
-        );
+      final results = await Future.wait([f1, f2]);
+      // f1 → kind_a pull → 1 transport call
+      // f2 → unregistered_kind skipped → 0 transport calls for it
+      expect(transport.pullCallCount, 1);
+      // Both calls should succeed.
+      expect(results.length, 2);
+    });
 
-        // kind_a and kind_b are registered; issue parallel pulls for each.
-        final f1 = engine.sync(pullKinds: {'kind_a'});
-        // pull for a non-registered kind → transport won't actually get called,
-        // but the future must still complete without error.
-        final f2 = engine.sync(pullKinds: {'unregistered_kind'});
+    test('overlapping kinds: in-flight kind shares, new kind starts fresh', () async {
+      // Transport that delays so we can interleave calls.
+      final transport = _KindTrackingSlowTransport();
+      final engine = SyncEngine(
+        db: db,
+        transport: transport,
+        tables: [
+          SyncableTable<TestItem>(
+            kind: 'kind_a',
+            table: db.testItems,
+            fromJson: TestItem.fromJson,
+            toJson: (item) => item.toJson(),
+            toInsertable: (item) => item.toInsertable(),
+          ),
+        ],
+      );
+      addTearDown(engine.dispose);
 
-        final results = await Future.wait([f1, f2]);
-        // f1 → kind_a pull → 1 transport call
-        // f2 → unregistered_kind skipped → 0 transport calls for it
-        expect(transport.pullCallCount, 1);
-        // Both calls should succeed.
-        expect(results.length, 2);
+      await db.setCursor(
+        CursorKinds.fullResync,
+        Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+      );
 
-      },
-    );
+      // First call starts a run for kind_a (slow transport → still in flight).
+      final f1 = engine.sync(pullKinds: {'kind_a'});
 
-    test(
-      'overlapping kinds: in-flight kind shares, new kind starts fresh',
-      () async {
-        // Transport that delays so we can interleave calls.
-        final transport = _KindTrackingSlowTransport();
-        final engine = SyncEngine(
-          db: db,
-          transport: transport,
-          tables: [
-            SyncableTable<TestItem>(
-              kind: 'kind_a',
-              table: db.testItems,
-              fromJson: TestItem.fromJson,
-              toJson: (item) => item.toJson(),
-              toInsertable: (item) => item.toInsertable(),
-            ),
-          ],
-        );
-        addTearDown(engine.dispose);
+      // Second call for the same kind → should JOIN f1.
+      final f2 = engine.sync(pullKinds: {'kind_a'});
 
-        await db.setCursor(
-          CursorKinds.fullResync,
-          Cursor(ts: DateTime.now().toUtc(), lastId: ''),
-        );
+      await Future.wait([f1, f2]);
 
-        // First call starts a run for kind_a (slow transport → still in flight).
-        final f1 = engine.sync(pullKinds: {'kind_a'});
-
-        // Second call for the same kind → should JOIN f1.
-        final f2 = engine.sync(pullKinds: {'kind_a'});
-
-        await Future.wait([f1, f2]);
-
-        // kind_a should only have been pulled once (shared future).
-        expect(transport.pullCallCount, 1);
-
-      },
-    );
+      // kind_a should only have been pulled once (shared future).
+      expect(transport.pullCallCount, 1);
+    });
 
     test(
       'full-resync gate: concurrent syncs share _fullResyncFuture',
@@ -2860,7 +2798,6 @@ void main() {
         expect(transport.pullCallCount, 1);
         // Both get the same SyncStats (both get pulled == 0).
         expect(results[0].pulled, equals(results[1].pulled));
-
       },
     );
   });
@@ -2930,10 +2867,9 @@ void main() {
 
         await engine.sync();
 
-        final stored =
-            await (db.select(db.testItems)
-                  ..where((t) => t.id.equals('item-1')))
-                .getSingle();
+        final stored = await (db.select(
+          db.testItems,
+        )..where((t) => t.id.equals('item-1'))).getSingle();
         expect(
           stored.updatedAt.toUtc(),
           serverUpdatedAt,
@@ -2942,7 +2878,6 @@ void main() {
               'a successful push (PushSuccess.serverData was previously '
               'discarded by PushService).',
         );
-
       },
     );
 
@@ -3008,13 +2943,11 @@ void main() {
 
         await engine.sync();
 
-        final stored =
-            await (db.select(db.testItems)
-                  ..where((t) => t.id.equals('item-2')))
-                .getSingle();
+        final stored = await (db.select(
+          db.testItems,
+        )..where((t) => t.id.equals('item-2'))).getSingle();
         expect(stored.name, 'Server Normalised Name');
         expect(stored.updatedAt.toUtc(), serverUpdatedAt);
-
       },
     );
 
@@ -3053,7 +2986,6 @@ void main() {
 
         // Op was acked despite no serverData on the delete success.
         expect(await db.takeOutbox(), isEmpty);
-
       },
     );
 
@@ -3097,7 +3029,6 @@ void main() {
 
         // Op was acked; no exception thrown.
         expect(await db.takeOutbox(), isEmpty);
-
       },
     );
 
@@ -3115,21 +3046,9 @@ void main() {
         final transport = _CanonicalRowPushTransport(
           rowsByKindAndId: {
             'test_item': {
-              'a': {
-                'id': 'a',
-                'name': 'A',
-                'updated_at': s1.toIso8601String(),
-              },
-              'b': {
-                'id': 'b',
-                'name': 'B',
-                'updated_at': s2.toIso8601String(),
-              },
-              'c': {
-                'id': 'c',
-                'name': 'C',
-                'updated_at': s3.toIso8601String(),
-              },
+              'a': {'id': 'a', 'name': 'A', 'updated_at': s1.toIso8601String()},
+              'b': {'id': 'b', 'name': 'B', 'updated_at': s2.toIso8601String()},
+              'c': {'id': 'c', 'name': 'C', 'updated_at': s3.toIso8601String()},
             },
           },
         );
@@ -3176,9 +3095,9 @@ void main() {
 
         await engine.sync();
 
-        final rows = await (db.select(db.testItems)
-              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-            .get();
+        final rows = await (db.select(
+          db.testItems,
+        )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
         expect(rows.length, 3);
         expect(rows[0].id, 'a');
         expect(rows[0].updatedAt.toUtc(), s1);
@@ -3186,7 +3105,6 @@ void main() {
         expect(rows[1].updatedAt.toUtc(), s2);
         expect(rows[2].id, 'c');
         expect(rows[2].updatedAt.toUtc(), s3);
-
       },
     );
   });
@@ -3259,7 +3177,6 @@ void main() {
               'Re-stamp must override frozen outbox base with the latest '
               'local updated_at written back by Round 1.',
         );
-
       },
     );
 
@@ -3308,7 +3225,6 @@ void main() {
         expect(transport.pushedOps, hasLength(1));
         final dispatched = transport.pushedOps.single as UpsertOp;
         expect(dispatched.baseUpdatedAt, t);
-
       },
     );
 
@@ -3355,7 +3271,6 @@ void main() {
               'When local row is missing, re-stamp must defensively keep '
               'the op.baseUpdatedAt — not silently change it.',
         );
-
       },
     );
 
@@ -3414,57 +3329,52 @@ void main() {
               'a base for an op that did not have one.',
         );
         expect(dispatched.isNewRecord, isTrue);
-
       },
     );
 
-    test(
-      'DeleteOp with null baseUpdatedAt → wire still has no base',
-      () async {
-        // Delete first-write semantics analogue — same rule, different op.
-        final transport = MockTransport();
-        final engine = SyncEngine(
-          db: db,
-          transport: transport,
-          tables: [testItemTable(db)],
-        );
-        addTearDown(engine.dispose);
+    test('DeleteOp with null baseUpdatedAt → wire still has no base', () async {
+      // Delete first-write semantics analogue — same rule, different op.
+      final transport = MockTransport();
+      final engine = SyncEngine(
+        db: db,
+        transport: transport,
+        tables: [testItemTable(db)],
+      );
+      addTearDown(engine.dispose);
 
-        final localStamp = DateTime.utc(2026, 4, 5, 10);
-        await db
-            .into(db.testItems)
-            .insertOnConflictUpdate(
-              TestItem(
-                id: 'delete-no-base',
-                updatedAt: localStamp,
-                name: 'Doomed',
-              ).toInsertable(),
-            );
+      final localStamp = DateTime.utc(2026, 4, 5, 10);
+      await db
+          .into(db.testItems)
+          .insertOnConflictUpdate(
+            TestItem(
+              id: 'delete-no-base',
+              updatedAt: localStamp,
+              name: 'Doomed',
+            ).toInsertable(),
+          );
 
-        await db.enqueue(
-          DeleteOp(
-            opId: 'delete-no-base-op',
-            kind: 'test_item',
-            id: 'delete-no-base',
-            localTimestamp: localStamp,
-            // baseUpdatedAt omitted (null).
-          ),
-        );
+      await db.enqueue(
+        DeleteOp(
+          opId: 'delete-no-base-op',
+          kind: 'test_item',
+          id: 'delete-no-base',
+          localTimestamp: localStamp,
+          // baseUpdatedAt omitted (null).
+        ),
+      );
 
-        await engine.sync();
+      await engine.sync();
 
-        expect(transport.pushedOps, hasLength(1));
-        final dispatched = transport.pushedOps.single as DeleteOp;
-        expect(
-          dispatched.baseUpdatedAt,
-          equals(null),
-          reason:
-              'DeleteOp with null base must stay null after re-stamp '
-              '(first-write delete semantics).',
-        );
-
-      },
-    );
+      expect(transport.pushedOps, hasLength(1));
+      final dispatched = transport.pushedOps.single as DeleteOp;
+      expect(
+        dispatched.baseUpdatedAt,
+        equals(null),
+        reason:
+            'DeleteOp with null base must stay null after re-stamp '
+            '(first-write delete semantics).',
+      );
+    });
 
     test(
       'DeleteOp with stale base + fresh local → wire uses fresh local',
@@ -3507,7 +3417,6 @@ void main() {
         expect(transport.pushedOps, hasLength(1));
         final dispatched = transport.pushedOps.single as DeleteOp;
         expect(dispatched.baseUpdatedAt, tNew);
-
       },
     );
 
@@ -3538,14 +3447,12 @@ void main() {
             'name': 'Initial',
             'updated_at': s1.toIso8601String(),
           },
-          afterEachPush: (op) {
-            // After op1 (or op2) lands, the next push for item-x sees a
-            // bumped row.
-            return {
-              'id': 'item-x',
-              'name': 'Bumped after ${op.opId}',
-              'updated_at': s2.toIso8601String(),
-            };
+          // After op1 (or op2) lands, the next push for item-x sees a
+          // bumped row.
+          afterEachPush: (op) => {
+            'id': 'item-x',
+            'name': 'Bumped after ${op.opId}',
+            'updated_at': s2.toIso8601String(),
           },
         );
 
@@ -3644,55 +3551,50 @@ void main() {
 
         // Outbox should be drained (both succeeded).
         expect(await db.takeOutbox(), isEmpty);
-
       },
     );
 
-    test(
-      'unregistered kind → re-stamp is a no-op',
-      () async {
-        // Defensive: if an op references a kind not in _tables, the engine
-        // should not crash. This lines up with _applyServerRow's same
-        // guard.
-        final transport = MockTransport();
-        final engine = SyncEngine(
-          db: db,
-          transport: transport,
-          tables: [testItemTable(db)],
-        );
-        addTearDown(engine.dispose);
+    test('unregistered kind → re-stamp is a no-op', () async {
+      // Defensive: if an op references a kind not in _tables, the engine
+      // should not crash. This lines up with _applyServerRow's same
+      // guard.
+      final transport = MockTransport();
+      final engine = SyncEngine(
+        db: db,
+        transport: transport,
+        tables: [testItemTable(db)],
+      );
+      addTearDown(engine.dispose);
 
-        final tBase = DateTime.utc(2026, 4, 8, 10);
+      final tBase = DateTime.utc(2026, 4, 8, 10);
 
-        // Enqueue a stranger-kind op directly into outbox — bypass enqueue
-        // helpers because they may guard kinds. Use the lowest-level path.
-        await db.enqueue(
-          UpsertOp(
-            opId: 'stranger-op',
-            kind: 'unknown_kind',
-            id: 'whatever',
-            localTimestamp: tBase,
-            baseUpdatedAt: tBase,
-            payloadJson: {'id': 'whatever'},
-          ),
-        );
+      // Enqueue a stranger-kind op directly into outbox — bypass enqueue
+      // helpers because they may guard kinds. Use the lowest-level path.
+      await db.enqueue(
+        UpsertOp(
+          opId: 'stranger-op',
+          kind: 'unknown_kind',
+          id: 'whatever',
+          localTimestamp: tBase,
+          baseUpdatedAt: tBase,
+          payloadJson: const {'id': 'whatever'},
+        ),
+      );
 
-        // We still call sync; PushService's outbox.take filter is by kind,
-        // and the engine syncs for the registered kind. To force the stranger
-        // op into the push path, we call sync without filters — but the
-        // outbox.take in pushAll will return the stranger op too (no
-        // kind-filter case). Note: re-stamp must defensively skip it.
-        // If it panicked, this test would error.
-        await engine.sync(pushKinds: const {'unknown_kind'});
+      // We still call sync; PushService's outbox.take filter is by kind,
+      // and the engine syncs for the registered kind. To force the stranger
+      // op into the push path, we call sync without filters — but the
+      // outbox.take in pushAll will return the stranger op too (no
+      // kind-filter case). Note: re-stamp must defensively skip it.
+      // If it panicked, this test would error.
+      await engine.sync(pushKinds: const {'unknown_kind'});
 
-        // The op was sent through (with its original base, since re-stamp
-        // skipped it).
-        expect(transport.pushedOps, hasLength(1));
-        final dispatched = transport.pushedOps.single as UpsertOp;
-        expect(dispatched.baseUpdatedAt, tBase);
-
-      },
-    );
+      // The op was sent through (with its original base, since re-stamp
+      // skipped it).
+      expect(transport.pushedOps, hasLength(1));
+      final dispatched = transport.pushedOps.single as UpsertOp;
+      expect(dispatched.baseUpdatedAt, tBase);
+    });
   });
 }
 
@@ -3725,7 +3627,9 @@ class _RoundTwoIntegrationTransport implements TransportAdapter {
       results.add(
         OpPushResult(
           opId: op.opId,
-          result: PushSuccess(serverData: Map<String, Object?>.from(_currentRow)),
+          result: PushSuccess(
+            serverData: Map<String, Object?>.from(_currentRow),
+          ),
         ),
       );
     }
@@ -3743,7 +3647,7 @@ class _RoundTwoIntegrationTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: const []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async => const PushSuccess();
@@ -3790,7 +3694,7 @@ class _CanonicalRowPushTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: const []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async => const PushSuccess();
@@ -3821,21 +3725,15 @@ class _KindTrackingSlowTransport implements TransportAdapter {
     await Future<void>.delayed(const Duration(milliseconds: 80));
     pullCallCount++;
     pulledKinds.add(kind);
-    return PullPage(items: []);
+    return const PullPage(items: []);
   }
 
   @override
-  Future<BatchPushResult> push(List<Op> ops) async {
-    return BatchPushResult(
-      results:
-          ops
-              .map(
-                (op) =>
-                    OpPushResult(opId: op.opId, result: const PushSuccess()),
-              )
-              .toList(),
-    );
-  }
+  Future<BatchPushResult> push(List<Op> ops) async => BatchPushResult(
+    results: ops
+        .map((op) => OpPushResult(opId: op.opId, result: const PushSuccess()))
+        .toList(),
+  );
 
   @override
   Future<PushResult> forcePush(Op op) async => const PushSuccess();
@@ -3865,12 +3763,9 @@ class DeletedItemsTransport implements TransportAdapter {
 
   @override
   Future<BatchPushResult> push(List<Op> ops) async => BatchPushResult(
-    results:
-        ops
-            .map(
-              (op) => OpPushResult(opId: op.opId, result: const PushSuccess()),
-            )
-            .toList(),
+    results: ops
+        .map((op) => OpPushResult(opId: op.opId, result: const PushSuccess()))
+        .toList(),
   );
 
   @override
@@ -3901,12 +3796,9 @@ class UuidItemsTransport implements TransportAdapter {
 
   @override
   Future<BatchPushResult> push(List<Op> ops) async => BatchPushResult(
-    results:
-        ops
-            .map(
-              (op) => OpPushResult(opId: op.opId, result: const PushSuccess()),
-            )
-            .toList(),
+    results: ops
+        .map((op) => OpPushResult(opId: op.opId, result: const PushSuccess()))
+        .toList(),
   );
 
   @override
@@ -3965,13 +3857,9 @@ class RetryTransport implements TransportAdapter {
       throw Exception('Network error attempt $pushAttempts');
     }
     return BatchPushResult(
-      results:
-          ops
-              .map(
-                (op) =>
-                    OpPushResult(opId: op.opId, result: const PushSuccess()),
-              )
-              .toList(),
+      results: ops
+          .map((op) => OpPushResult(opId: op.opId, result: const PushSuccess()))
+          .toList(),
     );
   }
 
@@ -3983,7 +3871,7 @@ class RetryTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async => const PushSuccess();
@@ -4011,18 +3899,17 @@ class ConflictingTransport implements TransportAdapter {
   Future<BatchPushResult> push(List<Op> ops) async {
     pushCallCount++;
     return BatchPushResult(
-      results:
-          ops
-              .map(
-                (op) => OpPushResult(
-                  opId: op.opId,
-                  result: PushConflict(
-                    serverData: serverData,
-                    serverTimestamp: serverTimestamp,
-                  ),
-                ),
-              )
-              .toList(),
+      results: ops
+          .map(
+            (op) => OpPushResult(
+              opId: op.opId,
+              result: PushConflict(
+                serverData: serverData,
+                serverTimestamp: serverTimestamp,
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -4034,7 +3921,7 @@ class ConflictingTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async {
@@ -4055,13 +3942,9 @@ class SlowTransport implements TransportAdapter {
   Future<BatchPushResult> push(List<Op> ops) async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
     return BatchPushResult(
-      results:
-          ops
-              .map(
-                (op) =>
-                    OpPushResult(opId: op.opId, result: const PushSuccess()),
-              )
-              .toList(),
+      results: ops
+          .map((op) => OpPushResult(opId: op.opId, result: const PushSuccess()))
+          .toList(),
     );
   }
 
@@ -4075,7 +3958,7 @@ class SlowTransport implements TransportAdapter {
     bool includeDeleted = true,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    return PullPage(items: []);
+    return const PullPage(items: []);
   }
 
   @override
@@ -4103,18 +3986,17 @@ class RetryingConflictTransport implements TransportAdapter {
 
   @override
   Future<BatchPushResult> push(List<Op> ops) async => BatchPushResult(
-    results:
-        ops
-            .map(
-              (op) => OpPushResult(
-                opId: op.opId,
-                result: PushConflict(
-                  serverData: serverData,
-                  serverTimestamp: serverTimestamp,
-                ),
-              ),
-            )
-            .toList(),
+    results: ops
+        .map(
+          (op) => OpPushResult(
+            opId: op.opId,
+            result: PushConflict(
+              serverData: serverData,
+              serverTimestamp: serverTimestamp,
+            ),
+          ),
+        )
+        .toList(),
   );
 
   @override
@@ -4125,7 +4007,7 @@ class RetryingConflictTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async {
@@ -4150,12 +4032,9 @@ class RetryingConflictTransport implements TransportAdapter {
 class NotFoundTransport implements TransportAdapter {
   @override
   Future<BatchPushResult> push(List<Op> ops) async => BatchPushResult(
-    results:
-        ops
-            .map(
-              (op) => OpPushResult(opId: op.opId, result: const PushNotFound()),
-            )
-            .toList(),
+    results: ops
+        .map((op) => OpPushResult(opId: op.opId, result: const PushNotFound()))
+        .toList(),
   );
 
   @override
@@ -4166,7 +4045,7 @@ class NotFoundTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async => const PushSuccess();
@@ -4182,15 +4061,14 @@ class NotFoundTransport implements TransportAdapter {
 class ErrorResultTransport implements TransportAdapter {
   @override
   Future<BatchPushResult> push(List<Op> ops) async => BatchPushResult(
-    results:
-        ops
-            .map(
-              (op) => OpPushResult(
-                opId: op.opId,
-                result: PushError(Exception('Push error')),
-              ),
-            )
-            .toList(),
+    results: ops
+        .map(
+          (op) => OpPushResult(
+            opId: op.opId,
+            result: PushError(Exception('Push error')),
+          ),
+        )
+        .toList(),
   );
 
   @override
@@ -4201,7 +4079,7 @@ class ErrorResultTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async => const PushSuccess();
@@ -4222,18 +4100,17 @@ class ErrorPushTransport implements TransportAdapter {
 
   @override
   Future<BatchPushResult> push(List<Op> ops) async => BatchPushResult(
-    results:
-        ops
-            .map(
-              (op) => OpPushResult(
-                opId: op.opId,
-                result: PushConflict(
-                  serverData: serverData,
-                  serverTimestamp: serverTimestamp,
-                ),
-              ),
-            )
-            .toList(),
+    results: ops
+        .map(
+          (op) => OpPushResult(
+            opId: op.opId,
+            result: PushConflict(
+              serverData: serverData,
+              serverTimestamp: serverTimestamp,
+            ),
+          ),
+        )
+        .toList(),
   );
 
   @override
@@ -4244,7 +4121,7 @@ class ErrorPushTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async =>
@@ -4266,18 +4143,16 @@ class _ErrorOnceTransport implements TransportAdapter {
   Future<BatchPushResult> push(List<Op> ops) async {
     _pushCallCount++;
     return BatchPushResult(
-      results:
-          ops
-              .map(
-                (op) => OpPushResult(
-                  opId: op.opId,
-                  result:
-                      _pushCallCount == 1
-                          ? PushError(Exception('Temporary error'))
-                          : const PushSuccess(),
-                ),
-              )
-              .toList(),
+      results: ops
+          .map(
+            (op) => OpPushResult(
+              opId: op.opId,
+              result: _pushCallCount == 1
+                  ? PushError(Exception('Temporary error'))
+                  : const PushSuccess(),
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -4289,7 +4164,7 @@ class _ErrorOnceTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async => const PushSuccess();
@@ -4317,7 +4192,7 @@ class _ExceptionThrowingPushTransport implements TransportAdapter {
     String? pageToken,
     String? afterId,
     bool includeDeleted = true,
-  }) async => PullPage(items: []);
+  }) async => const PullPage(items: []);
 
   @override
   Future<PushResult> forcePush(Op op) async => const PushSuccess();

@@ -22,7 +22,7 @@ class _CountingTransport implements TransportAdapter {
     bool includeDeleted = true,
   }) async {
     pullCallCount++;
-    return PullPage(items: const []);
+    return const PullPage(items: []);
   }
 
   @override
@@ -106,8 +106,9 @@ void main() {
         // FakeAsync proves this: real-time Timer-based debouncers would fire
         // here if they existed.
         FakeAsync().run((fake) {
-          fake.elapse(const Duration(milliseconds: 400));
-          fake.flushMicrotasks();
+          fake
+            ..elapse(const Duration(milliseconds: 400))
+            ..flushMicrotasks();
         });
 
         expect(transport.pushCallCount, 0);
@@ -220,14 +221,20 @@ void main() {
         // Two enqueues, different kinds, both within one debounce window.
         // (Use distinct primary keys because both kinds share the underlying
         // testItems Drift table.)
-        await db.syncWriter().forTable(tableA).insertAndEnqueue(
+        await db
+            .syncWriter()
+            .forTable(tableA)
+            .insertAndEnqueue(
               TestItem(
                 id: 'a-1',
                 updatedAt: DateTime.utc(2024, 1, 1),
                 name: 'a',
               ),
             );
-        await db.syncWriter().forTable(tableB).insertAndEnqueue(
+        await db
+            .syncWriter()
+            .forTable(tableB)
+            .insertAndEnqueue(
               TestItem(
                 id: 'b-1',
                 updatedAt: DateTime.utc(2024, 1, 1),
@@ -282,8 +289,9 @@ void main() {
         // Timer was cancelled by dispose, so FakeAsync proves no push fires —
         // no drift work is triggered, so it is safe to skip wall clock here.
         FakeAsync().run((fake) {
-          fake.elapse(const Duration(milliseconds: 300));
-          fake.flushMicrotasks();
+          fake
+            ..elapse(const Duration(milliseconds: 300))
+            ..flushMicrotasks();
         });
 
         // The pending timer was cancelled — no push fired.

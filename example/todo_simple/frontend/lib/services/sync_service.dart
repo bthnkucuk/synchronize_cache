@@ -6,7 +6,6 @@ import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:offline_first_sync_drift_rest/offline_first_sync_drift_rest.dart';
 
 import '../database/database.dart';
-import '../models/todo.dart';
 // ignore: unused_import
 import '../sync/todo_sync.dart';
 

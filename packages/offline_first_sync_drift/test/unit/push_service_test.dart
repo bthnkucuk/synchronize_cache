@@ -19,9 +19,10 @@ import '../fixtures/test_database.dart';
 //   - MaxRetriesExceededException when retries exhausted
 //   - conflict resolution branch interaction (skipConflictingOps)
 
-class _MockTransport extends Mock implements TransportAdapter {}
+class _MockTransport extends Mock implements TransportAdapter;
 
-class _StubConflictService<DB extends GeneratedDatabase>
+// ignore: must_be_immutable
+final class _StubConflictService<DB extends GeneratedDatabase>
     implements ConflictService<DB> {
   _StubConflictService(this._result);
 
@@ -35,26 +36,21 @@ class _StubConflictService<DB extends GeneratedDatabase>
   }
 
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-UpsertOp _upsert({
-  String id = 'item-1',
-  DateTime? base,
-}) =>
-    UpsertOp(
-      opId: 'op-$id',
-      kind: 'test_item',
-      id: id,
-      localTimestamp: DateTime.utc(2024, 6, 1, 12),
-      payloadJson: {
-        'id': id,
-        'updated_at': '2024-06-01T12:00:00.000Z',
-        'name': 'Local-$id',
-      },
-      baseUpdatedAt: base,
-    );
+UpsertOp _upsert({String id = 'item-1', DateTime? base}) => UpsertOp(
+  opId: 'op-$id',
+  kind: 'test_item',
+  id: id,
+  localTimestamp: DateTime.utc(2024, 6, 1, 12),
+  payloadJson: {
+    'id': id,
+    'updated_at': '2024-06-01T12:00:00.000Z',
+    'name': 'Local-$id',
+  },
+  baseUpdatedAt: base,
+);
 
 void main() {
   setUpAll(() {
@@ -94,32 +90,32 @@ void main() {
   PushService buildService({
     SyncConfig? config,
     ConflictService<dynamic>? conflictService,
-  }) =>
-      PushService(
-        db: db,
-        outbox: outbox,
-        transport: transport,
-        conflictService: conflictService ??
-            _StubConflictService(
-              const ConflictResolutionResult(resolved: false),
-            ),
-        tables: tables,
-        config: config ?? const SyncConfig(),
-        events: events,
-      );
+  }) => PushService(
+    db: db,
+    outbox: outbox,
+    transport: transport,
+    conflictService:
+        conflictService ??
+        _StubConflictService(const ConflictResolutionResult(resolved: false)),
+    tables: tables,
+    config: config ?? const SyncConfig(),
+    events: events,
+  );
 
   group('PushService.pushAll', () {
-    test('returns empty stats and skips transport for empty kinds filter',
-        () async {
-      final service = buildService();
+    test(
+      'returns empty stats and skips transport for empty kinds filter',
+      () async {
+        final service = buildService();
 
-      final stats = await service.pushAll(kinds: <String>{});
+        final stats = await service.pushAll(kinds: <String>{});
 
-      expect(stats.pushed, 0);
-      expect(stats.conflicts, 0);
-      expect(stats.errors, 0);
-      verifyNever(() => transport.push(any()));
-    });
+        expect(stats.pushed, 0);
+        expect(stats.conflicts, 0);
+        expect(stats.errors, 0);
+        verifyNever(() => transport.push(any()));
+      },
+    );
 
     test('returns empty stats when outbox is empty', () async {
       when(() => transport.push(any()))
@@ -138,27 +134,25 @@ void main() {
         final op = _upsert(id: 'a');
         await outbox.enqueue(op);
 
-        when(() => transport.push(any())).thenAnswer(
-          (invocation) async {
-            final ops = invocation.positionalArguments[0] as List<Op>;
-            return BatchPushResult(
-              results: ops
-                  .map(
-                    (o) => OpPushResult(
-                      opId: o.opId,
-                      result: const PushSuccess(
-                        serverData: {
-                          'id': 'a',
-                          'updated_at': '2024-06-01T13:00:00.000Z',
-                          'name': 'Server-A',
-                        },
-                      ),
+        when(() => transport.push(any())).thenAnswer((invocation) async {
+          final ops = invocation.positionalArguments[0] as List<Op>;
+          return BatchPushResult(
+            results: ops
+                .map(
+                  (o) => OpPushResult(
+                    opId: o.opId,
+                    result: const PushSuccess(
+                      serverData: {
+                        'id': 'a',
+                        'updated_at': '2024-06-01T13:00:00.000Z',
+                        'name': 'Server-A',
+                      },
                     ),
-                  )
-                  .toList(),
-            );
-          },
-        );
+                  ),
+                )
+                .toList(),
+          );
+        });
 
         final captured = <SyncEvent>[];
         final sub = events.stream.listen(captured.add);
@@ -170,8 +164,10 @@ void main() {
         expect(stats.conflicts, 0);
 
         // Outbox emptied (acked).
-        final pending =
-            await outbox.take(limit: 100, maxTryCountExclusive: null);
+        final pending = await outbox.take(
+          limit: 100,
+          maxTryCountExclusive: null,
+        );
         expect(pending, isEmpty);
 
         // Local row reflects server data (write-back).
@@ -195,31 +191,23 @@ void main() {
         await outbox.enqueue(nf);
         await outbox.enqueue(er);
 
-        when(() => transport.push(any())).thenAnswer(
-          (invocation) async {
-            final ops = invocation.positionalArguments[0] as List<Op>;
-            return BatchPushResult(
-              results: ops.map((o) {
-                if (o.id == 'ok') {
-                  return OpPushResult(
-                    opId: o.opId,
-                    result: const PushSuccess(),
-                  );
-                }
-                if (o.id == 'nf') {
-                  return OpPushResult(
-                    opId: o.opId,
-                    result: const PushNotFound(),
-                  );
-                }
-                return OpPushResult(
-                  opId: o.opId,
-                  result: const PushError('boom'),
-                );
-              }).toList(),
-            );
-          },
-        );
+        when(() => transport.push(any())).thenAnswer((invocation) async {
+          final ops = invocation.positionalArguments[0] as List<Op>;
+          return BatchPushResult(
+            results: ops.map((o) {
+              if (o.id == 'ok') {
+                return OpPushResult(opId: o.opId, result: const PushSuccess());
+              }
+              if (o.id == 'nf') {
+                return OpPushResult(opId: o.opId, result: const PushNotFound());
+              }
+              return OpPushResult(
+                opId: o.opId,
+                result: const PushError('boom'),
+              );
+            }).toList(),
+          );
+        });
 
         final captured = <SyncEvent>[];
         final sub = events.stream.listen(captured.add);
@@ -256,19 +244,21 @@ void main() {
       }
     });
 
-    test('wraps unknown exceptions in SyncOperationException(phase: push)',
-        () async {
-      await outbox.enqueue(_upsert());
-      when(() => transport.push(any())).thenThrow(StateError('weird'));
+    test(
+      'wraps unknown exceptions in SyncOperationException(phase: push)',
+      () async {
+        await outbox.enqueue(_upsert());
+        when(() => transport.push(any())).thenThrow(StateError('weird'));
 
-      try {
-        await buildService().pushAll();
-        fail('expected SyncOperationException');
-      } on SyncOperationException catch (e) {
-        expect(e.phase, 'push');
-        expect(e.cause, isA<StateError>());
-      }
-    });
+        try {
+          await buildService().pushAll();
+          fail('expected SyncOperationException');
+        } on SyncOperationException catch (e) {
+          expect(e.phase, 'push');
+          expect(e.cause, isA<StateError>());
+        }
+      },
+    );
   });
 
   group('PushService transport retry (retryTransportErrorsInEngine=true)', () {
@@ -285,10 +275,7 @@ void main() {
         return BatchPushResult(
           results: ops
               .map(
-                (o) => OpPushResult(
-                  opId: o.opId,
-                  result: const PushSuccess(),
-                ),
+                (o) => OpPushResult(opId: o.opId, result: const PushSuccess()),
               )
               .toList(),
         );
@@ -309,8 +296,7 @@ void main() {
       expect(stats.pushed, 1);
     });
 
-    test('throws MaxRetriesExceededException when retries exhausted',
-        () async {
+    test('throws MaxRetriesExceededException when retries exhausted', () async {
       await outbox.enqueue(_upsert());
 
       when(() => transport.push(any())).thenThrow(Exception('always fails'));
@@ -345,24 +331,22 @@ void main() {
       final op = _upsert(id: 'c1');
       await outbox.enqueue(op);
 
-      when(() => transport.push(any())).thenAnswer(
-        (invocation) async {
-          final ops = invocation.positionalArguments[0] as List<Op>;
-          return BatchPushResult(
-            results: ops
-                .map(
-                  (o) => OpPushResult(
-                    opId: o.opId,
-                    result: PushConflict(
-                      serverData: {'id': 'c1', 'name': 'Server'},
-                      serverTimestamp: DateTime.utc(2024, 6, 5),
-                    ),
+      when(() => transport.push(any())).thenAnswer((invocation) async {
+        final ops = invocation.positionalArguments[0] as List<Op>;
+        return BatchPushResult(
+          results: ops
+              .map(
+                (o) => OpPushResult(
+                  opId: o.opId,
+                  result: PushConflict(
+                    serverData: {'id': 'c1', 'name': 'Server'},
+                    serverTimestamp: DateTime.utc(2024, 6, 5),
                   ),
-                )
-                .toList(),
-          );
-        },
-      );
+                ),
+              )
+              .toList(),
+        );
+      });
 
       final conflictService = _StubConflictService<TestDatabase>(
         const ConflictResolutionResult(resolved: true),
@@ -378,8 +362,7 @@ void main() {
       expect(stats.conflictsResolved, 1);
       expect(conflictService.callCount, 1);
 
-      final pending =
-          await outbox.take(limit: 100, maxTryCountExclusive: null);
+      final pending = await outbox.take(limit: 100, maxTryCountExclusive: null);
       expect(pending, isEmpty);
     });
 
@@ -389,24 +372,22 @@ void main() {
         final op = _upsert(id: 'c2');
         await outbox.enqueue(op);
 
-        when(() => transport.push(any())).thenAnswer(
-          (invocation) async {
-            final ops = invocation.positionalArguments[0] as List<Op>;
-            return BatchPushResult(
-              results: ops
-                  .map(
-                    (o) => OpPushResult(
-                      opId: o.opId,
-                      result: PushConflict(
-                        serverData: {'id': 'c2'},
-                        serverTimestamp: DateTime.utc(2024, 6, 5),
-                      ),
+        when(() => transport.push(any())).thenAnswer((invocation) async {
+          final ops = invocation.positionalArguments[0] as List<Op>;
+          return BatchPushResult(
+            results: ops
+                .map(
+                  (o) => OpPushResult(
+                    opId: o.opId,
+                    result: PushConflict(
+                      serverData: {'id': 'c2'},
+                      serverTimestamp: DateTime.utc(2024, 6, 5),
                     ),
-                  )
-                  .toList(),
-            );
-          },
-        );
+                  ),
+                )
+                .toList(),
+          );
+        });
 
         final skipService = buildService(
           config: const SyncConfig(skipConflictingOps: true),
@@ -417,8 +398,10 @@ void main() {
         final stats = await skipService.pushAll();
         expect(stats.conflicts, 1);
         expect(stats.conflictsResolved, 0);
-        final pending =
-            await outbox.take(limit: 100, maxTryCountExclusive: null);
+        final pending = await outbox.take(
+          limit: 100,
+          maxTryCountExclusive: null,
+        );
         expect(pending, isEmpty);
       },
     );
@@ -454,10 +437,8 @@ void main() {
           return BatchPushResult(
             results: ops
                 .map(
-                  (o) => OpPushResult(
-                    opId: o.opId,
-                    result: const PushSuccess(),
-                  ),
+                  (o) =>
+                      OpPushResult(opId: o.opId, result: const PushSuccess()),
                 )
                 .toList(),
           );
@@ -480,8 +461,10 @@ void main() {
         expect(stats.conflicts, 1);
         expect(stats.pushed, 1);
 
-        final pending =
-            await outbox.take(limit: 100, maxTryCountExclusive: null);
+        final pending = await outbox.take(
+          limit: 100,
+          maxTryCountExclusive: null,
+        );
         expect(pending, isEmpty);
       },
     );

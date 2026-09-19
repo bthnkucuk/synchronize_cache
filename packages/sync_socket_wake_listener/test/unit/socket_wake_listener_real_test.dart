@@ -69,16 +69,19 @@ void main() {
   // well before the WebSocket failure surfaces.
   Future<void> guarded(Future<void> Function() body) {
     final completer = Completer<void>();
-    runZonedGuarded(() async {
-      try {
-        await body();
-        if (!completer.isCompleted) completer.complete();
-      } catch (e, st) {
-        if (!completer.isCompleted) completer.completeError(e, st);
-      }
-    }, (_, __) {
-      // Swallow async errors from the socket.io connect attempt.
-    });
+    runZonedGuarded(
+      () async {
+        try {
+          await body();
+          if (!completer.isCompleted) completer.complete();
+        } catch (e, st) {
+          if (!completer.isCompleted) completer.completeError(e, st);
+        }
+      },
+      (_, _) {
+        // Swallow async errors from the socket.io connect attempt.
+      },
+    );
     return completer.future;
   }
 
@@ -118,21 +121,23 @@ void main() {
     expect(pathCalls, equals(0));
   });
 
-  test('signing in (auth=true) triggers socket setup; providers are called',
-      () async {
-    await guarded(() async {
-      final listener = makeListener();
-      await listener.start();
+  test(
+    'signing in (auth=true) triggers socket setup; providers are called',
+    () async {
+      await guarded(() async {
+        final listener = makeListener();
+        await listener.start();
 
-      authState.add(true);
-      await _flush();
+        authState.add(true);
+        await _flush();
 
-      expect(urlCalls, equals(1));
-      expect(pathCalls, equals(1));
+        expect(urlCalls, equals(1));
+        expect(pathCalls, equals(1));
 
-      await listener.dispose();
-    });
-  });
+        await listener.dispose();
+      });
+    },
+  );
 
   test('start() is idempotent — calling twice subscribes once', () async {
     await guarded(() async {
@@ -152,8 +157,7 @@ void main() {
     });
   });
 
-  test('auth=true → false flow tears down without re-running setup',
-      () async {
+  test('auth=true → false flow tears down without re-running setup', () async {
     await guarded(() async {
       final listener = makeListener();
       await listener.start();
@@ -165,8 +169,11 @@ void main() {
       authState.add(false);
       await _flush();
 
-      expect(urlCalls, equals(urlAfterSignIn),
-          reason: 'sign-out must not provoke a new setup');
+      expect(
+        urlCalls,
+        equals(urlAfterSignIn),
+        reason: 'sign-out must not provoke a new setup',
+      );
 
       await listener.dispose();
     });

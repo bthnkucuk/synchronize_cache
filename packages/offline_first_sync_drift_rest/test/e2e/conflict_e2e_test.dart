@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:offline_first_sync_drift_rest/offline_first_sync_drift_rest.dart';
 import 'package:test/test.dart' hide isNotNull, isNull;
@@ -43,22 +44,21 @@ void main() {
   SyncEngine createEngine({
     SyncConfig? config,
     Map<String, TableConflictConfig>? tableConflictConfigs,
-  }) =>
-      SyncEngine(
-        db: db,
-        transport: transport,
-        tables: [
-          SyncableTable<TestEntity>(
-            kind: 'test_entity',
-            table: db.testEntities,
-            fromJson: TestEntity.fromJson,
-            toJson: (item) => item.toJson(),
-            toInsertable: (item) => item.toInsertable(),
-          ),
-        ],
-        config: config ?? const SyncConfig(),
-        tableConflictConfigs: tableConflictConfigs ?? {},
-      );
+  }) => SyncEngine(
+    db: db,
+    transport: transport,
+    tables: [
+      SyncableTable<TestEntity>(
+        kind: 'test_entity',
+        table: db.testEntities,
+        fromJson: TestEntity.fromJson,
+        toJson: (item) => item.toJson(),
+        toInsertable: (item) => item.toInsertable(),
+      ),
+    ],
+    config: config ?? const SyncConfig(),
+    tableConflictConfigs: tableConflictConfigs ?? {},
+  );
 
   group('ConflictStrategy.serverWins', () {
     test('accepts server data on conflict', () async {
@@ -78,23 +78,23 @@ void main() {
       });
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Client Updated',
-          'mood': 10,
-        },
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client Updated',
+            'mood': 10,
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -139,19 +139,19 @@ void main() {
       server.update('test_entity', 'entity-1', {'name': 'Server'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -174,28 +174,26 @@ void main() {
       });
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      server.update('test_entity', 'entity-1', {
-        'name': 'Server Updated',
-      });
+      server.update('test_entity', 'entity-1', {'name': 'Server Updated'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.clientWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.clientWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Client Wins',
-          'mood': 10,
-        },
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client Wins',
+            'mood': 10,
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -237,19 +235,19 @@ void main() {
       server.update('test_entity', 'entity-1', {'name': 'Server'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.clientWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.clientWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -287,14 +285,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: localTimestamp,
-        payloadJson: {'id': 'entity-1', 'name': 'Client Newer'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: localTimestamp,
+          payloadJson: const {'id': 'entity-1', 'name': 'Client Newer'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -336,14 +336,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: localTimestamp,
-        payloadJson: {'id': 'entity-1', 'name': 'Client Older'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: localTimestamp,
+          payloadJson: const {'id': 'entity-1', 'name': 'Client Older'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -382,23 +384,23 @@ void main() {
       });
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.merge,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.merge),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Client Name',
-          'mood': 8,
-        },
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client Name',
+            'mood': 8,
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -451,14 +453,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -493,18 +497,20 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Client Updated',
-          'mood': 8,
-        },
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client Updated',
+            'mood': 8,
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -560,20 +566,22 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Client Name',
-          'mood': 8,
-          'energy': 3,
-        },
-        baseUpdatedAt: baseTime,
-        changedFields: {'mood'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client Name',
+            'mood': 8,
+            'energy': 3,
+          },
+          baseUpdatedAt: baseTime,
+          changedFields: const {'mood'},
+        ),
+      );
 
       await engine.sync();
 
@@ -613,18 +621,20 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Updated',
-          'notes': null,
-        },
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Updated',
+            'notes': null,
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -663,19 +673,25 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
       expect(resolverCalled, isTrue);
-      expect(capturedConflict != null, isTrue, reason: 'Conflict should be captured');
+      expect(
+        capturedConflict != null,
+        isTrue,
+        reason: 'Conflict should be captured',
+      );
       expect(capturedConflict!.kind, 'test_entity');
       expect(capturedConflict!.entityId, 'entity-1');
       expect(capturedConflict!.localData['name'], 'Client');
@@ -703,14 +719,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Manual Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Manual Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -744,14 +762,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client', 'mood': 8},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client', 'mood': 8},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -783,14 +803,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -827,14 +849,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -866,14 +890,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -885,10 +911,7 @@ void main() {
 
       final unresolvedEvents = events.whereType<ConflictUnresolvedEvent>();
       expect(unresolvedEvents.length, greaterThanOrEqualTo(1));
-      expect(
-        unresolvedEvents.first.reason,
-        contains('No conflict resolver'),
-      );
+      expect(unresolvedEvents.first.reason, contains('No conflict resolver'));
 
       engine.dispose();
     });
@@ -913,37 +936,41 @@ void main() {
         ..update('test_entity', 'entity-2', {'name': 'Server 2'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
+      );
+
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client 1'},
+          baseUpdatedAt: baseTime,
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client 1'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-2',
+          kind: 'test_entity',
+          id: 'entity-2',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-2', 'name': 'Client 2'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-2',
-        kind: 'test_entity',
-        id: 'entity-2',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-2', 'name': 'Client 2'},
-        baseUpdatedAt: baseTime,
-      ));
-
-      await db.enqueue(UpsertOp(
-        opId: 'op-3',
-        kind: 'test_entity',
-        id: 'entity-3',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-3', 'name': 'Client 3'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-3',
+          kind: 'test_entity',
+          id: 'entity-3',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-3', 'name': 'Client 3'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -978,27 +1005,29 @@ void main() {
       server.update('test_entity', 'entity-1', {'name': 'Server'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.clientWins,
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.clientWins),
+      );
+
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client Conflict'},
+          baseUpdatedAt: baseTime,
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client Conflict'},
-        baseUpdatedAt: baseTime,
-      ));
-
-      await db.enqueue(UpsertOp(
-        opId: 'op-2',
-        kind: 'test_entity',
-        id: 'entity-new',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-new', 'name': 'New Entity'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-2',
+          kind: 'test_entity',
+          id: 'entity-new',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-new', 'name': 'New Entity'},
+        ),
+      );
 
       await engine.sync();
 
@@ -1031,20 +1060,24 @@ void main() {
       });
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'conflict-op',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.utc(2024, 1, 2),
-        payloadJson: {'id': 'entity-1', 'name': 'Client Name', 'mood': 8},
-        baseUpdatedAt: baseTime,
-        changedFields: {'name', 'mood'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'conflict-op',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.utc(2024, 1, 2),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client Name',
+            'mood': 8,
+          },
+          baseUpdatedAt: baseTime,
+          changedFields: const {'name', 'mood'},
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -1081,19 +1114,19 @@ void main() {
       server.update('test_entity', 'entity-1', {'energy': 10});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -1132,14 +1165,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client', 'mood': 8},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client', 'mood': 8},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -1175,19 +1210,19 @@ void main() {
       server.update('test_entity', 'entity-1', {'name': 'Server'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -1219,28 +1254,32 @@ void main() {
         'updated_at': baseTime.toIso8601String(),
       });
 
-      await db.into(db.testEntities).insert(TestEntitiesCompanion.insert(
-            id: 'entity-1',
-            name: 'Original',
-            updatedAt: baseTime,
-          ));
+      await db
+          .into(db.testEntities)
+          .insert(
+            TestEntitiesCompanion.insert(
+              id: 'entity-1',
+              name: 'Original',
+              updatedAt: baseTime,
+            ),
+          );
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
       server.update('test_entity', 'entity-1', {'name': 'Modified After Read'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
-      await db.enqueue(DeleteOp(
-        opId: 'delete-op',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        DeleteOp(
+          opId: 'delete-op',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -1254,10 +1293,18 @@ void main() {
       expect(conflictEvents.length, 1);
 
       final entity = server.get('test_entity', 'entity-1');
-      expect(entity != null, isTrue, reason: 'Server entity should not be deleted');
+      expect(
+        entity != null,
+        isTrue,
+        reason: 'Server entity should not be deleted',
+      );
 
       final localItems = await db.select(db.testEntities).get();
-      expect(localItems.length, 1, reason: 'Local entity should remain (serverWins)');
+      expect(
+        localItems.length,
+        1,
+        reason: 'Local entity should remain (serverWins)',
+      );
       expect(localItems.first.name, 'Modified After Read');
 
       engine.dispose();
@@ -1272,28 +1319,32 @@ void main() {
         'updated_at': baseTime.toIso8601String(),
       });
 
-      await db.into(db.testEntities).insert(TestEntitiesCompanion.insert(
-            id: 'entity-1',
-            name: 'Original',
-            updatedAt: baseTime,
-          ));
+      await db
+          .into(db.testEntities)
+          .insert(
+            TestEntitiesCompanion.insert(
+              id: 'entity-1',
+              name: 'Original',
+              updatedAt: baseTime,
+            ),
+          );
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
       server.update('test_entity', 'entity-1', {'name': 'Modified'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.clientWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.clientWins),
       );
 
-      await db.enqueue(DeleteOp(
-        opId: 'delete-op',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        DeleteOp(
+          opId: 'delete-op',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -1320,11 +1371,15 @@ void main() {
         'updated_at': baseTime.toIso8601String(),
       });
 
-      await db.into(db.testEntities).insert(TestEntitiesCompanion.insert(
-            id: 'entity-1',
-            name: 'Original',
-            updatedAt: baseTime,
-          ));
+      await db
+          .into(db.testEntities)
+          .insert(
+            TestEntitiesCompanion.insert(
+              id: 'entity-1',
+              name: 'Original',
+              updatedAt: baseTime,
+            ),
+          );
 
       server.update('test_entity', 'entity-1', {
         'name': 'Server Modified',
@@ -1337,18 +1392,24 @@ void main() {
         ),
       );
 
-      await db.enqueue(DeleteOp(
-        opId: 'delete-op',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: clientDeleteTime,
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        DeleteOp(
+          opId: 'delete-op',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: clientDeleteTime,
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
       final entity = server.get('test_entity', 'entity-1');
-      expect(entity == null, isTrue, reason: 'Client delete wins (newer timestamp)');
+      expect(
+        entity == null,
+        isTrue,
+        reason: 'Client delete wins (newer timestamp)',
+      );
 
       engine.dispose();
     });
@@ -1368,9 +1429,7 @@ void main() {
       server.update('test_entity', 'entity-1', {'name': 'Server'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
         tableConflictConfigs: {
           'test_entity': const TableConflictConfig(
             strategy: ConflictStrategy.clientWins,
@@ -1378,14 +1437,16 @@ void main() {
         },
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client Wins'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client Wins'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -1409,9 +1470,7 @@ void main() {
       server.update('test_entity', 'entity-1', {'energy': 10});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.merge,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.merge),
         tableConflictConfigs: {
           'test_entity': TableConflictConfig(
             strategy: ConflictStrategy.merge,
@@ -1423,14 +1482,16 @@ void main() {
         },
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -1472,14 +1533,16 @@ void main() {
         },
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -1493,20 +1556,19 @@ void main() {
     test('successful push without conflict', () async {
       server
         ..conflictCheckEnabled = false
-        ..seed('test_entity', {
-          'id': 'entity-1',
-          'name': 'Original',
-        });
+        ..seed('test_entity', {'id': 'entity-1', 'name': 'Original'});
 
       final engine = createEngine();
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Updated'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Updated'},
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -1528,13 +1590,15 @@ void main() {
     test('create new entity', () async {
       final engine = createEngine();
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: '',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'name': 'Brand New'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: '',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'name': 'Brand New'},
+        ),
+      );
 
       await engine.sync();
 
@@ -1569,18 +1633,20 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Updated',
-          'settings': {'theme': 'dark', 'language': 'en'},
-        },
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Updated',
+            'settings': {'theme': 'dark', 'language': 'en'},
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -1618,18 +1684,20 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Client',
-          'tags': ['tag1', 'tag2', 'tag5'],
-        },
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client',
+            'tags': ['tag1', 'tag2', 'tag5'],
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -1670,21 +1738,23 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Client',
-          'settings': {
-            'ui': {'fontSize': 14, 'darkMode': true},
-            'features': ['feature1', 'feature3'],
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client',
+            'settings': {
+              'ui': {'fontSize': 14, 'darkMode': true},
+              'features': ['feature1', 'feature3'],
+            },
           },
-        },
-        baseUpdatedAt: baseTime,
-      ));
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -1715,24 +1785,26 @@ void main() {
       });
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      server.update('test_entity', 'entity-1', {
-        'energy': 10,
-      });
+      server.update('test_entity', 'entity-1', {'energy': 10});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.merge,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.merge),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Merged Name', 'mood': 8},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Merged Name',
+            'mood': 8,
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine.sync();
 
@@ -1763,19 +1835,19 @@ void main() {
       server.update('test_entity', 'entity-1', {'name': 'Server Version'});
 
       final engine1 = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client Version'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client Version'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       await engine1.sync();
       engine1.dispose();
@@ -1799,9 +1871,7 @@ void main() {
             toInsertable: (e) => e.toInsertable(),
           ),
         ],
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
       await engine2.sync();
@@ -1831,14 +1901,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client Version'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client Version'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       server.failNextRequests(2, statusCode: 500);
 
@@ -1896,19 +1968,19 @@ void main() {
       });
 
       final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.serverWins,
-        ),
+        config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client Version'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client Version'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       server.delayNextRequests(const Duration(milliseconds: 100));
 
@@ -1942,14 +2014,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       server.returnInvalidJson(true);
 
@@ -1985,14 +2059,16 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client'},
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-1', 'name': 'Client'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       server.returnIncompleteConflict(true);
 
@@ -2009,53 +2085,60 @@ void main() {
       engine.dispose();
     });
 
-    test('handles server returning wrong entity in conflict response', () async {
-      final baseTime = DateTime.utc(2024, 1, 1, 12, 0, 0);
+    test(
+      'handles server returning wrong entity in conflict response',
+      () async {
+        final baseTime = DateTime.utc(2024, 1, 1, 12, 0, 0);
 
-      server.seed('test_entity', {
-        'id': 'entity-1',
-        'name': 'Original',
-        'updated_at': baseTime.toIso8601String(),
-      });
+        server.seed('test_entity', {
+          'id': 'entity-1',
+          'name': 'Original',
+          'updated_at': baseTime.toIso8601String(),
+        });
 
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      server.update('test_entity', 'entity-1', {'name': 'Server Modified'});
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        server.update('test_entity', 'entity-1', {'name': 'Server Modified'});
 
-      final engine = createEngine(
-        config: const SyncConfig(
-          conflictStrategy: ConflictStrategy.merge,
-          skipConflictingOps: true,
-        ),
-      );
+        final engine = createEngine(
+          config: const SyncConfig(
+            conflictStrategy: ConflictStrategy.merge,
+            skipConflictingOps: true,
+          ),
+        );
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-1', 'name': 'Client', 'mood': 10},
-        baseUpdatedAt: baseTime,
-      ));
+        await db.enqueue(
+          UpsertOp(
+            opId: 'op-1',
+            kind: 'test_entity',
+            id: 'entity-1',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: const {'id': 'entity-1', 'name': 'Client', 'mood': 10},
+            baseUpdatedAt: baseTime,
+          ),
+        );
 
-      server.returnWrongEntity(true);
+        server.returnWrongEntity(true);
 
-      final events = <SyncEvent>[];
-      final sub = engine.events.listen(events.add);
+        final events = <SyncEvent>[];
+        final sub = engine.events.listen(events.add);
 
-      try {
-        await engine.sync();
-      } catch (_) {}
+        try {
+          await engine.sync();
+        } catch (_) {}
 
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      await sub.cancel();
+        await sub.cancel();
 
-      final conflictEvents = events.whereType<ConflictDetectedEvent>().toList();
-      expect(conflictEvents.length, 1);
+        final conflictEvents = events
+            .whereType<ConflictDetectedEvent>()
+            .toList();
+        expect(conflictEvents.length, 1);
 
-      server.returnWrongEntity(false);
-      engine.dispose();
-    });
+        server.returnWrongEntity(false);
+        engine.dispose();
+      },
+    );
 
     test('handles network error during pull', () async {
       server.seed('test_entity', {
@@ -2087,4 +2170,3 @@ void main() {
     });
   });
 }
-

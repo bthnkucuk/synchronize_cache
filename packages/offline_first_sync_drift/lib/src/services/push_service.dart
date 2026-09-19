@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
@@ -41,22 +42,17 @@ class PushStats {
 }
 
 /// Service for pushing local changes to the server.
-class PushService {
-  PushService({
-    required GeneratedDatabase db,
-    required OutboxService outbox,
-    required TransportAdapter transport,
-    required ConflictService<dynamic> conflictService,
-    required Map<String, SyncableTable<dynamic>> tables,
-    required SyncConfig config,
-    required StreamController<SyncEvent> events,
-  }) : _db = db,
-       _outbox = outbox,
-       _transport = transport,
-       _conflictService = conflictService,
-       _tables = tables,
-       _config = config,
-       _events = events;
+@immutable
+final class PushService {
+  const PushService({
+    required this._db,
+    required this._outbox,
+    required this._transport,
+    required this._conflictService,
+    required this._tables,
+    required this._config,
+    required this._events,
+  });
 
   final GeneratedDatabase _db;
   final OutboxService _outbox;
@@ -344,8 +340,9 @@ class PushService {
         final backoff =
             _config.backoffMin *
             math.pow(_config.backoffMultiplier, attempt - 1);
-        final delay =
-            backoff > _config.backoffMax ? _config.backoffMax : backoff;
+        final delay = backoff > _config.backoffMax
+            ? _config.backoffMax
+            : backoff;
 
         await Future<void>.delayed(delay);
       }

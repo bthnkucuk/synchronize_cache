@@ -32,9 +32,7 @@ void main() {
     syncEngine = SyncEngine(
       db: database,
       transport: transport,
-      config: const SyncConfig(
-        pageSize: 10,
-      ),
+      config: const SyncConfig(pageSize: 10),
       tables: [
         SyncableTable<TestEntity>(
           kind: 'test_entity', // Используем test_entity как в базе
@@ -45,7 +43,7 @@ void main() {
         ),
       ],
     );
-    
+
     // Подписываемся на события (в новом API это делается через геттер)
     // syncEngine.events.listen(eventController.add); // Если нужно
   });
@@ -60,27 +58,33 @@ void main() {
   group('E2E Batch Push', () {
     test('successfully pushes multiple items in batch', () async {
       // Create 3 items locally
-      await database.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: '1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': '1', 'name': 'Item 1'},
-      ));
-      await database.enqueue(UpsertOp(
-        opId: 'op-2',
-        kind: 'test_entity',
-        id: '2',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': '2', 'name': 'Item 2'},
-      ));
-      await database.enqueue(UpsertOp(
-        opId: 'op-3',
-        kind: 'test_entity',
-        id: '3',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': '3', 'name': 'Item 3'},
-      ));
+      await database.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: '1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': '1', 'name': 'Item 1'},
+        ),
+      );
+      await database.enqueue(
+        UpsertOp(
+          opId: 'op-2',
+          kind: 'test_entity',
+          id: '2',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': '2', 'name': 'Item 2'},
+        ),
+      );
+      await database.enqueue(
+        UpsertOp(
+          opId: 'op-3',
+          kind: 'test_entity',
+          id: '3',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': '3', 'name': 'Item 3'},
+        ),
+      );
 
       // Sync (push + pull)
       final stats = await syncEngine.sync();
@@ -99,8 +103,9 @@ void main() {
       expect(item3?['name'], 'Item 3');
 
       // Verify it was a batch request
-      final batchRequests = server.recordedRequests
-          .where((r) => r.path.contains('/batch') && r.method == 'POST');
+      final batchRequests = server.recordedRequests.where(
+        (r) => r.path.contains('/batch') && r.method == 'POST',
+      );
       expect(batchRequests, isNotEmpty);
     });
 
@@ -118,20 +123,24 @@ void main() {
       final item2 = items.firstWhere((i) => i.id == '2');
 
       // Delete locally
-      await database.enqueue(DeleteOp(
-        opId: 'del-1',
-        kind: 'test_entity',
-        id: '1',
-        localTimestamp: DateTime.now().toUtc(),
-        baseUpdatedAt: item1.updatedAt,
-      ));
-      await database.enqueue(DeleteOp(
-        opId: 'del-2',
-        kind: 'test_entity',
-        id: '2',
-        localTimestamp: DateTime.now().toUtc(),
-        baseUpdatedAt: item2.updatedAt,
-      ));
+      await database.enqueue(
+        DeleteOp(
+          opId: 'del-1',
+          kind: 'test_entity',
+          id: '1',
+          localTimestamp: DateTime.now().toUtc(),
+          baseUpdatedAt: item1.updatedAt,
+        ),
+      );
+      await database.enqueue(
+        DeleteOp(
+          opId: 'del-2',
+          kind: 'test_entity',
+          id: '2',
+          localTimestamp: DateTime.now().toUtc(),
+          baseUpdatedAt: item2.updatedAt,
+        ),
+      );
 
       // Sync
       final stats = await syncEngine.sync();
@@ -150,21 +159,25 @@ void main() {
       final items = await database.select(database.testEntities).get();
       final item1 = items.firstWhere((i) => i.id == '1');
 
-      await database.enqueue(DeleteOp(
-        opId: 'del-1',
-        kind: 'test_entity',
-        id: '1',
-        localTimestamp: DateTime.now().toUtc(),
-        baseUpdatedAt: item1.updatedAt,
-      ));
-      
-      await database.enqueue(UpsertOp(
-        opId: 'up-2',
-        kind: 'test_entity',
-        id: '2',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': '2', 'name': 'New Item'},
-      ));
+      await database.enqueue(
+        DeleteOp(
+          opId: 'del-1',
+          kind: 'test_entity',
+          id: '1',
+          localTimestamp: DateTime.now().toUtc(),
+          baseUpdatedAt: item1.updatedAt,
+        ),
+      );
+
+      await database.enqueue(
+        UpsertOp(
+          opId: 'up-2',
+          kind: 'test_entity',
+          id: '2',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': '2', 'name': 'New Item'},
+        ),
+      );
 
       final stats = await syncEngine.sync();
 
@@ -177,70 +190,84 @@ void main() {
     test('handles partial conflicts in batch', () async {
       // 1. Seed item on server and sync it
       final baseTime = DateTime.utc(2024, 1, 1, 12, 0, 0);
-      server.seed('test_entity', {'id': '1', 'name': 'Original', 'updated_at': baseTime.toIso8601String()});
-      
+      server.seed('test_entity', {
+        'id': '1',
+        'name': 'Original',
+        'updated_at': baseTime.toIso8601String(),
+      });
+
       await syncEngine.sync(); // Получаем данные и обновляем baseUpdatedAt в БД
 
       // 2. Simulate conflict: update item on server directly
       server.update('test_entity', '1', {'name': 'Server Update'});
 
       // 3. Update item locally (conflict)
-      await database.enqueue(UpsertOp(
-        opId: 'up-1',
-        kind: 'test_entity',
-        id: '1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': '1', 'name': 'Local Update'},
-        baseUpdatedAt: baseTime,
-      ));
+      await database.enqueue(
+        UpsertOp(
+          opId: 'up-1',
+          kind: 'test_entity',
+          id: '1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': '1', 'name': 'Local Update'},
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       // 4. Create new item locally (success)
-      await database.enqueue(UpsertOp(
-        opId: 'up-2',
-        kind: 'test_entity',
-        id: '2',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': '2', 'name': 'New Item'},
-      ));
+      await database.enqueue(
+        UpsertOp(
+          opId: 'up-2',
+          kind: 'test_entity',
+          id: '2',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': '2', 'name': 'New Item'},
+        ),
+      );
 
       // 5. Push
       // По умолчанию conflictStrategy = ConflictStrategy.autoPreserve
       final stats = await syncEngine.sync();
 
       expect(stats.conflicts, 1);
-      expect(stats.pushed, 1); // Только Item 2 успешно отправлен без конфликта (Item 1 зарезолвлен)
-      
+      expect(
+        stats.pushed,
+        1,
+      ); // Только Item 2 успешно отправлен без конфликта (Item 1 зарезолвлен)
+
       // Item 2 should be on server
       expect(server.get('test_entity', '2')?['name'], 'New Item');
-      
-      // Item 1: autoPreserve сольет данные. Так как server изменил name, а local изменил name, 
+
+      // Item 1: autoPreserve сольет данные. Так как server изменил name, а local изменил name,
       // то server wins (обычно) или оба сохраняются если разные поля.
       // Тут одно поле 'name'.
-      
+
       // Проверим что батч запрос был и сервер вернул смешанный ответ
       // Это уже проверено статистикой
     });
 
     test('chunks requests larger than batchSize', () async {
       // batchSize is 2 (configured in setUp)
-      
+
       // Create 3 items
       for (var i = 1; i <= 3; i++) {
-        await database.enqueue(UpsertOp(
-          opId: 'op-$i',
-          kind: 'test_entity',
-          id: '$i',
-          localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': '$i', 'name': 'Item $i'},
-        ));
+        await database.enqueue(
+          UpsertOp(
+            opId: 'op-$i',
+            kind: 'test_entity',
+            id: '$i',
+            localTimestamp: DateTime.now().toUtc(),
+            payloadJson: {'id': '$i', 'name': 'Item $i'},
+          ),
+        );
       }
 
       await syncEngine.sync();
 
       // Should have at least 2 batch requests (2 items + 1 item)
-      final batchRequests = server.recordedRequests
-          .where((r) => r.path.contains('/batch') && r.method == 'POST');
-      
+      final batchRequests = server.recordedRequests.where(
+        (r) => r.path.contains('/batch') && r.method == 'POST',
+      );
+
       expect(batchRequests.length, greaterThanOrEqualTo(2));
     });
   });

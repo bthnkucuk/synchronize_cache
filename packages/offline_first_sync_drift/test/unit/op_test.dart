@@ -11,7 +11,7 @@ void main() {
         kind: 'users',
         id: 'user-456',
         localTimestamp: now,
-        payloadJson: {'name': 'John'},
+        payloadJson: const {'name': 'John'},
       );
 
       expect(op.opId, equals('op-123'));
@@ -30,7 +30,7 @@ void main() {
         kind: 'tasks',
         id: 'task-1',
         localTimestamp: now,
-        payloadJson: {'title': 'Task'},
+        payloadJson: const {'title': 'Task'},
         baseUpdatedAt: baseTime,
       );
 
@@ -43,8 +43,8 @@ void main() {
         kind: 'tasks',
         id: 'task-2',
         localTimestamp: now,
-        payloadJson: {'title': 'Updated', 'description': 'New desc'},
-        changedFields: {'title', 'description'},
+        payloadJson: const {'title': 'Updated', 'description': 'New desc'},
+        changedFields: const {'title', 'description'},
       );
 
       expect(op.changedFields, equals({'title', 'description'}));
@@ -56,7 +56,7 @@ void main() {
         kind: 'items',
         id: 'item-1',
         localTimestamp: now,
-        payloadJson: {'data': 'value'},
+        payloadJson: const {'data': 'value'},
       );
 
       expect(op.isNewRecord, isTrue);
@@ -68,7 +68,7 @@ void main() {
         kind: 'items',
         id: 'item-2',
         localTimestamp: now,
-        payloadJson: {'data': 'updated'},
+        payloadJson: const {'data': 'updated'},
         baseUpdatedAt: DateTime.utc(2024, 1, 10),
       );
 
@@ -81,9 +81,9 @@ void main() {
         kind: 'tasks',
         id: 'task-orig',
         localTimestamp: now,
-        payloadJson: {'title': 'Original'},
+        payloadJson: const {'title': 'Original'},
         baseUpdatedAt: DateTime.utc(2024, 1, 1),
-        changedFields: {'title'},
+        changedFields: const {'title'},
       );
 
       final copied = original.copyWith();
@@ -103,7 +103,7 @@ void main() {
         kind: 'tasks',
         id: 'task-1',
         localTimestamp: now,
-        payloadJson: {'title': 'Old'},
+        payloadJson: const {'title': 'Old'},
       );
 
       final newTime = DateTime.utc(2024, 2, 1);
@@ -126,7 +126,7 @@ void main() {
         kind: 'tasks',
         id: 'task-1',
         localTimestamp: now,
-        payloadJson: {'title': 'Old'},
+        payloadJson: const {'title': 'Old'},
       );
 
       final newTime = DateTime.utc(2024, 3, 1);
@@ -156,7 +156,7 @@ void main() {
         kind: 'test',
         id: 'id-1',
         localTimestamp: now,
-        payloadJson: {},
+        payloadJson: const {},
       );
 
       expect(op, isA<Op>());
@@ -168,7 +168,7 @@ void main() {
         kind: 'documents',
         id: 'doc-1',
         localTimestamp: now,
-        payloadJson: {
+        payloadJson: const {
           'title': 'Document',
           'metadata': {
             'author': 'John',
@@ -240,7 +240,7 @@ void main() {
         kind: 'test',
         id: 'id-1',
         localTimestamp: now,
-        payloadJson: {},
+        payloadJson: const {},
       );
 
       final delete = DeleteOp(
@@ -261,7 +261,7 @@ void main() {
           kind: 'users',
           id: 'user-1',
           localTimestamp: now,
-          payloadJson: {'name': 'John'},
+          payloadJson: const {'name': 'John'},
         ),
         DeleteOp(
           opId: 'op-2',

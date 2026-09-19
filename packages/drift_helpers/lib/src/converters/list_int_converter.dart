@@ -1,20 +1,23 @@
 import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:developer';
+
 import 'package:drift/drift.dart';
 import 'package:meta/meta.dart';
 
 /// TypeConverter for integer[] columns
 /// Stores list of ints as JSON text in SQLite.
 @immutable
-final class IntListConverter extends TypeConverter<List<int>, String> with JsonTypeConverter2<List<int>, String, Object?> {
-  const IntListConverter();
-
+final class const IntListConverter()
+    extends TypeConverter<List<int>, String>
+    with JsonTypeConverter2<List<int>, String, Object?> {
   @override
   List<int> fromSql(String fromDb) {
     if (fromDb.isEmpty) return const [];
     try {
       final decoded = jsonDecode(fromDb);
-      return decoded is List ? decoded.map((e) => (e as num).toInt()).toList() : const [];
+      return decoded is List
+          ? decoded.map((e) => (e as num).toInt()).toList()
+          : const [];
     } catch (e, st) {
       log('IntListConverter catch block: $e\n$st');
       return const [];

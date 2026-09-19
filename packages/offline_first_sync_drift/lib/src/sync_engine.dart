@@ -76,14 +76,12 @@ class PullStats {
 class SyncEngine<DB extends GeneratedDatabase> {
   SyncEngine({
     required DB db,
-    required TransportAdapter transport,
+    required this._transport,
     required List<SyncableTable<dynamic>> tables,
-    SyncConfig config = const SyncConfig(),
+    this._config = const SyncConfig(),
     Map<String, TableConflictConfig>? tableConflictConfigs,
   }) : _db = db,
-       _transport = transport,
        _tables = _buildTablesMap(tables),
-       _config = config,
        _tableConflictConfigs = tableConflictConfigs ?? {} {
     if (db is! SyncDatabaseMixin) {
       throw ArgumentError(
@@ -175,12 +173,8 @@ class SyncEngine<DB extends GeneratedDatabase> {
   CursorService get cursors => _cursorService;
 
   /// Return operations that reached stuck threshold.
-  Future<List<Op>> getStuckOperations({Set<String>? kinds}) {
-    return _outboxService.getStuck(
-      minTryCount: _config.maxOutboxTryCount,
-      kinds: kinds,
-    );
-  }
+  Future<List<Op>> getStuckOperations({Set<String>? kinds}) => _outboxService
+      .getStuck(minTryCount: _config.maxOutboxTryCount, kinds: kinds);
 
   /// Reset retry counters for stuck operations.
   Future<void> retryStuckOperations({Set<String>? kinds}) async {
@@ -313,37 +307,36 @@ class SyncEngine<DB extends GeneratedDatabase> {
     }
 
     // 3. Per-kind incremental sync.
-    final allKinds =
-        (pushKinds ?? const <String>{}).union(pullKinds ?? const <String>{});
+    final allKinds = (pushKinds ?? const <String>{}).union(
+      pullKinds ?? const <String>{},
+    );
 
-    final targetKinds =
-        allKinds.isEmpty ? _tables.keys.toSet() : allKinds;
+    final targetKinds = allKinds.isEmpty ? _tables.keys.toSet() : allKinds;
 
     final futures = targetKinds.map((kind) {
-      final pushForKind =
-          (pushKinds == null || pushKinds.contains(kind))
-              ? <String>{kind}
-              : <String>{};
-      final pullForKind =
-          (pullKinds == null || pullKinds.contains(kind))
-              ? <String>{kind}
-              : <String>{};
+      final pushForKind = (pushKinds == null || pushKinds.contains(kind))
+          ? <String>{kind}
+          : <String>{};
+      final pullForKind = (pullKinds == null || pullKinds.contains(kind))
+          ? <String>{kind}
+          : <String>{};
 
       if (!_kindRunFutures.containsKey(kind)) {
         // Register a cleanup before storing so the entry is always removed
         // when the run finishes, even if it throws.
         late final Future<SyncRunResult> guarded;
-        guarded = _doSyncRunForKind(
-          kind: kind,
-          pushKinds: pushForKind,
-          pullKinds: pullForKind,
-        ).whenComplete(() {
-          // Only remove if the map still holds this exact future, avoiding a
-          // race where a new run for the same kind has already been stored.
-          if (identical(_kindRunFutures[kind], guarded)) {
-            _kindRunFutures.remove(kind);
-          }
-        });
+        guarded =
+            _doSyncRunForKind(
+              kind: kind,
+              pushKinds: pushForKind,
+              pullKinds: pullForKind,
+            ).whenComplete(() {
+              // Only remove if the map still holds this exact future, avoiding a
+              // race where a new run for the same kind has already been stored.
+              if (identical(_kindRunFutures[kind], guarded)) {
+                _kindRunFutures.remove(kind);
+              }
+            });
         _kindRunFutures[kind] = guarded;
       }
       return _kindRunFutures[kind]!;
@@ -376,7 +369,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
 
     try {
       if (pushKinds.isNotEmpty) {
-        _events.add(SyncStarted(SyncPhase.push));
+        _events.add(const SyncStarted(SyncPhase.push));
         pushStats = await _pushService.pushAll(kinds: pushKinds);
         stats = stats.copyWith(
           pushed: pushStats.pushed,
@@ -387,7 +380,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
       }
 
       if (pullKinds.isNotEmpty) {
-        _events.add(SyncStarted(SyncPhase.pull));
+        _events.add(const SyncStarted(SyncPhase.pull));
         final pulled = await _pullService.pullKinds(pullKinds);
         pullStats = PullStats(pulled: pulled);
         stats = stats.copyWith(pulled: pullStats.pulled);
@@ -487,12 +480,10 @@ class SyncEngine<DB extends GeneratedDatabase> {
   Stream<int> watchPendingPushCount({
     Set<String>? kinds,
     bool includeStuck = false,
-  }) {
-    return _outboxService.watchPendingCount(
-      kinds: kinds,
-      maxTryCountExclusive: includeStuck ? null : _config.maxOutboxTryCount,
-    );
-  }
+  }) => _outboxService.watchPendingCount(
+    kinds: kinds,
+    maxTryCountExclusive: includeStuck ? null : _config.maxOutboxTryCount,
+  );
 
   /// Perform a full resynchronization.
   ///
@@ -557,7 +548,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
     try {
       _events
         ..add(FullResyncStarted(reason))
-        ..add(SyncStarted(SyncPhase.push));
+        ..add(const SyncStarted(SyncPhase.push));
 
       pushStats = await _pushService.pushAll();
       stats = stats.copyWith(
@@ -570,12 +561,13 @@ class SyncEngine<DB extends GeneratedDatabase> {
       await _cursorService.resetAll(_tables.keys.toSet());
 
       if (clearData) {
-        final tableNames =
-            _tables.values.map((t) => t.table.actualTableName).toList();
+        final tableNames = _tables.values
+            .map((t) => t.table.actualTableName)
+            .toList();
         await _syncDb.clearSyncableTables(tableNames);
       }
 
-      _events.add(SyncStarted(SyncPhase.pull));
+      _events.add(const SyncStarted(SyncPhase.pull));
       final pulled = await _pullService.pullKinds(_tables.keys.toSet());
       pullStats = PullStats(pulled: pulled);
       stats = stats.copyWith(pulled: pullStats.pulled);

@@ -2,11 +2,9 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:todo_advanced_frontend/database/database.dart';
-import 'package:todo_advanced_frontend/models/todo.dart';
 import 'package:todo_advanced_frontend/repositories/todo_repository.dart';
 import 'package:todo_advanced_frontend/services/conflict_handler.dart';
 import 'package:todo_advanced_frontend/services/sync_service.dart';
-import 'package:todo_advanced_frontend/sync/todo_sync.dart';
 import 'package:todo_advanced_frontend/sync/todo_sync.dart';
 
 import '../helpers/test_database.dart';
@@ -263,10 +261,7 @@ void main() {
         );
 
         // Attempt sync - should fail and throw
-        await expectLater(
-          () => offlineSync.sync(),
-          throwsA(anything),
-        );
+        await expectLater(() => offlineSync.sync(), throwsA(anything));
 
         // Status should be error
         expect(offlineSync.status, SyncStatus.error);
@@ -374,10 +369,7 @@ void main() {
           returnsNormally,
         );
 
-        expect(
-          () => syncService.stopAuto(),
-          returnsNormally,
-        );
+        expect(() => syncService.stopAuto(), returnsNormally);
       });
     });
 

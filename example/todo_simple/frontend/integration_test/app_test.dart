@@ -17,7 +17,7 @@ import 'package:todo_simple_frontend/ui/screens/todo_list_screen.dart';
 ///   flutter test integration_test/app_test.dart
 ///
 /// Or on a specific device:
-///   flutter test integration_test/app_test.dart -d <device_id>
+///   `flutter test integration_test/app_test.dart -d <device_id>`
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -92,7 +92,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Enter description (second TextFormField)
-      await tester.enterText(textFields.at(1), 'Created during integration test');
+      await tester.enterText(
+        textFields.at(1),
+        'Created during integration test',
+      );
       await tester.pumpAndSettle();
 
       // Save todo via Save button (IconButton in AppBar)

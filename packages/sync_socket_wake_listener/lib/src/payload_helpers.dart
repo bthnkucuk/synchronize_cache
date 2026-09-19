@@ -16,9 +16,7 @@ const Set<String> serverManagedFields = {
 ///
 /// Pass this to `SyncableTable.toJson` wrapping when you need to ensure a
 /// push payload is clean before handing it to the transport layer.
-Map<String, dynamic> stripServerManagedFields(Map<String, dynamic> json) {
-  return {
-    for (final entry in json.entries)
-      if (!serverManagedFields.contains(entry.key)) entry.key: entry.value,
-  };
-}
+Map<String, dynamic> stripServerManagedFields(Map<String, dynamic> json) => {
+  for (final entry in json.entries)
+    if (!serverManagedFields.contains(entry.key)) entry.key: entry.value,
+};

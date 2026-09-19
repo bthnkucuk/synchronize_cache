@@ -43,7 +43,9 @@ class SyncLogScreen extends StatelessWidget {
       floatingActionButton: Consumer<SyncService>(
         builder: (context, syncService, _) {
           return FloatingActionButton.extended(
-            onPressed: syncService.isSyncing ? null : () => _sync(context, syncService),
+            onPressed: syncService.isSyncing
+                ? null
+                : () => _sync(context, syncService),
             icon: syncService.isSyncing
                 ? const SizedBox(
                     width: 18,
@@ -64,9 +66,8 @@ class SyncLogScreen extends StatelessWidget {
   void _clearLog(BuildContext context) {
     final handler = context.read<ConflictHandler>();
     handler.clearLog();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Log cleared')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Log cleared')));
   }
 
   Future<void> _sync(BuildContext context, SyncService syncService) async {
@@ -106,7 +107,7 @@ class _EmptyState extends StatelessWidget {
           Icon(
             Icons.history,
             size: 80,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
           ),
           const SizedBox(height: 16),
           Text(
@@ -117,8 +118,8 @@ class _EmptyState extends StatelessWidget {
           Text(
             'Sync events will appear here',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -149,7 +150,7 @@ class _LogEntryCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, color: color, size: 20),
@@ -167,8 +168,8 @@ class _LogEntryCard extends StatelessWidget {
                   Text(
                     _formatTime(entry.timestamp),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),

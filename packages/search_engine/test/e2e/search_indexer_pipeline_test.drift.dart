@@ -5,28 +5,28 @@ import 'package:search_engine/src/tables/search_tables.drift.dart' as i1;
 import 'package:search_engine/src/tables/search_index_cursors.drift.dart' as i2;
 import 'package:search_engine/src/tables/search_lookup.drift.dart' as i3;
 import 'package:search_engine/src/tables/pending_search_items.drift.dart' as i4;
+
 import 'search_indexer_pipeline_test.drift.dart' as i5;
 import 'search_indexer_pipeline_test.dart' as i6;
+
 import 'package:drift/src/runtime/query_builder/query_builder.dart' as i7;
 
-typedef $$NotesTableCreateCompanionBuilder =
-    i5.NotesCompanion Function({
-      required String id,
-      required String userId,
-      required String title,
-      required int updatedAtMs,
-      i0.Value<bool> deleted,
-      i0.Value<int> rowid,
-    });
-typedef $$NotesTableUpdateCompanionBuilder =
-    i5.NotesCompanion Function({
-      i0.Value<String> id,
-      i0.Value<String> userId,
-      i0.Value<String> title,
-      i0.Value<int> updatedAtMs,
-      i0.Value<bool> deleted,
-      i0.Value<int> rowid,
-    });
+typedef $$NotesTableCreateCompanionBuilder = i5.NotesCompanion Function({
+  required String id,
+  required String userId,
+  required String title,
+  required int updatedAtMs,
+  i0.Value<bool> deleted,
+  i0.Value<int> rowid,
+});
+typedef $$NotesTableUpdateCompanionBuilder = i5.NotesCompanion Function({
+  i0.Value<String> id,
+  i0.Value<String> userId,
+  i0.Value<String> title,
+  i0.Value<int> updatedAtMs,
+  i0.Value<bool> deleted,
+  i0.Value<int> rowid,
+});
 
 class $$NotesTableFilterComposer
     extends i0.Composer<i0.GeneratedDatabase, i5.$NotesTable> {
@@ -148,12 +148,12 @@ class $$NotesTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i5.$$NotesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer:
-              () => i5.$$NotesTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer:
-              () => i5.$$NotesTableAnnotationComposer($db: db, $table: table),
+          createFilteringComposer: () =>
+              i5.$$NotesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i5.$$NotesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              i5.$$NotesTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 i0.Value<String> id = const i0.Value.absent(),
@@ -186,16 +186,18 @@ class $$NotesTableTableManager
                 deleted: deleted,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<i5.$NotesTable, i5.Note>(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i5.$NotesTable,
+                    i5.Note
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -391,31 +393,26 @@ class $NotesTable extends i6.Notes with i0.TableInfo<$NotesTable, i5.Note> {
   i5.Note map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i5.Note(
-      id:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}id'],
-          )!,
-      userId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}user_id'],
-          )!,
-      title:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}title'],
-          )!,
-      updatedAtMs:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.int,
-            data['${effectivePrefix}updated_at_ms'],
-          )!,
-      deleted:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.bool,
-            data['${effectivePrefix}deleted'],
-          )!,
+      id: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      updatedAtMs: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.int,
+        data['${effectivePrefix}updated_at_ms'],
+      )!,
+      deleted: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
     );
   }
 
@@ -502,8 +499,9 @@ class Note extends i0.DataClass implements i0.Insertable<i5.Note> {
       id: data.id.present ? data.id.value : this.id,
       userId: data.userId.present ? data.userId.value : this.userId,
       title: data.title.present ? data.title.value : this.title,
-      updatedAtMs:
-          data.updatedAtMs.present ? data.updatedAtMs.value : this.updatedAtMs,
+      updatedAtMs: data.updatedAtMs.present
+          ? data.updatedAtMs.value
+          : this.updatedAtMs,
       deleted: data.deleted.present ? data.deleted.value : this.deleted,
     );
   }

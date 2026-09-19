@@ -165,18 +165,15 @@ class $$PendingSearchItemsTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i1.$$PendingSearchItemsTableFilterComposer(
+          createFilteringComposer: () => i1
+              .$$PendingSearchItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i1.$$PendingSearchItemsTableOrderingComposer(
                 $db: db,
                 $table: table,
               ),
-          createOrderingComposer:
-              () => i1.$$PendingSearchItemsTableOrderingComposer(
-                $db: db,
-                $table: table,
-              ),
-          createComputedFieldComposer:
-              () => i1.$$PendingSearchItemsTableAnnotationComposer(
+          createComputedFieldComposer: () =>
+              i1.$$PendingSearchItemsTableAnnotationComposer(
                 $db: db,
                 $table: table,
               ),
@@ -216,16 +213,21 @@ class $$PendingSearchItemsTableTableManager
                 tryCount: tryCount,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    i1.$PendingSearchItemsTable,
+                    i1.PendingSearchItemRow
+                  >(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i1.$PendingSearchItemsTable,
+                    i1.PendingSearchItemRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -406,36 +408,30 @@ class $PendingSearchItemsTable extends i2.PendingSearchItems
   }) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i1.PendingSearchItemRow(
-      userId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}user_id'],
-          )!,
-      kind:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}kind'],
-          )!,
-      id:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}id'],
-          )!,
-      stringData:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}string_data'],
-          )!,
-      deleted:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.bool,
-            data['${effectivePrefix}deleted'],
-          )!,
-      tryCount:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.int,
-            data['${effectivePrefix}try_count'],
-          )!,
+      userId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      id: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      stringData: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}string_data'],
+      )!,
+      deleted: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
+      tryCount: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.int,
+        data['${effectivePrefix}try_count'],
+      )!,
     );
   }
 
@@ -536,8 +532,9 @@ class PendingSearchItemRow extends i0.DataClass
       userId: data.userId.present ? data.userId.value : this.userId,
       kind: data.kind.present ? data.kind.value : this.kind,
       id: data.id.present ? data.id.value : this.id,
-      stringData:
-          data.stringData.present ? data.stringData.value : this.stringData,
+      stringData: data.stringData.present
+          ? data.stringData.value
+          : this.stringData,
       deleted: data.deleted.present ? data.deleted.value : this.deleted,
       tryCount: data.tryCount.present ? data.tryCount.value : this.tryCount,
     );

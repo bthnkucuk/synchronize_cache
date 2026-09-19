@@ -5,30 +5,30 @@ import 'package:offline_first_sync_drift/src/tables/cursors.drift.dart' as i1;
 import 'package:offline_first_sync_drift/src/tables/outbox_meta.drift.dart'
     as i2;
 import 'package:offline_first_sync_drift/src/tables/outbox.drift.dart' as i3;
+
 import 'example.drift.dart' as i4;
 import 'example.dart' as i5;
+
 import 'package:drift/src/runtime/query_builder/query_builder.dart' as i6;
 
-typedef $$TodosTableCreateCompanionBuilder =
-    i4.TodosCompanion Function({
-      required DateTime updatedAt,
-      i0.Value<DateTime?> deletedAt,
-      i0.Value<DateTime?> deletedAtLocal,
-      required String id,
-      required String title,
-      i0.Value<bool> completed,
-      i0.Value<int> rowid,
-    });
-typedef $$TodosTableUpdateCompanionBuilder =
-    i4.TodosCompanion Function({
-      i0.Value<DateTime> updatedAt,
-      i0.Value<DateTime?> deletedAt,
-      i0.Value<DateTime?> deletedAtLocal,
-      i0.Value<String> id,
-      i0.Value<String> title,
-      i0.Value<bool> completed,
-      i0.Value<int> rowid,
-    });
+typedef $$TodosTableCreateCompanionBuilder = i4.TodosCompanion Function({
+  required DateTime updatedAt,
+  i0.Value<DateTime?> deletedAt,
+  i0.Value<DateTime?> deletedAtLocal,
+  required String id,
+  required String title,
+  i0.Value<bool> completed,
+  i0.Value<int> rowid,
+});
+typedef $$TodosTableUpdateCompanionBuilder = i4.TodosCompanion Function({
+  i0.Value<DateTime> updatedAt,
+  i0.Value<DateTime?> deletedAt,
+  i0.Value<DateTime?> deletedAtLocal,
+  i0.Value<String> id,
+  i0.Value<String> title,
+  i0.Value<bool> completed,
+  i0.Value<int> rowid,
+});
 
 class $$TodosTableFilterComposer
     extends i0.Composer<i0.GeneratedDatabase, i4.$TodosTable> {
@@ -163,12 +163,12 @@ class $$TodosTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i4.$$TodosTableFilterComposer($db: db, $table: table),
-          createOrderingComposer:
-              () => i4.$$TodosTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer:
-              () => i4.$$TodosTableAnnotationComposer($db: db, $table: table),
+          createFilteringComposer: () =>
+              i4.$$TodosTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i4.$$TodosTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              i4.$$TodosTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 i0.Value<DateTime> updatedAt = const i0.Value.absent(),
@@ -205,16 +205,18 @@ class $$TodosTableTableManager
                 completed: completed,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<i4.$TodosTable, i5.Todo>(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i4.$TodosTable,
+                    i5.Todo
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -422,26 +424,22 @@ class $TodosTable extends i5.Todos with i0.TableInfo<$TodosTable, i5.Todo> {
   i5.Todo map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i5.Todo(
-      id:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}id'],
-          )!,
-      title:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}title'],
-          )!,
-      completed:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.bool,
-            data['${effectivePrefix}completed'],
-          )!,
-      updatedAt:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.dateTime,
-            data['${effectivePrefix}updated_at'],
-          )!,
+      id: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      completed: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.bool,
+        data['${effectivePrefix}completed'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
       deletedAt: attachedDatabase.typeMapping.read(
         i0.DriftSqlType.dateTime,
         data['${effectivePrefix}deleted_at'],

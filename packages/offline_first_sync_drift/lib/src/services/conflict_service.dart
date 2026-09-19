@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart';
+import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
@@ -9,7 +10,7 @@ import 'package:offline_first_sync_drift/src/syncable_table.dart';
 import 'package:offline_first_sync_drift/src/transport_adapter.dart';
 
 /// Result of conflict resolution.
-class ConflictResolutionResult {
+final class ConflictResolutionResult {
   const ConflictResolutionResult({required this.resolved, this.resultData});
 
   /// Whether the conflict was resolved.
@@ -20,20 +21,16 @@ class ConflictResolutionResult {
 }
 
 /// Service for sync conflict resolution.
+@immutable
 class ConflictService<DB extends GeneratedDatabase> {
-  ConflictService({
-    required DB db,
-    required TransportAdapter transport,
-    required Map<String, SyncableTable<dynamic>> tables,
-    required SyncConfig config,
-    required Map<String, TableConflictConfig> tableConflictConfigs,
-    required StreamController<SyncEvent> events,
-  }) : _db = db,
-       _transport = transport,
-       _tables = tables,
-       _config = config,
-       _tableConflictConfigs = tableConflictConfigs,
-       _events = events;
+  const ConflictService({
+    required this._db,
+    required this._transport,
+    required this._tables,
+    required this._config,
+    required this._tableConflictConfigs,
+    required this._events,
+  });
 
   final DB _db;
   final TransportAdapter _transport;

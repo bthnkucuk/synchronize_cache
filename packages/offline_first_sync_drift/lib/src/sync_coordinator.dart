@@ -9,14 +9,14 @@ import 'package:offline_first_sync_drift/src/sync_engine.dart';
 /// push debounce) out of [SyncConfig], keeping the engine focused on sync logic.
 class SyncCoordinator {
   SyncCoordinator({
-    required SyncEngine engine,
+    required this._engine,
     this.pullOnStartup = false,
     this.autoInterval,
     this.pushOnOutboxChanges = false,
     this.pushDebounce = const Duration(seconds: 2),
     @Deprecated('Polling is replaced by outbox streams.')
     this.outboxPollInterval = const Duration(seconds: 1),
-  }) : _engine = engine;
+  });
 
   /// Build coordinator behavior from legacy [SyncConfig] flags.
   factory SyncCoordinator.fromLegacyConfig({
@@ -24,16 +24,14 @@ class SyncCoordinator {
     required SyncConfig config,
     Duration? outboxPollInterval,
     Duration? pushDebounce,
-  }) {
-    return SyncCoordinator(
-      engine: engine,
-      pullOnStartup: config.pullOnStartup,
-      autoInterval: config.reconcileInterval,
-      pushOnOutboxChanges: config.pushImmediately,
-      outboxPollInterval: outboxPollInterval ?? const Duration(seconds: 1),
-      pushDebounce: pushDebounce ?? const Duration(seconds: 2),
-    );
-  }
+  }) => SyncCoordinator(
+    engine: engine,
+    pullOnStartup: config.pullOnStartup,
+    autoInterval: config.reconcileInterval,
+    pushOnOutboxChanges: config.pushImmediately,
+    outboxPollInterval: outboxPollInterval ?? const Duration(seconds: 1),
+    pushDebounce: pushDebounce ?? const Duration(seconds: 2),
+  );
 
   final SyncEngine _engine;
 

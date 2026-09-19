@@ -8,13 +8,12 @@ import 'package:search_engine/src/models/searchable_table.dart';
 import 'package:search_engine/src/search_database.dart';
 import 'package:search_engine/src/transport/search_transport.dart';
 
-typedef SearchEngineErrorHandler =
-    void Function(
-      Object exception, [
-      StackTrace? stackTrace,
-      // ignore: avoid_annotating_with_dynamic
-      dynamic msg,
-    ]);
+typedef SearchEngineErrorHandler = void Function(
+  Object exception, [
+  StackTrace? stackTrace,
+  // ignore: avoid_annotating_with_dynamic
+  dynamic msg,
+]);
 
 /// Coordinates the queue + index pipeline:
 ///
@@ -30,20 +29,15 @@ typedef SearchEngineErrorHandler =
 /// incremental indexing).
 class SearchEngine {
   SearchEngine({
-    required SearchTransport transport,
-    required SearchDatabaseMixin database,
+    required this._transport,
+    required this._database,
     required Iterable<SearchableTable<dynamic, dynamic>> tables,
     FutureOr<dynamic> Function(String)? jsonDecoder,
-    String Function(String)? normalizer,
-    SearchEngineErrorHandler? errorHandler,
-    int maxPendingTries = 5,
-  }) : _transport = transport,
-       _database = database,
-       _tables = {for (final t in tables) t.kind: t},
-       _jsonDecoder = jsonDecoder ?? _defaultJsonDecoder,
-       _normalizer = normalizer,
-       _maxPendingTries = maxPendingTries,
-       _errorHandler = errorHandler;
+    this._normalizer,
+    this._errorHandler,
+    this._maxPendingTries = 5,
+  }) : _tables = {for (final t in tables) t.kind: t},
+       _jsonDecoder = jsonDecoder ?? _defaultJsonDecoder;
 
   final SearchTransport _transport;
   final SearchDatabaseMixin _database;
@@ -83,7 +77,9 @@ class SearchEngine {
   /// queue. Used by cursor-based indexing — every call is serialized through
   /// the engine's [Lock] so it cannot interleave with [processPendingItems].
   Future<void> indexNow(GlobalSearch item) async {
-    await _lock.synchronized(() => _transport.upsert(item.normalize(_normalizer)));
+    await _lock.synchronized(
+      () => _transport.upsert(item.normalize(_normalizer)),
+    );
   }
 
   /// Remove a row from the index directly, bypassing the pending queue.
@@ -93,7 +89,8 @@ class SearchEngine {
     required String userId,
   }) async {
     await _lock.synchronized(
-      () => _transport.delete(originalId: originalId, kind: kind, userId: userId),
+      () =>
+          _transport.delete(originalId: originalId, kind: kind, userId: userId),
     );
   }
 
@@ -102,7 +99,10 @@ class SearchEngine {
   /// Enqueues [items]. When [processNow] is `true`, also drains them into
   /// the search index immediately (used in tests and one-shot indexing
   /// flows).
-  Future<void> addSearchItems(List<PendingSearchItem> items, {bool processNow = false}) async {
+  Future<void> addSearchItems(
+    List<PendingSearchItem> items, {
+    bool processNow = false,
+  }) async {
     await _database.upsertPendingUserItems(items);
     if (!processNow) return;
     for (final item in items) {
@@ -113,7 +113,10 @@ class SearchEngine {
   /// Drains up to [batchSize] queued items for [userId] into the search
   /// index. Concurrent invocations are serialized through an internal
   /// [Lock] so the queue is not consumed twice in parallel.
-  Future<void> processPendingItems({required String userId, int batchSize = 5000}) async {
+  Future<void> processPendingItems({
+    required String userId,
+    int batchSize = 5000,
+  }) async {
     await _lock.synchronized(() async {
       try {
         final items = await _database.getPendingUserItems(
@@ -126,7 +129,11 @@ class SearchEngine {
           await _processSearchItem(item);
         }
       } catch (e, st) {
-        _errorHandler?.call(e, st, 'SearchEngine.processPendingItems failed: $e\n$st');
+        _errorHandler?.call(
+          e,
+          st,
+          'SearchEngine.processPendingItems failed: $e\n$st',
+        );
       }
     });
   }
@@ -140,7 +147,11 @@ class SearchEngine {
         return;
       }
       if (item.deleted) {
-        await _transport.delete(originalId: item.id, kind: item.kind, userId: item.userId);
+        await _transport.delete(
+          originalId: item.id,
+          kind: item.kind,
+          userId: item.userId,
+        );
       } else {
         final parsed = await table.toGlobalSearch(item);
         await _transport.upsert(parsed.normalize(_normalizer));
@@ -155,7 +166,11 @@ class SearchEngine {
       } catch (_) {
         /* swallow — log below already records the cause */
       }
-      _errorHandler?.call(e, st, 'SearchEngine._processSearchItem(${item.kind}/${item.id}) failed: $e\n$st');
+      _errorHandler?.call(
+        e,
+        st,
+        'SearchEngine._processSearchItem(${item.kind}/${item.id}) failed: $e\n$st',
+      );
     }
   }
 }

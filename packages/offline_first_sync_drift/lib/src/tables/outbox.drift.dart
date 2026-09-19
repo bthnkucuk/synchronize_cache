@@ -214,16 +214,12 @@ class $$SyncOutboxTableTableManager
         i0.TableManagerState(
           db: db,
           table: table,
-          createFilteringComposer:
-              () => i2.$$SyncOutboxTableFilterComposer($db: db, $table: table),
-          createOrderingComposer:
-              () =>
-                  i2.$$SyncOutboxTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer:
-              () => i2.$$SyncOutboxTableAnnotationComposer(
-                $db: db,
-                $table: table,
-              ),
+          createFilteringComposer: () =>
+              i2.$$SyncOutboxTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              i2.$$SyncOutboxTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              i2.$$SyncOutboxTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 i0.Value<String> opId = const i0.Value.absent(),
@@ -272,16 +268,18 @@ class $$SyncOutboxTableTableManager
                 changedFields: changedFields,
                 rowid: rowid,
               ),
-          withReferenceMapper:
-              (p0) =>
-                  p0
-                      .map(
-                        (e) => (
-                          e.readTable(table),
-                          i0.BaseReferences(db, table, e),
-                        ),
-                      )
-                      .toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<i2.$SyncOutboxTable, i1.SyncOutboxData>(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i2.$SyncOutboxTable,
+                    i1.SyncOutboxData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -507,40 +505,34 @@ class $SyncOutboxTable extends i3.SyncOutbox
   i1.SyncOutboxData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return i1.SyncOutboxData(
-      opId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}op_id'],
-          )!,
-      kind:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}kind'],
-          )!,
-      entityId:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}entity_id'],
-          )!,
-      op:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.string,
-            data['${effectivePrefix}op'],
-          )!,
+      opId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}op_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      entityId: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}entity_id'],
+      )!,
+      op: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.string,
+        data['${effectivePrefix}op'],
+      )!,
       payload: attachedDatabase.typeMapping.read(
         i0.DriftSqlType.string,
         data['${effectivePrefix}payload'],
       ),
-      ts:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.int,
-            data['${effectivePrefix}ts'],
-          )!,
-      tryCount:
-          attachedDatabase.typeMapping.read(
-            i0.DriftSqlType.int,
-            data['${effectivePrefix}try_count'],
-          )!,
+      ts: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.int,
+        data['${effectivePrefix}ts'],
+      )!,
+      tryCount: attachedDatabase.typeMapping.read(
+        i0.DriftSqlType.int,
+        data['${effectivePrefix}try_count'],
+      )!,
       baseUpdatedAt: attachedDatabase.typeMapping.read(
         i0.DriftSqlType.int,
         data['${effectivePrefix}base_updated_at'],

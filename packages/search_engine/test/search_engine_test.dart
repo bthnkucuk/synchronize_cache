@@ -14,7 +14,8 @@ class _MockQueueStore extends Mock implements SearchDatabaseMixin {}
 
 class _MockSearchTransport extends Mock implements SearchTransport {}
 
-class _FakePendingSearchItemList extends Fake implements List<PendingSearchItem> {}
+class _FakePendingSearchItemList extends Fake
+    implements List<PendingSearchItem> {}
 
 class _FakeGlobalSearch extends Fake implements GlobalSearch {}
 
@@ -28,8 +29,17 @@ void main() {
   late _MockSearchTransport mockTransport;
   late SearchEngine searchEngine;
 
-  PendingSearchItem makeItem({String id = '1', String kind = 'dummy', bool deleted = false}) =>
-      PendingSearchItem(userId: 'test-user', kind: kind, id: id, deleted: deleted, data: const {'text': 'hello'});
+  PendingSearchItem makeItem({
+    String id = '1',
+    String kind = 'dummy',
+    bool deleted = false,
+  }) => PendingSearchItem(
+    userId: 'test-user',
+    kind: kind,
+    id: id,
+    deleted: deleted,
+    data: const {'text': 'hello'},
+  );
 
   GlobalSearch parseDummy(PendingSearchItem item) => GlobalSearch(
     originalId: item.id,
@@ -44,18 +54,19 @@ void main() {
     String kind,
     GlobalSearch Function(PendingSearchItem) parse,
   ) => searchableTable<GeneratedDatabase, Map<String, dynamic>>(
-        kind: kind,
-        watch: (_, __) => const Stream.empty(),
-        idOf: (row) => row['id'] as String,
-        toJson: (row) => row,
-        toGlobalSearch: parse,
-      );
+    kind: kind,
+    watch: (_, _) => const Stream.empty(),
+    idOf: (row) => row['id'] as String,
+    toJson: (row) => row,
+    toGlobalSearch: parse,
+  );
 
   setUp(() {
     mockQueue = _MockQueueStore();
     mockTransport = _MockSearchTransport();
 
-    when(() => mockQueue.upsertPendingUserItems(any())).thenAnswer((_) async {});
+    when(() => mockQueue.upsertPendingUserItems(any()))
+        .thenAnswer((_) async {});
     when(
       () => mockQueue.deletePendingUserItem(
         id: any(named: 'id'),
@@ -97,23 +108,38 @@ void main() {
       verify(() => mockQueue.upsertPendingUserItems([item])).called(1);
       verify(
         () => mockTransport.upsert(
-          any(that: isA<GlobalSearch>().having((g) => g.originalId, 'originalId', '1')),
+          any(
+            that: isA<GlobalSearch>().having(
+              (g) => g.originalId,
+              'originalId',
+              '1',
+            ),
+          ),
         ),
       ).called(1);
-      verify(() => mockQueue.deletePendingUserItem(id: '1', kind: 'dummy')).called(1);
+      verify(() => mockQueue.deletePendingUserItem(id: '1', kind: 'dummy'))
+          .called(1);
     });
 
-    test('processes deletes via transport.delete instead of transport.upsert', () async {
-      final item = makeItem(deleted: true);
+    test(
+      'processes deletes via transport.delete instead of transport.upsert',
+      () async {
+        final item = makeItem(deleted: true);
 
-      await searchEngine.addSearchItems([item], processNow: true);
+        await searchEngine.addSearchItems([item], processNow: true);
 
-      verify(
-        () => mockTransport.delete(originalId: '1', kind: 'dummy', userId: 'test-user'),
-      ).called(1);
-      verifyNever(() => mockTransport.upsert(any()));
-      verify(() => mockQueue.deletePendingUserItem(id: '1', kind: 'dummy')).called(1);
-    });
+        verify(
+          () => mockTransport.delete(
+            originalId: '1',
+            kind: 'dummy',
+            userId: 'test-user',
+          ),
+        ).called(1);
+        verifyNever(() => mockTransport.upsert(any()));
+        verify(() => mockQueue.deletePendingUserItem(id: '1', kind: 'dummy'))
+            .called(1);
+      },
+    );
 
     test('drops queue entry when no binding matches the kind', () async {
       final item = makeItem(kind: 'unregistered');
@@ -121,7 +147,9 @@ void main() {
       await searchEngine.addSearchItems([item], processNow: true);
 
       verifyNever(() => mockTransport.upsert(any()));
-      verify(() => mockQueue.deletePendingUserItem(id: '1', kind: 'unregistered')).called(1);
+      verify(
+        () => mockQueue.deletePendingUserItem(id: '1', kind: 'unregistered'),
+      ).called(1);
     });
   });
 
@@ -150,10 +178,17 @@ void main() {
       ).called(1);
       verify(
         () => mockTransport.upsert(
-          any(that: isA<GlobalSearch>().having((g) => g.originalId, 'originalId', '1')),
+          any(
+            that: isA<GlobalSearch>().having(
+              (g) => g.originalId,
+              'originalId',
+              '1',
+            ),
+          ),
         ),
       ).called(1);
-      verify(() => mockQueue.deletePendingUserItem(id: '1', kind: 'dummy')).called(1);
+      verify(() => mockQueue.deletePendingUserItem(id: '1', kind: 'dummy'))
+          .called(1);
     });
 
     test('swallows errors thrown from a binding parser', () async {

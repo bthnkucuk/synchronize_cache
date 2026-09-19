@@ -34,14 +34,13 @@ void main() {
   late Database db;
 
   setUp(() {
-    db =
-        sqlite3.openInMemory()
-          ..execute('CREATE TABLE blob_text (v TEXT)')
-          ..execute('CREATE TABLE blob_text_nullable (v TEXT)');
+    db = sqlite3.openInMemory()
+      ..execute('CREATE TABLE blob_text (v TEXT)')
+      ..execute('CREATE TABLE blob_text_nullable (v TEXT)');
   });
 
   tearDown(() {
-    db.dispose();
+    db.close();
   });
 
   void write(String table, Object? sqlValue) {
@@ -50,7 +49,7 @@ void main() {
     try {
       stmt.execute([sqlValue]);
     } finally {
-      stmt.dispose();
+      stmt.close();
     }
   }
 

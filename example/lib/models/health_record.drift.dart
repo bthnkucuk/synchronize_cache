@@ -207,7 +207,16 @@ class $$HealthRecordsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), i0.BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<i2.$HealthRecordsTable, i1.HealthRecord>(table),
+                  i0.BaseReferences<
+                    i0.GeneratedDatabase,
+                    i2.$HealthRecordsTable,
+                    i1.HealthRecord
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),

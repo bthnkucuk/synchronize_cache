@@ -16,18 +16,17 @@ void main() {
     int pushConcurrency = 1,
     bool enableBatch = false,
     int batchSize = 100,
-  }) =>
-      RestTransport(
-        base: Uri.parse('https://api.example.com'),
-        token: () async => 'Bearer test-token',
-        client: client,
-        backoffMin: const Duration(milliseconds: 10),
-        backoffMax: const Duration(milliseconds: 100),
-        maxRetries: 3,
-        pushConcurrency: pushConcurrency,
-        enableBatch: enableBatch,
-        batchSize: batchSize,
-      );
+  }) => RestTransport(
+    base: Uri.parse('https://api.example.com'),
+    token: () async => 'Bearer test-token',
+    client: client,
+    backoffMin: const Duration(milliseconds: 10),
+    backoffMax: const Duration(milliseconds: 100),
+    maxRetries: 3,
+    pushConcurrency: pushConcurrency,
+    enableBatch: enableBatch,
+    batchSize: batchSize,
+  );
 
   group('Pull operations', () {
     test('pull returns items successfully', () async {
@@ -41,8 +40,16 @@ void main() {
         return http.Response(
           jsonEncode({
             'items': [
-              {'id': '1', 'name': 'Test 1', 'updated_at': '2024-01-01T00:00:00Z'},
-              {'id': '2', 'name': 'Test 2', 'updated_at': '2024-01-02T00:00:00Z'},
+              {
+                'id': '1',
+                'name': 'Test 1',
+                'updated_at': '2024-01-01T00:00:00Z',
+              },
+              {
+                'id': '2',
+                'name': 'Test 2',
+                'updated_at': '2024-01-02T00:00:00Z',
+              },
             ],
             'nextPageToken': 'token123',
           }),
@@ -69,7 +76,10 @@ void main() {
         expect(request.url.queryParameters['pageToken'], 'next-page');
 
         return http.Response(
-          jsonEncode({'items': <Map<String, Object?>>[], 'nextPageToken': null}),
+          jsonEncode({
+            'items': <Map<String, Object?>>[],
+            'nextPageToken': null,
+          }),
           200,
         );
       });
@@ -105,8 +115,9 @@ void main() {
     });
 
     test('pull throws on error response', () async {
-      final client = MockClient((request) async =>
-          http.Response('Internal Server Error', 500));
+      final client = MockClient(
+        (request) async => http.Response('Internal Server Error', 500),
+      );
 
       transport = createTransport(client);
 
@@ -121,10 +132,10 @@ void main() {
     });
 
     test('pull handles empty response', () async {
-      final client = MockClient((request) async => http.Response(
-            jsonEncode({'items': <Map<String, Object?>>[]}),
-            200,
-          ));
+      final client = MockClient(
+        (request) async =>
+            http.Response(jsonEncode({'items': <Map<String, Object?>>[]}), 200),
+      );
 
       transport = createTransport(client);
 
@@ -152,7 +163,11 @@ void main() {
         expect(body['name'], 'Test');
 
         return http.Response(
-          jsonEncode({'id': 'entity-1', 'name': 'Test', 'updated_at': '2024-01-01T00:00:00Z'}),
+          jsonEncode({
+            'id': 'entity-1',
+            'name': 'Test',
+            'updated_at': '2024-01-01T00:00:00Z',
+          }),
           200,
           headers: {'etag': 'v1'},
         );
@@ -166,7 +181,7 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'id': 'entity-1', 'name': 'Test'},
+          payloadJson: const {'id': 'entity-1', 'name': 'Test'},
         ),
       ]);
 
@@ -181,10 +196,7 @@ void main() {
         expect(request.method, 'POST');
         expect(request.url.path, '/test_entity');
 
-        return http.Response(
-          jsonEncode({'id': 'new-id', 'name': 'New'}),
-          201,
-        );
+        return http.Response(jsonEncode({'id': 'new-id', 'name': 'New'}), 201);
       });
 
       transport = createTransport(client);
@@ -195,7 +207,7 @@ void main() {
           kind: 'test_entity',
           id: '',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'New'},
+          payloadJson: const {'name': 'New'},
         ),
       ]);
     });
@@ -217,7 +229,7 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Test'},
+          payloadJson: const {'name': 'Test'},
           baseUpdatedAt: baseTime,
         ),
       ]);
@@ -240,7 +252,7 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          ),
+        ),
       ]);
 
       expect(result.results.length, 1);
@@ -274,14 +286,14 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Test 1'},
+          payloadJson: const {'name': 'Test 1'},
         ),
         UpsertOp(
           opId: 'op-2',
           kind: 'test_entity',
           id: 'entity-2',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Test 2'},
+          payloadJson: const {'name': 'Test 2'},
         ),
       ]);
 
@@ -323,7 +335,11 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       // Verify that we have 3 pending requests
-      expect(pendingRequests.length, 3, reason: 'All 3 requests should be fired in parallel');
+      expect(
+        pendingRequests.length,
+        3,
+        reason: 'All 3 requests should be fired in parallel',
+      );
 
       // Release all requests
       for (final c in pendingRequests) {
@@ -363,7 +379,11 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       // Should have first batch of 2 pending
-      expect(pendingRequests.length, 2, reason: 'First batch of 2 should be active');
+      expect(
+        pendingRequests.length,
+        2,
+        reason: 'First batch of 2 should be active',
+      );
 
       // Release first batch
       pendingRequests[0].complete();
@@ -374,7 +394,11 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       // Should have 4 total requests (2 completed, 2 new pending)
-      expect(pendingRequests.length, 4, reason: 'Second batch should have started');
+      expect(
+        pendingRequests.length,
+        4,
+        reason: 'Second batch should have started',
+      );
 
       // Release remaining
       pendingRequests[2].complete();
@@ -389,45 +413,56 @@ void main() {
 
       final client = MockClient((request) async {
         activeRequests++;
-        if (activeRequests > maxActiveRequests) maxActiveRequests = activeRequests;
-        
+        if (activeRequests > maxActiveRequests) {
+          maxActiveRequests = activeRequests;
+        }
+
         // Simulate some work
         await Future<void>.delayed(const Duration(milliseconds: 10));
-        
+
         activeRequests--;
         return http.Response(jsonEncode({}), 200);
       });
 
       transport = createTransport(client, pushConcurrency: 1);
 
-      final ops = List.generate(3, (i) => UpsertOp(
-        opId: 'op-$i',
-        kind: 'test_entity',
-        id: 'entity-$i',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'name': 'Item $i'},
-      ));
+      final ops = List.generate(
+        3,
+        (i) => UpsertOp(
+          opId: 'op-$i',
+          kind: 'test_entity',
+          id: 'entity-$i',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: {'name': 'Item $i'},
+        ),
+      );
 
       await transport.push(ops);
 
-      expect(maxActiveRequests, 1, reason: 'Should never have more than 1 active request');
+      expect(
+        maxActiveRequests,
+        1,
+        reason: 'Should never have more than 1 active request',
+      );
     });
   });
 
   group('Conflict handling (409)', () {
     test('push returns PushConflict on 409', () async {
       final serverTimestamp = DateTime(2024, 1, 15, 12, 0, 0).toUtc();
-      final client = MockClient((request) async => http.Response(
-            jsonEncode({
-              'error': 'conflict',
-              'current': {
-                'id': 'entity-1',
-                'name': 'Server Name',
-                'updatedAt': serverTimestamp.toIso8601String(),
-              },
-            }),
-            409,
-          ));
+      final client = MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'error': 'conflict',
+            'current': {
+              'id': 'entity-1',
+              'name': 'Server Name',
+              'updatedAt': serverTimestamp.toIso8601String(),
+            },
+          }),
+          409,
+        ),
+      );
 
       transport = createTransport(client);
 
@@ -437,7 +472,7 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Local Name'},
+          payloadJson: const {'name': 'Local Name'},
         ),
       ]);
 
@@ -449,18 +484,20 @@ void main() {
     });
 
     test('push handles conflict with serverData format', () async {
-      final client = MockClient((request) async => http.Response(
-            jsonEncode({
-              'serverData': {
-                'id': 'entity-1',
-                'name': 'Server Name',
-                'updated_at': '2024-01-15T12:00:00Z',
-              },
-              'serverTimestamp': '2024-01-15T12:00:00Z',
-              'version': 'v2',
-            }),
-            409,
-          ));
+      final client = MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'serverData': {
+              'id': 'entity-1',
+              'name': 'Server Name',
+              'updated_at': '2024-01-15T12:00:00Z',
+            },
+            'serverTimestamp': '2024-01-15T12:00:00Z',
+            'version': 'v2',
+          }),
+          409,
+        ),
+      );
 
       transport = createTransport(client);
 
@@ -470,7 +507,7 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Local Name'},
+          payloadJson: const {'name': 'Local Name'},
         ),
       ]);
 
@@ -480,12 +517,14 @@ void main() {
     });
 
     test('delete returns PushConflict on 409', () async {
-      final client = MockClient((request) async => http.Response(
-            jsonEncode({
-              'current': {'id': 'entity-1', 'name': 'Modified'},
-            }),
-            409,
-          ));
+      final client = MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'current': {'id': 'entity-1', 'name': 'Modified'},
+          }),
+          409,
+        ),
+      );
 
       transport = createTransport(client);
 
@@ -504,7 +543,9 @@ void main() {
 
   group('Not found handling (404)', () {
     test('push returns PushNotFound on 404', () async {
-      final client = MockClient((request) async => http.Response('Not Found', 404));
+      final client = MockClient(
+        (request) async => http.Response('Not Found', 404),
+      );
 
       transport = createTransport(client);
 
@@ -514,7 +555,7 @@ void main() {
           kind: 'test_entity',
           id: 'nonexistent',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Test'},
+          payloadJson: const {'name': 'Test'},
         ),
       ]);
 
@@ -522,7 +563,9 @@ void main() {
     });
 
     test('delete returns PushNotFound on 404', () async {
-      final client = MockClient((request) async => http.Response('Not Found', 404));
+      final client = MockClient(
+        (request) async => http.Response('Not Found', 404),
+      );
 
       transport = createTransport(client);
 
@@ -558,7 +601,7 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Forced'},
+          payloadJson: const {'name': 'Forced'},
         ),
       );
 
@@ -602,7 +645,7 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Test'},
+          payloadJson: const {'name': 'Test'},
           baseUpdatedAt: DateTime.now().toUtc(),
         ),
       );
@@ -637,18 +680,24 @@ void main() {
     });
 
     test('fetch returns FetchNotFound on 404', () async {
-      final client = MockClient((request) async => http.Response('Not Found', 404));
+      final client = MockClient(
+        (request) async => http.Response('Not Found', 404),
+      );
 
       transport = createTransport(client);
 
-      final result = await transport.fetch(kind: 'test_entity', id: 'nonexistent');
+      final result = await transport.fetch(
+        kind: 'test_entity',
+        id: 'nonexistent',
+      );
 
       expect(result, isA<FetchNotFound>());
     });
 
     test('fetch returns FetchError on other errors', () async {
-      final client = MockClient((request) async =>
-          http.Response('Internal Server Error', 500));
+      final client = MockClient(
+        (request) async => http.Response('Internal Server Error', 500),
+      );
 
       transport = createTransport(client);
 
@@ -678,7 +727,10 @@ void main() {
         if (attempts < 3) {
           return http.Response('Server Error', 500);
         }
-        return http.Response(jsonEncode({'items': <Map<String, Object?>>[]}), 200);
+        return http.Response(
+          jsonEncode({'items': <Map<String, Object?>>[]}),
+          200,
+        );
       });
 
       transport = createTransport(client);
@@ -700,7 +752,10 @@ void main() {
         if (attempts < 2) {
           return http.Response('Too Many Requests', 429);
         }
-        return http.Response(jsonEncode({'items': <Map<String, Object?>>[]}), 200);
+        return http.Response(
+          jsonEncode({'items': <Map<String, Object?>>[]}),
+          200,
+        );
       });
 
       transport = createTransport(client);
@@ -726,7 +781,10 @@ void main() {
             headers: {'retry-after': '1'},
           );
         }
-        return http.Response(jsonEncode({'items': <Map<String, Object?>>[]}), 200);
+        return http.Response(
+          jsonEncode({'items': <Map<String, Object?>>[]}),
+          200,
+        );
       });
 
       transport = createTransport(client);
@@ -772,7 +830,10 @@ void main() {
         if (attempts < 3) {
           throw Exception('Network error');
         }
-        return http.Response(jsonEncode({'items': <Map<String, Object?>>[]}), 200);
+        return http.Response(
+          jsonEncode({'items': <Map<String, Object?>>[]}),
+          200,
+        );
       });
 
       transport = createTransport(client);
@@ -824,8 +885,9 @@ void main() {
     });
 
     test('health returns false on error', () async {
-      final client = MockClient((request) async =>
-          http.Response('Service Unavailable', 503));
+      final client = MockClient(
+        (request) async => http.Response('Service Unavailable', 503),
+      );
 
       transport = createTransport(client);
 
@@ -861,7 +923,7 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Test'},
+          payloadJson: const {'name': 'Test'},
         ),
       ]);
 
@@ -877,7 +939,9 @@ void main() {
           return http.Response(jsonEncode({}), 200);
         } else {
           return http.Response(
-            jsonEncode({'current': {'id': 'entity-2'}}),
+            jsonEncode({
+              'current': {'id': 'entity-2'},
+            }),
             409,
           );
         }
@@ -891,14 +955,14 @@ void main() {
           kind: 'test_entity',
           id: 'entity-1',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Test 1'},
+          payloadJson: const {'name': 'Test 1'},
         ),
         UpsertOp(
           opId: 'op-2',
           kind: 'test_entity',
           id: 'entity-2',
           localTimestamp: DateTime.now().toUtc(),
-          payloadJson: {'name': 'Test 2'},
+          payloadJson: const {'name': 'Test 2'},
         ),
       ]);
 
@@ -933,7 +997,7 @@ void main() {
             'results': [
               {'opId': 'op-1', 'statusCode': 200, 'version': 'v1'},
               {'opId': 'op-2', 'statusCode': 204},
-            ]
+            ],
           }),
           200,
         );
@@ -947,7 +1011,7 @@ void main() {
           kind: 'test',
           id: '1',
           localTimestamp: DateTime.now(),
-          payloadJson: {'name': 'Test 1'},
+          payloadJson: const {'name': 'Test 1'},
         ),
         DeleteOp(
           opId: 'op-2',
@@ -962,49 +1026,55 @@ void main() {
     });
 
     test('handles mixed results in batch', () async {
-      final client = MockClient((request) async => http.Response(
-            jsonEncode({
-              'results': [
-                {'opId': 'op-1', 'statusCode': 200},
-                {
-                  'opId': 'op-2',
-                  'statusCode': 409,
-                  'error': {
-                    'current': {'id': '2', 'version': 'v2'}
-                  }
+      final client = MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'results': [
+              {'opId': 'op-1', 'statusCode': 200},
+              {
+                'opId': 'op-2',
+                'statusCode': 409,
+                'error': {
+                  'current': {'id': '2', 'version': 'v2'},
                 },
-                {'opId': 'op-3', 'statusCode': 404},
-                {'opId': 'op-4', 'statusCode': 500},
-              ]
-            }),
-            200,
-          ));
+              },
+              {'opId': 'op-3', 'statusCode': 404},
+              {'opId': 'op-4', 'statusCode': 500},
+            ],
+          }),
+          200,
+        ),
+      );
 
       transport = createTransport(client, enableBatch: true);
 
       final result = await transport.push([
         UpsertOp(
-            opId: 'op-1',
-            kind: 'test',
-            id: '1',
-            localTimestamp: DateTime.now(),
-            payloadJson: {}),
+          opId: 'op-1',
+          kind: 'test',
+          id: '1',
+          localTimestamp: DateTime.now(),
+          payloadJson: const {},
+        ),
         UpsertOp(
-            opId: 'op-2',
-            kind: 'test',
-            id: '2',
-            localTimestamp: DateTime.now(),
-            payloadJson: {}),
+          opId: 'op-2',
+          kind: 'test',
+          id: '2',
+          localTimestamp: DateTime.now(),
+          payloadJson: const {},
+        ),
         DeleteOp(
-            opId: 'op-3',
-            kind: 'test',
-            id: '3',
-            localTimestamp: DateTime.now()),
+          opId: 'op-3',
+          kind: 'test',
+          id: '3',
+          localTimestamp: DateTime.now(),
+        ),
         DeleteOp(
-            opId: 'op-4',
-            kind: 'test',
-            id: '4',
-            localTimestamp: DateTime.now()),
+          opId: 'op-4',
+          kind: 'test',
+          id: '4',
+          localTimestamp: DateTime.now(),
+        ),
       ]);
 
       expect(result.results[0].isSuccess, isTrue);
@@ -1028,14 +1098,18 @@ void main() {
 
       transport = createTransport(client, enableBatch: true, batchSize: 2);
 
-      await transport.push(List.generate(
+      await transport.push(
+        List.generate(
           5,
           (i) => UpsertOp(
-              opId: '$i',
-              kind: 'test',
-              id: '$i',
-              localTimestamp: DateTime.now(),
-              payloadJson: {})));
+            opId: '$i',
+            kind: 'test',
+            id: '$i',
+            localTimestamp: DateTime.now(),
+            payloadJson: const {},
+          ),
+        ),
+      );
 
       expect(requestCount, 3); // 2 + 2 + 1
     });
@@ -1055,22 +1129,28 @@ void main() {
       });
 
       // batchSize=1, concurrency=2 -> should produce 2 parallel requests
-      transport = createTransport(client,
-          enableBatch: true, batchSize: 1, pushConcurrency: 2);
+      transport = createTransport(
+        client,
+        enableBatch: true,
+        batchSize: 1,
+        pushConcurrency: 2,
+      );
 
       final future = transport.push([
         UpsertOp(
-            opId: '1',
-            kind: 'test',
-            id: '1',
-            localTimestamp: DateTime.now(),
-            payloadJson: {}),
+          opId: '1',
+          kind: 'test',
+          id: '1',
+          localTimestamp: DateTime.now(),
+          payloadJson: const {},
+        ),
         UpsertOp(
-            opId: '2',
-            kind: 'test',
-            id: '2',
-            localTimestamp: DateTime.now(),
-            payloadJson: {}),
+          opId: '2',
+          kind: 'test',
+          id: '2',
+          localTimestamp: DateTime.now(),
+          payloadJson: const {},
+        ),
       ]);
 
       await Future<void>.delayed(Duration.zero);

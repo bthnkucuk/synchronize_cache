@@ -52,17 +52,16 @@ void main() {
   });
 
   PullService<TestDatabase> buildService({SyncConfig? config}) => PullService(
-        db: db,
-        transport: transport,
-        tables: tables,
-        cursorService: cursorService,
-        config: config ?? const SyncConfig(pageSize: 100),
-        events: events,
-      );
+    db: db,
+    transport: transport,
+    tables: tables,
+    cursorService: cursorService,
+    config: config ?? const SyncConfig(pageSize: 100),
+    events: events,
+  );
 
   group('PullService.pullKind', () {
-    test('returns 0 for unregistered kind without calling transport',
-        () async {
+    test('returns 0 for unregistered kind without calling transport', () async {
       final service = buildService();
 
       final n = await service.pullKind('unknown');
@@ -87,7 +86,7 @@ void main() {
           afterId: any(named: 'afterId'),
           includeDeleted: any(named: 'includeDeleted'),
         ),
-      ).thenAnswer((_) async => PullPage(items: []));
+      ).thenAnswer((_) async => const PullPage(items: []));
 
       final service = buildService();
       final n = await service.pullKind('test_item');
@@ -105,65 +104,67 @@ void main() {
       ).called(1);
     });
 
-    test('pulls a single page, writes rows, advances cursor, emits events',
-        () async {
-      final ts1 = DateTime.utc(2024, 1, 1, 10);
-      final ts2 = DateTime.utc(2024, 1, 1, 11);
+    test(
+      'pulls a single page, writes rows, advances cursor, emits events',
+      () async {
+        final ts1 = DateTime.utc(2024, 1, 1, 10);
+        final ts2 = DateTime.utc(2024, 1, 1, 11);
 
-      when(
-        () => transport.pull(
-          kind: any(named: 'kind'),
-          updatedSince: any(named: 'updatedSince'),
-          pageSize: any(named: 'pageSize'),
-          pageToken: any(named: 'pageToken'),
-          afterId: any(named: 'afterId'),
-          includeDeleted: any(named: 'includeDeleted'),
-        ),
-      ).thenAnswer(
-        (_) async => PullPage(
-          items: [
-            {'id': 'a', 'updated_at': ts1.toIso8601String(), 'name': 'A'},
-            {'id': 'b', 'updated_at': ts2.toIso8601String(), 'name': 'B'},
-          ],
-        ),
-      );
+        when(
+          () => transport.pull(
+            kind: any(named: 'kind'),
+            updatedSince: any(named: 'updatedSince'),
+            pageSize: any(named: 'pageSize'),
+            pageToken: any(named: 'pageToken'),
+            afterId: any(named: 'afterId'),
+            includeDeleted: any(named: 'includeDeleted'),
+          ),
+        ).thenAnswer(
+          (_) async => PullPage(
+            items: [
+              {'id': 'a', 'updated_at': ts1.toIso8601String(), 'name': 'A'},
+              {'id': 'b', 'updated_at': ts2.toIso8601String(), 'name': 'B'},
+            ],
+          ),
+        );
 
-      final captured = <SyncEvent>[];
-      final sub = events.stream.listen(captured.add);
+        final captured = <SyncEvent>[];
+        final sub = events.stream.listen(captured.add);
 
-      final service = buildService(config: const SyncConfig(pageSize: 100));
-      final n = await service.pullKind('test_item');
+        final service = buildService(config: const SyncConfig(pageSize: 100));
+        final n = await service.pullKind('test_item');
 
-      // 2 items processed, no nextPageToken and items < pageSize → loop ends.
-      expect(n, 2);
-      verify(
-        () => transport.pull(
-          kind: 'test_item',
-          updatedSince: any(named: 'updatedSince'),
-          pageSize: 100,
-          pageToken: any(named: 'pageToken'),
-          afterId: any(named: 'afterId'),
-          includeDeleted: true,
-        ),
-      ).called(1);
+        // 2 items processed, no nextPageToken and items < pageSize → loop ends.
+        expect(n, 2);
+        verify(
+          () => transport.pull(
+            kind: 'test_item',
+            updatedSince: any(named: 'updatedSince'),
+            pageSize: 100,
+            pageToken: any(named: 'pageToken'),
+            afterId: any(named: 'afterId'),
+            includeDeleted: true,
+          ),
+        ).called(1);
 
-      // Local rows persisted.
-      final rows = await db.select(db.testItems).get();
-      expect(rows.map((r) => r.id).toList()..sort(), ['a', 'b']);
+        // Local rows persisted.
+        final rows = await db.select(db.testItems).get();
+        expect(rows.map((r) => r.id).toList()..sort(), ['a', 'b']);
 
-      // Cursor advanced to last item.
-      final cur = await cursorService.get('test_item');
-      expect(cur, isNot(null));
-      expect(cur!.ts, ts2);
-      expect(cur.lastId, 'b');
+        // Cursor advanced to last item.
+        final cur = await cursorService.get('test_item');
+        expect(cur, isNot(null));
+        expect(cur!.ts, ts2);
+        expect(cur.lastId, 'b');
 
-      await Future<void>.delayed(Duration.zero);
-      await sub.cancel();
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
 
-      expect(captured.whereType<CacheUpdateEvent>(), isNotEmpty);
-      expect(captured.whereType<PullPageProcessedEvent>(), hasLength(1));
-      expect(captured.whereType<SyncProgress>(), isNotEmpty);
-    });
+        expect(captured.whereType<CacheUpdateEvent>(), isNotEmpty);
+        expect(captured.whereType<PullPageProcessedEvent>(), hasLength(1));
+        expect(captured.whereType<SyncProgress>(), isNotEmpty);
+      },
+    );
 
     test('paginates while a nextPageToken is returned', () async {
       final ts1 = DateTime.utc(2024, 1, 1, 10);
@@ -197,7 +198,7 @@ void main() {
             // No token and (items < pageSize) → loop terminates.
           );
         }
-        return PullPage(items: []);
+        return const PullPage(items: []);
       });
 
       final service = buildService(config: const SyncConfig(pageSize: 100));
@@ -268,7 +269,7 @@ void main() {
               ],
             );
           }
-          return PullPage(items: []);
+          return const PullPage(items: []);
         });
 
         final service = buildService(config: const SyncConfig(pageSize: 1));
@@ -282,8 +283,7 @@ void main() {
       },
     );
 
-    test('throws SyncOperationException when item is missing updatedAt',
-        () async {
+    test('throws SyncOperationException when item is missing updatedAt', () async {
       when(
         () => transport.pull(
           kind: any(named: 'kind'),
@@ -303,7 +303,7 @@ void main() {
               'updated_at': DateTime.utc(2024).toIso8601String(),
               'name': 'A',
             },
-            {'id': 'b', 'name': 'B'},
+            const {'id': 'b', 'name': 'B'},
           ],
         ),
       );
@@ -346,65 +346,69 @@ void main() {
       }
     });
 
-    test('rethrows existing SyncException as-is (no double-wrapping)',
-        () async {
-      const original = NetworkException('connection refused');
-      when(
-        () => transport.pull(
-          kind: any(named: 'kind'),
-          updatedSince: any(named: 'updatedSince'),
-          pageSize: any(named: 'pageSize'),
-          pageToken: any(named: 'pageToken'),
-          afterId: any(named: 'afterId'),
-          includeDeleted: any(named: 'includeDeleted'),
-        ),
-      ).thenThrow(original);
+    test(
+      'rethrows existing SyncException as-is (no double-wrapping)',
+      () async {
+        const original = NetworkException('connection refused');
+        when(
+          () => transport.pull(
+            kind: any(named: 'kind'),
+            updatedSince: any(named: 'updatedSince'),
+            pageSize: any(named: 'pageSize'),
+            pageToken: any(named: 'pageToken'),
+            afterId: any(named: 'afterId'),
+            includeDeleted: any(named: 'includeDeleted'),
+          ),
+        ).thenThrow(original);
 
-      final service = buildService();
+        final service = buildService();
 
-      expect(
-        () => service.pullKind('test_item'),
-        throwsA(
-          // Must be the same NetworkException instance, not wrapped.
-          predicate<Object?>((e) => identical(e, original)),
-        ),
-      );
-    });
+        expect(
+          () => service.pullKind('test_item'),
+          throwsA(
+            // Must be the same NetworkException instance, not wrapped.
+            predicate<Object?>((e) => identical(e, original)),
+          ),
+        );
+      },
+    );
 
-    test('passes cursor-derived updatedSince and afterId to transport',
-        () async {
-      // Pre-seed cursor.
-      final since = DateTime.utc(2023, 12, 31);
-      await cursorService.set(
-        'test_item',
-        Cursor(ts: since, lastId: 'prev-id'),
-      );
+    test(
+      'passes cursor-derived updatedSince and afterId to transport',
+      () async {
+        // Pre-seed cursor.
+        final since = DateTime.utc(2023, 12, 31);
+        await cursorService.set(
+          'test_item',
+          Cursor(ts: since, lastId: 'prev-id'),
+        );
 
-      when(
-        () => transport.pull(
-          kind: any(named: 'kind'),
-          updatedSince: any(named: 'updatedSince'),
-          pageSize: any(named: 'pageSize'),
-          pageToken: any(named: 'pageToken'),
-          afterId: any(named: 'afterId'),
-          includeDeleted: any(named: 'includeDeleted'),
-        ),
-      ).thenAnswer((_) async => PullPage(items: []));
+        when(
+          () => transport.pull(
+            kind: any(named: 'kind'),
+            updatedSince: any(named: 'updatedSince'),
+            pageSize: any(named: 'pageSize'),
+            pageToken: any(named: 'pageToken'),
+            afterId: any(named: 'afterId'),
+            includeDeleted: any(named: 'includeDeleted'),
+          ),
+        ).thenAnswer((_) async => const PullPage(items: []));
 
-      final service = buildService();
-      await service.pullKind('test_item');
+        final service = buildService();
+        await service.pullKind('test_item');
 
-      verify(
-        () => transport.pull(
-          kind: 'test_item',
-          updatedSince: since,
-          pageSize: any(named: 'pageSize'),
-          pageToken: null,
-          afterId: 'prev-id',
-          includeDeleted: true,
-        ),
-      ).called(1);
-    });
+        verify(
+          () => transport.pull(
+            kind: 'test_item',
+            updatedSince: since,
+            pageSize: any(named: 'pageSize'),
+            pageToken: null,
+            afterId: 'prev-id',
+            includeDeleted: true,
+          ),
+        ).called(1);
+      },
+    );
   });
 
   group('PullService.pullKinds', () {

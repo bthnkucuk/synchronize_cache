@@ -3,8 +3,11 @@
 import 'dart:ui' show AppLifecycleState;
 
 import 'package:drift/drift.dart' show GeneratedDatabase;
-import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver;
-import 'package:offline_first_sync_drift/offline_first_sync_drift.dart' show SyncEngine;
+import 'package:flutter/widgets.dart'
+    show WidgetsBinding, WidgetsBindingObserver;
+import 'package:meta/meta.dart';
+import 'package:offline_first_sync_drift/offline_first_sync_drift.dart'
+    show SyncEngine;
 
 /// Pauses and resumes sync engine auto-sync in response to app lifecycle events.
 ///
@@ -12,13 +15,14 @@ import 'package:offline_first_sync_drift/offline_first_sync_drift.dart' show Syn
 ///
 /// - App resumes → calls [onResume] (default: `engine.startAuto`).
 /// - App pauses / detaches → calls [onPause] (default: `engine.stopAuto`).
-class AppLifecycleSyncHandler<DB extends GeneratedDatabase> with WidgetsBindingObserver {
-  AppLifecycleSyncHandler({
+@immutable
+class AppLifecycleSyncHandler<DB extends GeneratedDatabase>
+    with WidgetsBindingObserver {
+  const AppLifecycleSyncHandler({
     required this.engine,
-    void Function()? onResume,
-    void Function()? onPause,
-  }) : _onResume = onResume,
-       _onPause = onPause;
+    this._onResume,
+    this._onPause,
+  });
 
   /// The sync engine whose automatic sync is controlled.
   final SyncEngine<DB> engine;

@@ -45,49 +45,39 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
   }
 
   /// Get outbox table.
-  TableInfo<Table, SyncOutboxData> get _outbox =>
-      _outboxTable ??= allTables
-          .whereType<TableInfo<Table, SyncOutboxData>>()
-          .firstWhere(
-            (t) => t.actualTableName == 'sync_outbox',
-            orElse:
-                () =>
-                    throw StateError(
-                      'SyncOutbox table not found. Make sure to add:\n'
-                      "include: {'package:offline_first_sync_drift/src/sync_tables.drift'}\n"
-                      'to your @DriftDatabase annotation.',
-                    ),
-          );
+  TableInfo<Table, SyncOutboxData> get _outbox => _outboxTable ??= allTables
+      .whereType<TableInfo<Table, SyncOutboxData>>()
+      .firstWhere(
+        (t) => t.actualTableName == 'sync_outbox',
+        orElse: () => throw StateError(
+          'SyncOutbox table not found. Make sure to add:\n'
+          "include: {'package:offline_first_sync_drift/src/sync_tables.drift'}\n"
+          'to your @DriftDatabase annotation.',
+        ),
+      );
 
   /// Get cursors table.
-  TableInfo<Table, SyncCursorData> get _cursors =>
-      _cursorsTable ??= allTables
-          .whereType<TableInfo<Table, SyncCursorData>>()
-          .firstWhere(
-            (t) => t.actualTableName == 'sync_cursors',
-            orElse:
-                () =>
-                    throw StateError(
-                      'SyncCursors table not found. Make sure to add:\n'
-                      "include: {'package:offline_first_sync_drift/src/sync_tables.drift'}\n"
-                      'to your @DriftDatabase annotation.',
-                    ),
-          );
+  TableInfo<Table, SyncCursorData> get _cursors => _cursorsTable ??= allTables
+      .whereType<TableInfo<Table, SyncCursorData>>()
+      .firstWhere(
+        (t) => t.actualTableName == 'sync_cursors',
+        orElse: () => throw StateError(
+          'SyncCursors table not found. Make sure to add:\n'
+          "include: {'package:offline_first_sync_drift/src/sync_tables.drift'}\n"
+          'to your @DriftDatabase annotation.',
+        ),
+      );
 
   /// Get outbox meta table.
-  TableInfo<Table, SyncOutboxMetaData> get _outboxMeta =>
-      _outboxMetaTable ??= allTables
-          .whereType<TableInfo<Table, SyncOutboxMetaData>>()
-          .firstWhere(
-            (t) => t.actualTableName == TableNames.syncOutboxMeta,
-            orElse:
-                () =>
-                    throw StateError(
-                      'SyncOutboxMeta table not found. Make sure to add:\n'
-                      "include: {'package:offline_first_sync_drift/src/sync_tables.drift'}\n"
-                      'to your @DriftDatabase annotation and run migrations.',
-                    ),
-          );
+  TableInfo<Table, SyncOutboxMetaData> get _outboxMeta => _outboxMetaTable ??=
+      allTables.whereType<TableInfo<Table, SyncOutboxMetaData>>().firstWhere(
+        (t) => t.actualTableName == TableNames.syncOutboxMeta,
+        orElse: () => throw StateError(
+          'SyncOutboxMeta table not found. Make sure to add:\n'
+          "include: {'package:offline_first_sync_drift/src/sync_tables.drift'}\n"
+          'to your @DriftDatabase annotation and run migrations.',
+        ),
+      );
 
   /// Add operation to the outbox queue.
   Future<void> enqueue(Op op) async {
@@ -95,10 +85,9 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
 
     if (op is UpsertOp) {
       final baseTs = op.baseUpdatedAt?.toUtc().millisecondsSinceEpoch;
-      final changedFieldsJson =
-          op.changedFields != null
-              ? jsonEncode(op.changedFields!.toList())
-              : null;
+      final changedFieldsJson = op.changedFields != null
+          ? jsonEncode(op.changedFields!.toList())
+          : null;
 
       await into(_outbox).insertOnConflictUpdate(
         SyncOutboxCompanion.insert(
@@ -174,8 +163,9 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
       variables.add(Variable.withInt(maxTryCountExclusive));
     }
 
-    final whereClause =
-        whereParts.isEmpty ? '' : 'WHERE ${whereParts.join(' AND ')} ';
+    final whereClause = whereParts.isEmpty
+        ? ''
+        : 'WHERE ${whereParts.join(' AND ')} ';
     variables.add(Variable.withInt(limit));
 
     return customSelect(
@@ -213,8 +203,9 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
       variables.add(Variable.withInt(maxTryCountExclusive));
     }
 
-    final whereClause =
-        whereParts.isEmpty ? '' : 'WHERE ${whereParts.join(' AND ')}';
+    final whereClause = whereParts.isEmpty
+        ? ''
+        : 'WHERE ${whereParts.join(' AND ')}';
     return customSelect(
       'SELECT COUNT(*) as c FROM ${TableNames.syncOutbox} $whereClause',
       variables: variables,
@@ -334,12 +325,11 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
     }
 
     final whereClause = 'WHERE ${whereParts.join(' AND ')}';
-    final rows =
-        await customSelect(
-          'SELECT COUNT(*) as c FROM ${TableNames.syncOutbox} $whereClause',
-          variables: variables,
-          readsFrom: {_outbox},
-        ).get();
+    final rows = await customSelect(
+      'SELECT COUNT(*) as c FROM ${TableNames.syncOutbox} $whereClause',
+      variables: variables,
+      readsFrom: {_outbox},
+    ).get();
     return rows.first.read<int>('c');
   }
 
@@ -367,72 +357,64 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
 
     final whereClause = whereParts.join(' AND ');
     variables.add(Variable.withInt(limit));
-    final rows =
-        await customSelect(
-          'SELECT * FROM ${TableNames.syncOutbox} '
-          'WHERE $whereClause '
-          'ORDER BY ${TableColumns.ts} LIMIT ?',
-          variables: variables,
-          readsFrom: {_outbox},
-        ).get();
+    final rows = await customSelect(
+      'SELECT * FROM ${TableNames.syncOutbox} '
+      'WHERE $whereClause '
+      'ORDER BY ${TableColumns.ts} LIMIT ?',
+      variables: variables,
+      readsFrom: {_outbox},
+    ).get();
     return _rowsToOps(rows);
   }
 
-  List<Op> _rowsToOps(List<QueryRow> rows) {
-    return rows.map((row) {
-      final opId = row.read<String>(TableColumns.opId);
-      final kind = row.read<String>(TableColumns.kind);
-      final entityId = row.read<String>(TableColumns.entityId);
-      final opType = row.read<String>(TableColumns.op);
-      final tsMillis = row.read<int>(TableColumns.ts);
-      final baseUpdatedAtMillis = row.readNullable<int>(
-        TableColumns.baseUpdatedAt,
-      );
+  List<Op> _rowsToOps(List<QueryRow> rows) => rows.map((row) {
+    final opId = row.read<String>(TableColumns.opId);
+    final kind = row.read<String>(TableColumns.kind);
+    final entityId = row.read<String>(TableColumns.entityId);
+    final opType = row.read<String>(TableColumns.op);
+    final tsMillis = row.read<int>(TableColumns.ts);
+    final baseUpdatedAtMillis = row.readNullable<int>(
+      TableColumns.baseUpdatedAt,
+    );
 
-      final ts = DateTime.fromMillisecondsSinceEpoch(tsMillis, isUtc: true);
-      final baseUpdatedAt =
-          baseUpdatedAtMillis != null
-              ? DateTime.fromMillisecondsSinceEpoch(
-                baseUpdatedAtMillis,
-                isUtc: true,
-              )
-              : null;
+    final ts = DateTime.fromMillisecondsSinceEpoch(tsMillis, isUtc: true);
+    final baseUpdatedAt = baseUpdatedAtMillis != null
+        ? DateTime.fromMillisecondsSinceEpoch(baseUpdatedAtMillis, isUtc: true)
+        : null;
 
-      if (opType == OpType.delete) {
-        return DeleteOp(
-          opId: opId,
-          kind: kind,
-          id: entityId,
-          localTimestamp: ts,
-          baseUpdatedAt: baseUpdatedAt,
-        );
-      }
-
-      final payloadStr = row.readNullable<String>(TableColumns.payload);
-      final payload =
-          payloadStr == null
-              ? <String, Object?>{}
-              : (jsonDecode(payloadStr) as Map<String, Object?>);
-      final changedFieldsStr = row.readNullable<String>(
-        TableColumns.changedFields,
-      );
-      Set<String>? changedFields;
-      if (changedFieldsStr != null) {
-        final list = jsonDecode(changedFieldsStr) as List<dynamic>;
-        changedFields = list.cast<String>().toSet();
-      }
-
-      return UpsertOp(
+    if (opType == OpType.delete) {
+      return DeleteOp(
         opId: opId,
         kind: kind,
         id: entityId,
         localTimestamp: ts,
-        payloadJson: payload,
         baseUpdatedAt: baseUpdatedAt,
-        changedFields: changedFields,
       );
-    }).toList();
-  }
+    }
+
+    final payloadStr = row.readNullable<String>(TableColumns.payload);
+    final payload = payloadStr == null
+        ? <String, Object?>{}
+        : (jsonDecode(payloadStr) as Map<String, Object?>);
+    final changedFieldsStr = row.readNullable<String>(
+      TableColumns.changedFields,
+    );
+    Set<String>? changedFields;
+    if (changedFieldsStr != null) {
+      final list = jsonDecode(changedFieldsStr) as List<dynamic>;
+      changedFields = list.cast<String>().toSet();
+    }
+
+    return UpsertOp(
+      opId: opId,
+      kind: kind,
+      id: entityId,
+      localTimestamp: ts,
+      payloadJson: payload,
+      baseUpdatedAt: baseUpdatedAt,
+      changedFields: changedFields,
+    );
+  }).toList();
 
   /// Acknowledge sent operations (remove from queue).
   Future<void> ackOutbox(Iterable<String> opIds) async {
@@ -457,13 +439,12 @@ mixin SyncDatabaseMixin on GeneratedDatabase {
 
   /// Get cursor for an entity kind.
   Future<Cursor?> getCursor(String kind) async {
-    final rows =
-        await customSelect(
-          'SELECT ${TableColumns.ts}, ${TableColumns.lastId} '
-          'FROM ${TableNames.syncCursors} WHERE ${TableColumns.kind} = ?',
-          variables: [Variable.withString(kind)],
-          readsFrom: {_cursors},
-        ).get();
+    final rows = await customSelect(
+      'SELECT ${TableColumns.ts}, ${TableColumns.lastId} '
+      'FROM ${TableNames.syncCursors} WHERE ${TableColumns.kind} = ?',
+      variables: [Variable.withString(kind)],
+      readsFrom: {_cursors},
+    ).get();
 
     if (rows.isEmpty) return null;
 

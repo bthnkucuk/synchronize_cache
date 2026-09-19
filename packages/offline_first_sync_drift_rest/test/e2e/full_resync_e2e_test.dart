@@ -33,23 +33,20 @@ void main() {
     await server.stop();
   });
 
-  SyncEngine createEngine({
-    SyncConfig? config,
-  }) =>
-      SyncEngine(
-        db: db,
-        transport: transport,
-        tables: [
-          SyncableTable<TestEntity>(
-            kind: 'test_entity',
-            table: db.testEntities,
-            fromJson: TestEntity.fromJson,
-            toJson: (item) => item.toJson(),
-            toInsertable: (item) => item.toInsertable(),
-          ),
-        ],
-        config: config ?? const SyncConfig(),
-      );
+  SyncEngine createEngine({SyncConfig? config}) => SyncEngine(
+    db: db,
+    transport: transport,
+    tables: [
+      SyncableTable<TestEntity>(
+        kind: 'test_entity',
+        table: db.testEntities,
+        fromJson: TestEntity.fromJson,
+        toJson: (item) => item.toJson(),
+        toInsertable: (item) => item.toInsertable(),
+      ),
+    ],
+    config: config ?? const SyncConfig(),
+  );
 
   group('Full Resync E2E', () {
     test('fullResync pulls all data from server', () async {
@@ -91,17 +88,19 @@ void main() {
 
       final engine = createEngine();
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'new-entity',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'new-entity',
-          'name': 'Client Created Entity',
-          'mood': 7,
-        },
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'new-entity',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'new-entity',
+            'name': 'Client Created Entity',
+            'mood': 7,
+          },
+        ),
+      );
 
       await engine.fullResync();
 
@@ -155,11 +154,15 @@ void main() {
 
       final engine = createEngine();
 
-      await db.into(db.testEntities).insert(TestEntitiesCompanion.insert(
-            id: 'local-only-entity',
-            name: 'Local Only',
-            updatedAt: DateTime.now().toUtc(),
-          ));
+      await db
+          .into(db.testEntities)
+          .insert(
+            TestEntitiesCompanion.insert(
+              id: 'local-only-entity',
+              name: 'Local Only',
+              updatedAt: DateTime.now().toUtc(),
+            ),
+          );
 
       var items = await db.select(db.testEntities).get();
       expect(items.length, 1);
@@ -176,15 +179,10 @@ void main() {
     });
 
     test('automatic fullResync when interval exceeded', () async {
-      server.seed('test_entity', {
-        'id': 'entity-1',
-        'name': 'Server Entity',
-      });
+      server.seed('test_entity', {'id': 'entity-1', 'name': 'Server Entity'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          fullResyncInterval: Duration(days: 7),
-        ),
+        config: const SyncConfig(fullResyncInterval: Duration(days: 7)),
       );
 
       final events = <SyncEvent>[];
@@ -204,21 +202,16 @@ void main() {
     });
 
     test('no automatic fullResync when interval not exceeded', () async {
-      server.seed('test_entity', {
-        'id': 'entity-1',
-        'name': 'Server Entity',
-      });
+      server.seed('test_entity', {'id': 'entity-1', 'name': 'Server Entity'});
 
       final engine = createEngine(
-        config: const SyncConfig(
-          fullResyncInterval: Duration(days: 7),
-        ),
+        config: const SyncConfig(fullResyncInterval: Duration(days: 7)),
       );
 
-      await db.setCursor(CursorKinds.fullResync, Cursor(
-        ts: DateTime.now().toUtc(),
-        lastId: '',
-      ));
+      await db.setCursor(
+        CursorKinds.fullResync,
+        Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -236,10 +229,7 @@ void main() {
     });
 
     test('fullResync saves lastFullResync timestamp', () async {
-      server.seed('test_entity', {
-        'id': 'entity-1',
-        'name': 'Entity',
-      });
+      server.seed('test_entity', {'id': 'entity-1', 'name': 'Entity'});
 
       final engine = createEngine();
 
@@ -326,18 +316,20 @@ void main() {
         ),
       );
 
-      await db.enqueue(UpsertOp(
-        opId: 'conflict-op',
-        kind: 'test_entity',
-        id: 'entity-1',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {
-          'id': 'entity-1',
-          'name': 'Client Modified',
-          'mood': 10,
-        },
-        baseUpdatedAt: baseTime,
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'conflict-op',
+          kind: 'test_entity',
+          id: 'entity-1',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {
+            'id': 'entity-1',
+            'name': 'Client Modified',
+            'mood': 10,
+          },
+          baseUpdatedAt: baseTime,
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -360,20 +352,19 @@ void main() {
     });
 
     test('fullResync emits correct events sequence', () async {
-      server.seed('test_entity', {
-        'id': 'entity-1',
-        'name': 'Entity 1',
-      });
+      server.seed('test_entity', {'id': 'entity-1', 'name': 'Entity 1'});
 
       final engine = createEngine();
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'entity-2',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'entity-2', 'name': 'Entity 2'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'entity-2',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'entity-2', 'name': 'Entity 2'},
+        ),
+      );
 
       final events = <SyncEvent>[];
       final sub = engine.events.listen(events.add);
@@ -401,24 +392,20 @@ void main() {
 
     test('fullResync returns accurate stats', () async {
       server
-        ..seed('test_entity', {
-          'id': 'entity-1',
-          'name': 'Server 1',
-        })
-        ..seed('test_entity', {
-          'id': 'entity-2',
-          'name': 'Server 2',
-        });
+        ..seed('test_entity', {'id': 'entity-1', 'name': 'Server 1'})
+        ..seed('test_entity', {'id': 'entity-2', 'name': 'Server 2'});
 
       final engine = createEngine();
 
-      await db.enqueue(UpsertOp(
-        opId: 'op-1',
-        kind: 'test_entity',
-        id: 'new-entity',
-        localTimestamp: DateTime.now().toUtc(),
-        payloadJson: {'id': 'new-entity', 'name': 'New'},
-      ));
+      await db.enqueue(
+        UpsertOp(
+          opId: 'op-1',
+          kind: 'test_entity',
+          id: 'new-entity',
+          localTimestamp: DateTime.now().toUtc(),
+          payloadJson: const {'id': 'new-entity', 'name': 'New'},
+        ),
+      );
 
       final stats = await engine.fullResync();
 
@@ -429,10 +416,7 @@ void main() {
     });
 
     test('second fullResync resets and pulls again', () async {
-      server.seed('test_entity', {
-        'id': 'entity-1',
-        'name': 'Version 1',
-      });
+      server.seed('test_entity', {'id': 'entity-1', 'name': 'Version 1'});
 
       final engine = createEngine();
 
@@ -452,16 +436,9 @@ void main() {
     });
 
     test('fullResync recovers from network error', () async {
-      server.seed('test_entity', {
-        'id': 'entity-1',
-        'name': 'Entity',
-      });
+      server.seed('test_entity', {'id': 'entity-1', 'name': 'Entity'});
 
-      final engine = createEngine(
-        config: const SyncConfig(
-          maxPushRetries: 1,
-        ),
-      );
+      final engine = createEngine(config: const SyncConfig(maxPushRetries: 1));
 
       server.failNextRequests(5, statusCode: 500);
 
@@ -525,10 +502,7 @@ void main() {
     });
 
     test('fullResync syncs changes from other clients', () async {
-      server.seed('test_entity', {
-        'id': 'entity-1',
-        'name': 'Original',
-      });
+      server.seed('test_entity', {'id': 'entity-1', 'name': 'Original'});
 
       final engine1 = createEngine();
       await engine1.fullResync();
@@ -544,4 +518,3 @@ void main() {
     });
   });
 }
-

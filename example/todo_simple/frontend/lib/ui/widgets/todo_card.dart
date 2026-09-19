@@ -32,10 +32,7 @@ class TodoCard extends StatelessWidget {
           child: Row(
             children: [
               // Checkbox
-              Checkbox(
-                value: todo.completed,
-                onChanged: (_) => onToggle(),
-              ),
+              Checkbox(value: todo.completed, onChanged: (_) => onToggle()),
 
               // Content
               Expanded(
@@ -46,10 +43,11 @@ class TodoCard extends StatelessWidget {
                     Text(
                       todo.title,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        decoration:
-                            todo.completed ? TextDecoration.lineThrough : null,
+                        decoration: todo.completed
+                            ? TextDecoration.lineThrough
+                            : null,
                         color: todo.completed
-                            ? colorScheme.onSurface.withOpacity(0.6)
+                            ? colorScheme.onSurface.withValues(alpha: 0.6)
                             : null,
                       ),
                     ),
@@ -132,15 +130,16 @@ class _DueDateChip extends StatelessWidget {
     final localDueDate = dueDate.toLocal();
     final now = DateTime.now();
     final isOverdue = localDueDate.isBefore(now);
-    final isToday = localDueDate.day == now.day &&
+    final isToday =
+        localDueDate.day == now.day &&
         localDueDate.month == now.month &&
         localDueDate.year == now.year;
 
     final color = isOverdue
         ? Colors.red
         : isToday
-            ? Colors.orange
-            : Colors.grey;
+        ? Colors.orange
+        : Colors.grey;
 
     final label = isToday
         ? 'Today'
@@ -149,19 +148,16 @@ class _DueDateChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.calendar_today, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(fontSize: 12, color: color),
-          ),
+          Text(label, style: TextStyle(fontSize: 12, color: color)),
         ],
       ),
     );

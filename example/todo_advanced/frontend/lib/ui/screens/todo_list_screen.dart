@@ -29,10 +29,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Todo Advanced'),
-        actions: const [
-          SyncStatusIndicator(),
-          SizedBox(width: 8),
-        ],
+        actions: const [SyncStatusIndicator(), SizedBox(width: 8)],
       ),
       body: Stack(
         children: [
@@ -139,18 +136,14 @@ class _TodoListScreenState extends State<TodoListScreen> {
   Future<void> _createTodo(BuildContext context) async {
     await Navigator.push(
       context,
-      MaterialPageRoute<void>(
-        builder: (_) => const TodoEditScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const TodoEditScreen()),
     );
   }
 
   Future<void> _editTodo(BuildContext context, Todo todo) async {
     await Navigator.push(
       context,
-      MaterialPageRoute<void>(
-        builder: (_) => TodoEditScreen(todo: todo),
-      ),
+      MaterialPageRoute<void>(builder: (_) => TodoEditScreen(todo: todo)),
     );
   }
 
@@ -182,14 +175,16 @@ class _TodoListScreenState extends State<TodoListScreen> {
       await repo.delete(todo);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Todo deleted')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Todo deleted')));
       }
     }
   }
 
-  Future<void> _showConflictDialog(BuildContext context, ConflictInfo conflict) async {
+  Future<void> _showConflictDialog(
+    BuildContext context,
+    ConflictInfo conflict,
+  ) async {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -204,10 +199,8 @@ class _TodoListScreenState extends State<TodoListScreen> {
 
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => _SimulationMenu(
-        syncService: syncService,
-        repo: repo,
-      ),
+      builder: (context) =>
+          _SimulationMenu(syncService: syncService, repo: repo),
     );
   }
 }
@@ -224,7 +217,7 @@ class _EmptyState extends StatelessWidget {
           Icon(
             Icons.checklist,
             size: 80,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
@@ -235,8 +228,8 @@ class _EmptyState extends StatelessWidget {
           Text(
             'Tap the + button to create your first todo',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -245,10 +238,7 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _SimulationMenu extends StatelessWidget {
-  const _SimulationMenu({
-    required this.syncService,
-    required this.repo,
-  });
+  const _SimulationMenu({required this.syncService, required this.repo});
 
   final SyncService syncService;
   final TodoRepository repo;
@@ -269,8 +259,8 @@ class _SimulationMenu extends StatelessWidget {
           Text(
             'Trigger server-side changes to test conflict resolution:',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 16),
 
@@ -321,14 +311,18 @@ class _SimulationMenu extends StatelessWidget {
     );
 
     try {
-      await syncService.triggerServerSimulation(
-        '/simulate/reminder',
-        {'id': todo.id, 'text': 'Server reminder: Please review this task!'},
-      );
+      await syncService.triggerServerSimulation('/simulate/reminder', {
+        'id': todo.id,
+        'text': 'Server reminder: Please review this task!',
+      });
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Reminder added to "${todo.title}". Sync to see conflict.')),
+          SnackBar(
+            content: Text(
+              'Reminder added to "${todo.title}". Sync to see conflict.',
+            ),
+          ),
         );
       }
     } catch (_) {
@@ -351,7 +345,9 @@ class _SimulationMenu extends StatelessWidget {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Auto-complete triggered. Sync to see changes.')),
+          const SnackBar(
+            content: Text('Auto-complete triggered. Sync to see changes.'),
+          ),
         );
       }
     } catch (_) {
@@ -388,14 +384,18 @@ class _SimulationMenu extends StatelessWidget {
     final newPriority = todo.priority > 1 ? 1 : 5;
 
     try {
-      await syncService.triggerServerSimulation(
-        '/simulate/prioritize',
-        {'id': todo.id, 'priority': newPriority},
-      );
+      await syncService.triggerServerSimulation('/simulate/prioritize', {
+        'id': todo.id,
+        'priority': newPriority,
+      });
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Priority changed for "${todo.title}". Sync to see conflict.')),
+          SnackBar(
+            content: Text(
+              'Priority changed for "${todo.title}". Sync to see conflict.',
+            ),
+          ),
         );
       }
     } catch (_) {
