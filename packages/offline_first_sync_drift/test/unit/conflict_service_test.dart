@@ -326,17 +326,25 @@ void main() {
       verify(() => transport.forcePush(any())).called(2);
     });
 
-    test('AcceptMerged is unresolved for DeleteOp (not an UpsertOp)', () async {
+    test('a conflicting delete keeps the server version instead of staying '
+        'unresolved forever', () async {
+      var merges = 0;
       final service = buildService(
         config: SyncConfig(
           conflictStrategy: ConflictStrategy.merge,
-          mergeFunction: (l, s) => {'x': 1},
+          mergeFunction: (l, s) {
+            merges++;
+            return {'x': 1};
+          },
         ),
       );
 
       final result = await service.resolve(_delete(), _conflict());
 
-      expect(result.resolved, isFalse);
+      // There is no local data to merge and no merged delete to push.
+      expect(merges, 0);
+      expect(result.resolved, isTrue);
+      expect(result.serverData, _conflict().serverData);
       verifyNever(() => transport.forcePush(any()));
     });
   });
