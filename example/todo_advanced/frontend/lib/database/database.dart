@@ -34,8 +34,17 @@ class AppDatabase extends _$AppDatabase with SyncDatabaseMixin {
   }
 
   /// Opens a persistent database with custom name.
-  static AppDatabase open({String name = 'todo_advanced'}) {
-    return AppDatabase(driftDatabase(name: name, web: _webOptions));
+  ///
+  /// [interceptor] sees every statement sent to it; the sync scenarios use
+  /// one to count transactions and to read query plans.
+  static AppDatabase open({
+    String name = 'todo_advanced',
+    QueryInterceptor? interceptor,
+  }) {
+    final connection = driftDatabase(name: name, web: _webOptions);
+    return AppDatabase(
+      interceptor == null ? connection : connection.interceptWith(interceptor),
+    );
   }
 
   @override

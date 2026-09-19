@@ -8,7 +8,9 @@ import 'package:todo_advanced_backend/models/todo.dart';
 import 'package:todo_advanced_backend/repositories/todo_repository.dart';
 import 'package:todo_advanced_backend/services/simulation_service.dart';
 
+import '../../routes/simulate/bare_conflict.dart' as simulate_bare_conflict;
 import '../../routes/simulate/complete.dart' as simulate_complete;
+import '../../routes/simulate/empty_page.dart' as simulate_empty_page;
 import '../../routes/simulate/prioritize.dart' as simulate_prioritize;
 import '../../routes/simulate/reminder.dart' as simulate_reminder;
 
@@ -260,6 +262,72 @@ void main() {
       final response = await simulate_prioritize.onRequest(context);
 
       expect(response.statusCode, 405);
+    });
+  });
+
+  group('POST /simulate/bare_conflict', () {
+    test('arms exactly the requested number of writes', () async {
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/bare_conflict'),
+          body: jsonEncode({'requests': 2}),
+        ),
+      );
+
+      final response = await simulate_bare_conflict.onRequest(context);
+
+      expect(response.statusCode, HttpStatus.ok);
+      expect(simulationService.takeBareConflict(), isTrue);
+      expect(simulationService.takeBareConflict(), isTrue);
+      expect(simulationService.takeBareConflict(), isFalse);
+    });
+
+    test('defaults to one write and rejects nonsense', () async {
+      when(() => context.request).thenReturn(
+        Request.post(Uri.parse('http://localhost/simulate/bare_conflict')),
+      );
+      expect(
+        (await simulate_bare_conflict.onRequest(context)).statusCode,
+        HttpStatus.ok,
+      );
+      expect(simulationService.takeBareConflict(), isTrue);
+      expect(simulationService.takeBareConflict(), isFalse);
+
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/bare_conflict'),
+          body: jsonEncode({'requests': 0}),
+        ),
+      );
+      expect(
+        (await simulate_bare_conflict.onRequest(context)).statusCode,
+        HttpStatus.badRequest,
+      );
+    });
+  });
+
+  group('POST /simulate/empty_page', () {
+    test('arms exactly the requested number of list requests', () async {
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/empty_page'),
+          body: jsonEncode({'pages': 1}),
+        ),
+      );
+
+      final response = await simulate_empty_page.onRequest(context);
+
+      expect(response.statusCode, HttpStatus.ok);
+      expect(simulationService.takeEmptyPage(), isTrue);
+      expect(simulationService.takeEmptyPage(), isFalse);
+    });
+
+    test('returns 405 for non-POST methods', () async {
+      when(() => context.request).thenReturn(
+        Request.get(Uri.parse('http://localhost/simulate/empty_page')),
+      );
+
+      expect((await simulate_empty_page.onRequest(context)).statusCode, 405);
     });
   });
 }

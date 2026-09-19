@@ -6,6 +6,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 import 'package:todo_advanced_backend/models/todo.dart';
 import 'package:todo_advanced_backend/repositories/todo_repository.dart';
+import 'package:todo_advanced_backend/services/simulation_service.dart';
 
 import '../../routes/todos/index.dart' as todos_index;
 import '../../routes/todos/[id].dart' as todos_id;
@@ -14,12 +15,15 @@ class _MockRequestContext extends Mock implements RequestContext {}
 
 void main() {
   late TodoRepository repository;
+  late SimulationService simulationService;
   late _MockRequestContext context;
 
   setUp(() {
     repository = TodoRepository();
+    simulationService = SimulationService(repository);
     context = _MockRequestContext();
     when(() => context.read<TodoRepository>()).thenReturn(repository);
+    when(() => context.read<SimulationService>()).thenReturn(simulationService);
   });
 
   tearDown(() {
@@ -93,6 +97,32 @@ void main() {
 
       final body = jsonDecode(await response.body()) as Map<String, dynamic>;
       expect(body['items'], hasLength(2));
+    });
+
+    test('an armed empty page has no items, names a next page, and the '
+        'request for that page starts from the top', () async {
+      repository.create(
+        Todo(id: 'todo-1', title: 'First', updatedAt: DateTime.now().toUtc()),
+      );
+      simulationService.answerNextListsWithEmptyPage();
+
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos')));
+      final empty = await todos_index.onRequest(context);
+      final emptyBody = jsonDecode(await empty.body()) as Map<String, dynamic>;
+
+      expect(emptyBody['items'], isEmpty);
+      final token = emptyBody['nextPageToken'] as String;
+      expect(empty.headers['X-Next-Page-Token'], token);
+
+      when(() => context.request).thenReturn(
+        Request.get(Uri.parse('http://localhost/todos?pageToken=$token')),
+      );
+      final next = await todos_index.onRequest(context);
+      final nextBody = jsonDecode(await next.body()) as Map<String, dynamic>;
+
+      expect(nextBody['items'], hasLength(1));
+      expect(nextBody.containsKey('nextPageToken'), isFalse);
     });
   });
 
