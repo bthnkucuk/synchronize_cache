@@ -11,7 +11,7 @@ Yöntem: 5 paralel inceleme ajanı (salt-okunur) + en ciddi iddiaların elle do�
 | ✅ okundu | İlgili kod okunarak doğrulandı |
 | 📋 ajan | Ajanın kendi kanıtıyla raporladığı; bağımsız olarak yeniden doğrulanmadı — düzeltmeden önce doğrula |
 
-## Durum (2026-09-19, `fix/tier1-data-loss` dalı, paketler 0.2.0)
+## Durum (2026-09-19; çekirdek, REST ve search_engine 0.2.1 — diğer paketler 0.2.0)
 
 **Düzeltildi** (her biri kırmızı→yeşil regresyon testiyle + `todo_advanced` "Sync scenarios" ekranında
 Playwright ile tarayıcıda önce FAIL, sonra PASS olarak kanıtlandı): **K1-1, K1-2, K1-3, K1-4, K1-6, K1-7(a,b)**.
@@ -27,10 +27,25 @@ Tarayıcı kanıtı — aynı altı senaryo, gerçek Dart Frog backend'e karşı
 | K1-6 | `health()` 6,0 sn bekledi (sunucu kadar) | 1,0 sn'de `false` (sınır 1 sn) |
 | K1-7 | +03:00'te cursor `07:00Z` | `10:00Z` |
 
-**İncelemede (`fix/k1-10-server-version-chain`, commit'lenmedi):** **K1-10** + yan kazanımlar **K2-9** (rowid eşitlik bozucu), **K1-5** (motor düzeyinde: batch'te varlık başına tek op), **K2-12**'nin outbox kısmı (mikrosaniye), **P2**'nin büyük kısmı (op başına SELECT artık yalnızca ms hassasiyetli tabanlarda).
+**Birleşti (PR #7, `main`):** **K1-10** + yan kazanımlar **K2-9** (rowid eşitlik bozucu), **K1-5** (motor düzeyinde: batch'te varlık başına tek op), **K2-12**'nin outbox kısmı (mikrosaniye), **P2**'nin büyük kısmı (op başına SELECT artık yalnızca ms hassasiyetli tabanlarda).
 Tarayıcı kanıtı (K1-10 senaryosu, gerçek backend): eski kütüphane → *1 düzenlemede 1, iki hızlı düzenlemede 2 conflict*; yeni kütüphane → *0 ve 0*.
 
-**Açık kalanlar:** K1-8, K1-9 ve Kademe 2 / Kademe 3'ün geri kalanı; aşağıdaki "Yeni açık maddeler".
+**Düzeltildi — 0.2.1 (`fix/tier1-rest-and-core-perf`)** — her biri kırmızı→yeşil testle:
+**K1-7(c)**, **K1-8**, **K1-9**, **P1** (outbox indeksleri), **P2**'nin kalanı (web'de satır okuması yok), **P3** (batch başına tek transaction), **P10**, **P11**, **K2-5**, yeni **K2-41** (transport sonuç döndürmezse push döngüsü), e2e test sunucusunun sayfalama/istisna düzeltmeleri.
+
+Tarayıcı kanıtı — aynı senaryo kodu, aynı backend; "önce" = `main` (`fd87f1d`) kütüphanesiyle derleme:
+
+| Senaryo | Düzeltme öncesi | Düzeltme sonrası |
+|---|---|---|
+| K1-7c | 1 liste isteği, token izlenmedi, sunucudaki 2 satırdan 0'ı geldi | 2 istek, token izlendi, 2/2 satır |
+| K1-8 | `409 {"error":"conflict"}` → conflicts=1, resolved=1, **1 zorla üzerine yazma** (`X-Force-Update`), op kuyruktan çıktı | conflicts=0, errors=1, zorla yazma yok, op kuyrukta; sonraki sync'te teslim |
+| P1 (senaryo) | indeks yok; 3 outbox sorgusunun 3'ü `SCAN` (+ `TEMP B-TREE`); 5000 op'ta take 1,17 / 0,97 ms | 3 indeks (indeksleri silinmiş DB'de ilk sync'te oluştu); 0 sorgu indekssiz; take 0,72 / 0,57 ms |
+| P3 (senaryo) | 25 op'luk batch'te **52 ayrı commit**, 0 transaction | **1 transaction**, 0 tekil commit |
+
+P1 ölçümü (yerel SQLite, 20 000 op, ~1 KB payload): tek kind take 9,44 → 0,09 ms · filtresiz take 8,69 → 0,12 ms · rebase 6,30 → 0,16 ms. Tarayıcıda (wasm, 5000 op) fark küçük çünkü süreyi tarama değil worker gidiş-dönüşü ve commit belirliyor; asıl kazanç kuyruk büyüdükçe ortaya çıkan N² davranışının kalkması.
+Ajanın "`watchOutboxCount` her seferinde tam tarama" iddiası **ölçümle yanlış çıktı**: filtresiz `COUNT(*)` PK oto-indeksini kullanıyor (20 000 satırda 0,19 ms). `(tryCount)` indeksi eklenmedi: `countStuck` sync başına kind başına bir kez çalışıyor (doğrusal), batch/op başına değil.
+
+**Açık kalanlar:** Kademe 2 / Kademe 3'ün geri kalanı; aşağıdaki "Yeni açık maddeler".
 
 Efor: S (< yarım gün) · M (1–2 gün) · L (daha uzun / tasarım kararı gerekir).
 Satır numaraları `ad04811` içindir.
@@ -66,7 +81,7 @@ Satır numaraları `ad04811` içindir.
 - **Kanıt:** `a#b` → `/todos/a#b` (fragment gönderilmez → **yanlış varlık**), `a?b` → `/todos/a?b`, `a/b` → başka rota, `..` → `https://api.example.com/v1/` (**koleksiyon köküne DELETE/PUT**). Boşluk ve Unicode doğru kodlanıyor; UUID kimlikler güvende.
 - **Düzeltme:** id'yi `pathSegments` ile tek segment olarak kodla; `.`/`..`/boş id'yi istek göndermeden `PushError` ile reddet (nokta segmentleri yüzde-kodlamayla güvenli hâle gelmez). Bonus: sorgu içeren `base` (`…/v1?tenant=1`) şu an bozuk URL üretiyor.
 
-### K1-5 · `pushConcurrency > 1` iken aynı varlığın op'ları eşzamanlı gidiyor — ✅ okundu · M · motor düzeyinde giderildi (incelemede); doğrudan `transport.push` çağıranlar için hâlâ geçerli
+### K1-5 · `pushConcurrency > 1` iken aynı varlığın op'ları eşzamanlı gidiyor — ✅ okundu · M · motor düzeyinde giderildi (0.2.0); doğrudan `transport.push` çağıranlar için hâlâ geçerli
 - **Yer:** `packages/offline_first_sync_drift_rest/lib/src/rest_transport.dart:168-183`
 - **Mekanizma:** Chunk başına `Future.wait`; varlık anahtarına bakılmıyor. Outbox PK'sı yalnızca `opId`, her düzenleme yeni `OpId.v4()` alıyor → aynı `(kind,id)` için birden çok op bir arada bulunabiliyor. `PUT` + `DELETE` aynı chunk'ta yarışırsa DELETE önce biterse PUT satırı diriltiyor; ikisi de başarı sayılıp ack'leniyor → yalnızca tam resync onarır.
 - **Düzeltme:** Varlık anahtarlı (`'$kind\u0000$id'`) sınırlı worker havuzu: aynı varlığın op'ları sıralı, farklı varlıklar paralel. P9'u da çözer. `test/e2e/parallel_push_test.dart` 10 *farklı* varlık kullandığı için bu senaryo testsiz.
@@ -77,7 +92,7 @@ Satır numaraları `ad04811` içindir.
 - **Mekanizma:** Yarı açık soket (captive portal, NAT düşmesi, arka plana alınan uygulama) `pull`/`push`/`health`'i sonsuza dek asıyor; istisna oluşmadığı için `_withRetry` devreye girmiyor, `SyncEngine.sync()` dönmüyor.
 - **Düzeltme:** `Duration requestTimeout = const Duration(seconds: 30)` (opsiyonel ctor parametresi); gönderim **ve gövde okuması** birlikte sarılmalı. `TimeoutException` `_withRetry`'ın catch'ine düşer ve yeniden denenir.
 
-### K1-7 · Pull cursor: dilimsiz zaman damgası yerel saat sayılıyor; eksik id `"null"` oluyor — ✅ çalıştırıldı · S · ✔ (a) ve (b) DÜZELTİLDİ (0.2.0); (c) açık
+### K1-7 · Pull cursor: dilimsiz zaman damgası yerel saat sayılıyor; eksik id `"null"` oluyor — ✅ çalıştırıldı · S · ✔ (a) ve (b) DÜZELTİLDİ (0.2.0); ✔ (c) DÜZELTİLDİ (0.2.1)
 - **Yer:** `packages/offline_first_sync_drift/lib/src/services/pull_service.dart:95-112`
 - **Mekanizma:** (a) `DateTime.parse(ts.toString()).toUtc()` — `Z`/ofset içermeyen ISO dizgisi yerel saat olarak ayrıştırılıp kaydırılıyor. (b) `(last['id'] ?? last['ID'] ?? last['uuid']).toString()` — id yoksa cursor'a literal `"null"` yazılıyor (hemen altındaki `updatedAt` kontrolü ise doğru şekilde `ParseException` atıyor). (c) 📋 `if (page.items.isEmpty) break;` (`:68`), `token = page.nextPageToken`'dan (`:125`) önce çalışıyor → boş ama devamı olan sayfa pull'u erken bitiriyor.
 - **Kanıt:** `'2024-01-01T10:00:00.000'` → İstanbul: `07:00Z` (cursor geride → zararsız yeniden çekme); New York: `15:00Z` (cursor **ileride** → aradaki kayıtlar 7 günlük tam resync'e kadar atlanır); `Z` ekiyle sorun yok.
@@ -86,19 +101,21 @@ Satır numaraları `ad04811` içindir.
 - **Not:** Örnek uygulamada "id'siz öğe" kısmı gösterilemiyor (`Todo.fromJson` eksik id'de zaten fırlatıyor); o kısım paket birim testiyle (`pull_service_test.dart`) kapsanıyor.
 - **Sahibine soru:** Sunucularınız `Z` ekli mi gönderiyor? (Dart'ın `toIso8601String()`'i UTC için ekler.)
 
-### K1-8 · Kullanışsız gövdeli 409, `serverData: {}` + `serverTimestamp: now()` uyduruyor — 📋 ajan · S
+### K1-8 · Kullanışsız gövdeli 409, `serverData: {}` + `serverTimestamp: now()` uyduruyor — ✅ çalıştırıldı · S · ✔ DÜZELTİLDİ (0.2.1)
+- **Uygulanan:** Kayıt taşımayan 409 (boş gövde, JSON olmayan gövde, dizi, hata zarfı, boş `current`) → `PushError(TransportException 409)`; batch yanıtındaki 409'lar dahil. "Kayıt" = dolu `current`/`serverData` nesnesi ya da id / `updatedAt` alanı taşıyan gövde. Zaman damgası **şart koşulmadı**: mevcut testlerin 6'sı damgasız `current` kullanıyor (ilk denemede kırıldılar); damga yoksa `now()`. Tarayıcıda varsayılan `autoPreserve` ile eski davranış: uydurma conflict "çözülüp" `X-Force-Update` ile sunucunun sürüm kontrolü atlanarak yazılıyordu.
 - **Yer:** `rest_transport.dart:454-466`, `:468-504`
 - **Mekanizma:** Boş gövdeli 409 (ör. reverse proxy) → `PushConflict(serverData: {}, serverTimestamp: DateTime.now())`. `now()` sunucuyu koşulsuz "daha yeni" yapıyor; `lastWriteWins` → `AcceptServer` → `fromJson({})` sağlam yerel satırın üzerine boş varlık yazıyor (ya da fırlatıyor). `?? body` dalında `{"error": "version mismatch"}` zarfı varlık payload'ı sayılıyor.
 - **Düzeltme:** `current`/`serverData` ve ayrıştırılabilir zaman damgası yoksa `PushError(TransportException.httpError(409, body))` döndür.
 
-### K1-9 · `SearchTransport` normalizer'ı sorguya uygulamıyor — ✅ çalıştırıldı · S
+### K1-9 · `SearchTransport` normalizer'ı sorguya uygulamıyor — ✅ çalıştırıldı · S · ✔ DÜZELTİLDİ (0.2.1)
+- **Uygulanan:** `DriftFtsSearchTransport(db, normalizer: …)`; `SearchEngine` ikisinin birlikte verilip verilmediğini `assert` ediyor. Kanıt `test/e2e/search_pipeline_test.dart` (`ışık`/`IŞIK`/`İstanbul`/`calisma`, `watchSearch`). Örnek uygulamada arama olmadığı için tarayıcı senaryosu yok.
 - **Yer:** `packages/search_engine/lib/src/transport/search_transport.dart:26-45`, `drift_fts_search_transport.dart:25-56`, `search_engine.dart:57-64`
 - **Mekanizma:** `SearchEngine` yazarken normalize ediyor ama `SearchTransport.search`/`watchSearch`'te `normalizer` parametresi yok → `_db.searchGlobal(...)` onsuz çağrılıyor. Trigram tokenizer `I`→`ı` ve `İ`→`i` katlamasını yapmıyor; Türkçe eşleşmenin tamamı normalize kolonlara dayanıyor.
 - **Kanıt (SQLite 3.54 FTS5):** `title='Işık Raporu'`, `title_normalized='isik raporu'`; `MATCH '"ışık"*'` → 0 satır; normalize dalıyla → 1 satır.
 - **Düzeltme:** Normalizer'ı `DriftFtsSearchTransport` constructor'ına ver (soyut metoda parametre eklemek dış implementer'ları kırar).
 - **Sahibine soru:** Uygulama `transport.search` mü, yoksa doğrudan `searchGlobal(normalizer:)` mi çağırıyor? İkincisiyse bu canlı bug değil, yayın öncesi tuzak.
 
-### K1-10 · (YENİ) Sunucuda değişiklik yokken de her düzenleme conflict üretiyor — ✅ çalıştırıldı · M · ✔ DÜZELTİLDİ (incelemede)
+### K1-10 · (YENİ) Sunucuda değişiklik yokken de her düzenleme conflict üretiyor — ✅ çalıştırıldı · M · ✔ DÜZELTİLDİ (0.2.0)
 - **Yer:** `packages/offline_first_sync_drift/lib/src/services/push_service.dart` — `_reStampBaseUpdatedAt` / `_readLocalUpdatedAt`; tetikleyen kullanım: `example/todo_advanced/frontend/lib/repositories/todo_repository.dart` (`updatedAt: now`).
 - **Mekanizma:** Writer op'a doğru tabanı koyuyor (`baseUpdatedAt: todo.updatedAt` = sunucunun bildiği sürüm). Push'tan hemen önce `_reStampBaseUpdatedAt` bu değeri **yerel satırın** `updatedAt`'iyle eziyor. Uygulama düzenlemede `updatedAt`'i yerelde artırıyorsa (örnek uygulama artırıyor; doğal bir kullanım) taban = yerel "şimdi" ≠ sunucunun `updated_at`'i → tam eşleşme isteyen sunucu 409 döndürüyor.
 - **Kanıt (geçici e2e testi, gerçek backend):** oluştur → sync → yalnızca yerelde `title` düzenle → sync ⇒ `conflictDialog=true, conflicts=1, pushed=0`. Sunucu tarafında hiçbir değişiklik yapılmadı.
@@ -112,8 +129,8 @@ Satır numaraları `ad04811` içindir.
 ### Örnek uygulamada (todo_advanced) bulunanlar
 - ✔ Düzeltildi: backend CORS izin listesinde `Authorization` yoktu → tarayıcıdaki **her** istek preflight'ta düşüyordu (örnek web'de hiç çalışmamış).
 - ✔ Düzeltildi: `TodoRepository` değişen alanı `'dueDate'` olarak işaretliyordu; `changedFields` snake_case JSON anahtarlarıyla (`'due_date'`) eşleştirildiği için bitiş tarihi değişiklikleri merge'de yok sayılıyordu.
-- ✔ Düzeltildi (incelemede): frontend'de `build.yaml` yoktu → drift `DateTime`'ı **unix saniyesi** olarak saklıyor, sunucunun `updated_at`'i kırpılıyor, uygulama kırpılmış değeri taban diye geri gönderiyor → her zincirin ilk düzenlemesi 409. `store_date_time_values_as_text: true` + şema v2 göçü (testli) eklendi. README'ye bunun **zorunlu** olduğu yazıldı.
-- ✔ Düzeltildi (incelemede): backend sürümleri mikrosaniyeyle üretiyordu; tarayıcı (`Date`) yalnızca milisaniye tutabildiği için hiçbir web istemcisi sürümü geri gönderemiyordu. `serverNow()` ile milisaniyeye indirildi; protokol dokümanına hassasiyet notu eklendi.
+- ✔ Düzeltildi (0.2.0): frontend'de `build.yaml` yoktu → drift `DateTime`'ı **unix saniyesi** olarak saklıyor, sunucunun `updated_at`'i kırpılıyor, uygulama kırpılmış değeri taban diye geri gönderiyor → her zincirin ilk düzenlemesi 409. `store_date_time_values_as_text: true` + şema v2 göçü (testli) eklendi. README'ye bunun **zorunlu** olduğu yazıldı.
+- ✔ Düzeltildi (0.2.0): backend sürümleri mikrosaniyeyle üretiyordu; tarayıcı (`Date`) yalnızca milisaniye tutabildiği için hiçbir web istemcisi sürümü geri gönderemiyordu. `serverNow()` ile milisaniyeye indirildi; protokol dokümanına hassasiyet notu eklendi.
 - Açık: `Todo.copyWith` `description ?? this.description` yazdığı için nullable alanları **temizleyemiyor** (repository yine de alanı "değişti" diye işaretliyor). `ConflictHandler`'daki alan adı listesi de `'dueDate'` kullanıyor (`conflict_handler.dart:239`).
 - Not: transport boş token'da bile `Authorization: ''` header'ı gönderiyor (gereksiz preflight + özensiz).
 
@@ -134,7 +151,7 @@ Satır numaraları `ad04811` içindir.
 | K2-2 | `startAuto`: `Timer.periodic(interval, (_) => sync())` future'ı düşürüyor → her başarısız tick unhandled async error. `_scheduleEnqueuePush` doğrusunu yapıyor (`unawaited(...catchError)`). | `sync_engine.dart:226` | ✅ okundu | S |
 | K2-3 | Devam eden kind koşusuna push/pull kapsamına bakılmadan katılınıyor → push isteyen, pull-only koşunun sonucunu alıyor ve **push sessizce düşüyor**. `test/sync_engine_test.dart:2678-2710` bu davranışı sabitliyor. Düzeltme: anahtar olarak `(String kind, bool push, bool pull)` record'u; tam eşleşme yoksa zincirle. | `sync_engine.dart:324-343` | 📋 ajan | M |
 | K2-4 | Push-only `sync()` tam resync kapısını tetikleyebiliyor (kapı `pushKinds`/`pullKinds`'e bakmıyor). `resetAll` pull'dan önce, `setLastFullResync` sonra → yarıda kesilen resync her seferinde sıfırdan başlıyor. | `sync_engine.dart:289-307`, `:561`, `:575` | 📋 ajan | M |
-| K2-5 | `ops.firstWhere` `orElse`'süz: transport bilinmeyen `opId` döndürürse `StateError` → tüm batch'in başarıları ack'lenmiyor. Ayrıca batch başına O(n²) (500×500/2 dizgi karşılaştırması); `successOpIds` `List` + `contains`. Düzeltme: `{opId: op}` map'i, `Set<String>`. | `push_service.dart:101`, `:181` | ✅ okundu | S |
+| K2-5 ✔ | `ops.firstWhere` `orElse`'süz: transport bilinmeyen `opId` döndürürse `StateError` → tüm batch'in başarıları ack'lenmiyor. Ayrıca batch başına O(n²) (500×500/2 dizgi karşılaştırması); `successOpIds` `List` + `contains`. Düzeltme: `{opId: op}` map'i, `Set<String>`. | `push_service.dart:101`, `:181` | ✅ okundu | S |
 | K2-6 | `firstError` eşzamanlı kind'lar arasında karışıyor: her koşu paylaşılan broadcast `events`'i kind filtresiz dinliyor. | `sync_engine.dart:361-368`, `:539-546` | 📋 ajan | S |
 | K2-7 | `SyncCoordinator`: `_started = true` await'ten önce set ediliyor → açılışta çevrimdışıysa `startAuto` ve outbox aboneliği hiç kurulmuyor, `start()` yeniden çağrılsa da no-op. `watchPendingPushCount().distinct()` yüzünden başarısız push yeniden denenmiyor. | `sync_coordinator.dart:60-78` | 📋 ajan | S |
 | K2-8 | `_mergeResults` boş listede `results.last` → `Bad state: No element`. `stuckOpsCount` kind filtresiz sorgulanıyor. | `sync_engine.dart:427-476`, `:404`, `:592` | 📋 ajan | S |
@@ -142,10 +159,10 @@ Satır numaraları `ad04811` içindir.
 ### offline_first_sync_drift — veri katmanı
 | ID | Bulgu | Yer | Durum | Efor |
 |---|---|---|---|---|
-| K2-9 | `ORDER BY ts` eşitlik bozucusuz; `ts` ms'e kırpılıyor → aynı ms'deki iki op keyfi sırada. **P1 ile birlikte gönderilmeli** (indeks bu "kazara" sırayı değiştiriyor). Düzeltme: `ORDER BY ts, rowid` (şema değişikliği gerektirmez). | `sync_database.dart:174`, `:363`, `:84` | ✅ okundu · ✔ düzeltildi (incelemede): `ORDER BY ts, rowid` | S |
+| K2-9 | `ORDER BY ts` eşitlik bozucusuz; `ts` ms'e kırpılıyor → aynı ms'deki iki op keyfi sırada. **P1 ile birlikte gönderilmeli** (indeks bu "kazara" sırayı değiştiriyor). Düzeltme: `ORDER BY ts, rowid` (şema değişikliği gerektirmez). | `sync_database.dart:174`, `:363`, `:84` | ✅ okundu · ✔ düzeltildi (0.2.0): `ORDER BY ts, rowid` | S |
 | K2-10 | README'nin birincil yazma örüntüsü atomik değil ("önce yerel tabloyu güncelle, sonra `db.enqueue`"); iki await arasında çökme → satır yazılmış, op yok, hiçbir şey fark etmiyor. `SyncEntityWriter.writeAndEnqueueOp` doğru (tek transaction). Düzeltme: README sırasını değiştir, `enqueue`'ya dartdoc uyarısı. | `README.md:300-340`, `sync_database.dart:83` | 📋 ajan | S |
 | K2-11 | `_rowsToOps`: tanınmayan `op` değeri boş payload'lı `UpsertOp`'a düşüyor → sunucu kaydını boşaltabilecek PUT. Düzeltme: wire değerli enhanced enum + `tryParse`; eski `static const` dizgiler deprecated alias kalır. | `sync_database.dart:385-398` | 📋 ajan | M |
-| K2-12 | Zaman damgası hassasiyeti: outbox `ts`/`baseUpdatedAt`'ı ms olarak saklıyor (µs kaybı). Doğruluk ayrıca drift'in `store_date_time_values_as_text: true` seçeneğine bağlı; README bunu kritik olarak işaretlemiyor (onsuz drift **saniye** saklar). | `sync_database.dart:84,87,106`, `README.md:154` | 📋 ajan · kısmen (incelemede): outbox tabanı artık µs; README notu eklendi. `ts` kolonu hâlâ ms | M |
+| K2-12 | Zaman damgası hassasiyeti: outbox `ts`/`baseUpdatedAt`'ı ms olarak saklıyor (µs kaybı). Doğruluk ayrıca drift'in `store_date_time_values_as_text: true` seçeneğine bağlı; README bunu kritik olarak işaretlemiyor (onsuz drift **saniye** saklar). | `sync_database.dart:84,87,106`, `README.md:154` | 📋 ajan · kısmen (0.2.0): outbox tabanı artık µs; README notu eklendi. `ts` kolonu hâlâ ms | M |
 | K2-13 | `purgeOutboxOlderThan` `sync_outbox_meta` satırlarını yetim bırakıyor; `ackOutbox`'ın iki statement'ı aynı transaction'da değil. | `sync_database.dart:473-480`, `:431-437` | 📋 ajan | S |
 | K2-14 | `clearSyncableTables`: N ayrı transaction'sız `DELETE`; yarıda kalırsa bazı tablolar silinmiş olur. Cursor sıfırlamayla aynı transaction'a alınmalı. | `sync_database.dart:495-499` | 📋 ajan | S |
 
@@ -191,6 +208,7 @@ Satır numaraları `ad04811` içindir.
 | K2-38 | `fromSql` her şeyi yutuyor, `fromJson` korumasız: `fromJson([1, null, 3])` `TypeError` fırlatıyor, `fromSql('[1,null,3]')` `[]` döndürüyor (tek bozuk öğe tüm listeyi düşürüyor). | `list_int_converter.dart:15-35`, `list_string_converter.dart:41-46` | 📋 ajan | S |
 | K2-39 | `catch` blokları `FormatException` mesajını (kaynak metnin ~78 karakteri: token/PII) ve stack trace'i `dart:developer.log` ile yazıyor; `log` release'te ayıklanmaz. Bozuk kolonda satır başına maliyet. | dört converter'ın `catch`'leri | 📋 ajan | S |
 | K2-40 | Aynı converter duruma göre `const []` ya da büyüyebilir liste döndürüyor → veriye bağlı `UnsupportedError`. | `list_string_converter.dart:23-34`, `list_int_converter.dart:15-25` | 📋 ajan | S |
+| K2-41 ✔ | Transport bir op için sonuç döndürmezse (`BatchPushResult.results` eksik) op ne ack'leniyor ne hata sayılıyor; `while (true)` aynı op'u yeniden alıp yeniden push ediyor → `sync()` dönmüyor, sunucu sürekli vuruluyor (K1-1'in transport kaynaklı ikizi). Düzeltme: yanıtsız op `TransportException` ile başarısız sayılıyor (`tryCount`+1, `OperationFailedEvent`) ve push bitiyor. Bilinmeyen `opId` için sonuç hâlâ fırlatıyor, artık op id'sini söyleyerek. | `push_service.dart` (`pushAll`) | ✅ çalıştırıldı (kırmızı→yeşil: `push_bookkeeping_test.dart`) | S |
 
 ---
 
@@ -198,17 +216,17 @@ Satır numaraları `ad04811` içindir.
 
 | ID | Fırsat | Yer | Beklenen kazanç | Durum | Efor | Kırıcı mı |
 |---|---|---|---|---|---|---|
-| P1 | `sync_outbox`'ta hiç indeks yok. `takeOutbox`: `SCAN` + `USE TEMP B-TREE FOR ORDER BY`, `SELECT *` ile payload'lar dahil tüm satırlar okunup sıralanıyor; `pushAll` bunu batch başına yeniliyor. `watchOutboxCount` her insert/ack/tryCount güncellemesinde tam `COUNT(*)`. Öneri: `(ts)`, `(kind, ts)`, `(tryCount)`. **K2-9 ile birlikte.** | `tables/outbox.dart:35-39`, `sync_database.dart:171-177`, `:209-213` | N op boşaltma O(N²/pageSize) → O(N) | ✅ okundu | M | Şema. Kırmayan yol: init'te idempotent `CREATE INDEX IF NOT EXISTS` |
-| P2 | N+1: `_reStampBaseUpdatedAt` op başına sıralı `SELECT * ... LIMIT 1` (batch başına 500'e kadar), ağ çağrısından önce. Öneri: kind başına tek `WHERE pk IN (...)` (≤ ~900 değişkenlik parçalar); yalnızca değer değiştiyse kopya ayır. | `push_service.dart:227-295` | Mobilde batch başına ~100–500 ms | 📋 ajan · büyük ölçüde giderildi (incelemede): satır okuması yalnızca ms hassasiyetli tabanlarda | M | hayır |
-| P3 | `_applyServerRow` her başarıda ayrı statement + örtük transaction; `ack` ile atomik değil. Öneri: döngüde topla, `ack`'ten önce tek `batch`. | `push_service.dart:111-113`, `:307-318` | 500 commit → 1 | ✅ okundu | S | hayır |
+| P1 ✔ | `sync_outbox`'ta hiç indeks yok. `takeOutbox`: `SCAN` + `USE TEMP B-TREE FOR ORDER BY`, `SELECT *` ile payload'lar dahil tüm satırlar okunup sıralanıyor; `pushAll` bunu batch başına yeniliyor. `watchOutboxCount` her insert/ack/tryCount güncellemesinde tam `COUNT(*)`. Öneri: `(ts)`, `(kind, ts)`, `(tryCount)`. **K2-9 ile birlikte.** | `tables/outbox.dart:35-39`, `sync_database.dart:171-177`, `:209-213` | N op boşaltma O(N²/pageSize) → O(N) | ✅ okundu | M | Şema. Kırmayan yol: init'te idempotent `CREATE INDEX IF NOT EXISTS` |
+| P2 ✔ (kalan: native'de ms hassasiyetli tabanlarda op başına PK okuması, ~5 ms / 100 op) | N+1: `_reStampBaseUpdatedAt` op başına sıralı `SELECT * ... LIMIT 1` (batch başına 500'e kadar), ağ çağrısından önce. Öneri: kind başına tek `WHERE pk IN (...)` (≤ ~900 değişkenlik parçalar); yalnızca değer değiştiyse kopya ayır. | `push_service.dart:227-295` | Mobilde batch başına ~100–500 ms | 📋 ajan · büyük ölçüde giderildi (0.2.0): satır okuması yalnızca ms hassasiyetli tabanlarda | M | hayır |
+| P3 ✔ | `_applyServerRow` her başarıda ayrı statement + örtük transaction; `ack` ile atomik değil. Öneri: döngüde topla, `ack`'ten önce tek `batch`. | `push_service.dart:111-113`, `:307-318` | 500 commit → 1 | ✅ okundu | S | hayır |
 | P4 | search: cursor indekslemesi satır başına bir kilit + bir transaction. Öneri: `upsertAll` (varsayılan gövdeli) + sayfa başına tek transaction; `_deleteNoTxn`'de `DELETE ... RETURNING`. | `search_engine.dart:79-83`, `search_database.dart:302-336`, `search_indexer.dart:107-126` | Masaüstü SSD'de ölçülen 4,7× (2000 satır: 0,232 sn → 0,049 sn); mobil flash'ta daha fazla | 📋 ajan | M | hayır |
 | P5 | FTS indeksi ham + normalize metni iki kez tutuyor. Aynı 8,9 MB külliyatta: mevcut 57,9 MB; ham kolonlar `UNINDEXED` → 38,4 MB (−%34); `unicode61` → 26,0 MB (−%55, ama kelime-içi eşleşme kaybolur ve Türkçe `ı`/`ç` yine katlanmaz). **Bedel:** `highlight()`/`snippet()` `UNINDEXED` kolonda işaretsiz döner → vurgu normalize kolonlara taşınıp ofsetler istemcide ham metne uygulanmalı (normalizer karakter-başına eşleme olduğu sürece kesin). | `tables/search_tables.drift:23-34`, `search_database.dart:437-440` | Cihazdaki DB boyutu −%34 | 📋 ajan | L | Şema + göç |
 | P6 | `SELECT *`: her sonuç tam `content` **ve** `content_normalized` taşıyor; UI ~66 karakterlik snippet gösteriyor. Öneri: kolonları adlandır, `includeContent` bayrağı, `*_normalized` okumalarını `fromSql`'den çıkar. | `search_database.dart:464-468`, `models/global_search.dart:44-58` | 50 KB'lık belgelerde 50 sonuç ≈ tuş başına 5 MB string | 📋 ajan | S | bayrakla hayır |
 | P7 | `processPendingItems` yazmadan önce 5000 payload'ı çözüp iki liste hâlinde bellekte tutuyor. Öneri: iç sayfalama; tek satırlık hafifletme: varsayılan `batchSize` ~500. | `search_engine.dart:116-130`, `search_database.dart:160-187` | 20 KB/satırda tepe ~200 MB | 📋 ajan | S–M | hayır |
 | P8 | REST pull: bayt → String → ağaç. `const Utf8Decoder().fuse(const JsonDecoder())` doğrudan bayttan ayrıştırıyor. Ayrıca `Response.body` her erişimde yeniden çözen bir getter (`_parseResponse:430,432` iki kez çağırıyor). | `rest_transport.dart:136` | 191 KiB / 500 satırlık sayfada ölçülen 1,6× (497 µs → 310 µs) + ara String yok | 📋 ajan | S | hayır |
 | P9 | `Future.wait` chunk'ı bariyer: her chunk `max(gecikme)` kadar sürüyor. `_nextBackoff` saf `d * 2` (jitter yok) → eşzamanlı retry dalgaları. | `rest_transport.dart:168-183`, `:601-604` | Kuyruk gecikmesi; sunucu üzerindeki dalgalar | 📋 ajan | S–M | hayır |
-| P10 | `recordOutboxFailures`: başarısız op başına bir round-trip; `catch` tüm döngüyü sardığı için 3. girdide hata 4..N'yi sessizce düşürüyor. Öneri: `batch.insertAllOnConflictUpdate`. | `sync_database.dart:281-293` | 500 statement → 1 | 📋 ajan | S | hayır |
-| P11 | `SyncEntityWriter._payload`: `.cast<String, Object?>()` gereksiz `CastMap` sarmalayıcısı üretiyor (düz upcast `identical`); `replaceAndEnqueueDiff` kullanıcı kodu olan `toJson`'u güncelleme başına iki kez çağırıyor. `ChangedFieldsTracker.fields` her çağrıda kopya ayırıyor. | `sync_writer.dart:68-69`, `:150-162`, `changed_fields.dart:26` | Yazma başına ayırmalar | 📋 ajan | S | hayır |
+| P10 ✔ | `recordOutboxFailures`: başarısız op başına bir round-trip; `catch` tüm döngüyü sardığı için 3. girdide hata 4..N'yi sessizce düşürüyor. Öneri: `batch.insertAllOnConflictUpdate`. | `sync_database.dart:281-293` | 500 statement → 1 | 📋 ajan | S | hayır |
+| P11 ✔ | `SyncEntityWriter._payload`: `.cast<String, Object?>()` gereksiz `CastMap` sarmalayıcısı üretiyor (düz upcast `identical`); `replaceAndEnqueueDiff` kullanıcı kodu olan `toJson`'u güncelleme başına iki kez çağırıyor. `ChangedFieldsTracker.fields` her çağrıda kopya ayırıyor. | `sync_writer.dart:68-69`, `:150-162`, `changed_fields.dart:26` | Yazma başına ayırmalar | 📋 ajan | S | hayır |
 
 ---
 
