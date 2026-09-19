@@ -7,15 +7,22 @@ import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:offline_first_sync_drift_rest/offline_first_sync_drift_rest.dart';
 
 import '../database/database.dart';
+import '../repositories/settings_repository.dart';
+import '../search/app_search.dart';
+import '../sync/note_sync.dart';
+import 'auto_sync.dart';
 import 'conflict_handler.dart';
-// ignore: unused_import
-import '../sync/todo_sync.dart';
+import 'item_sync_state.dart';
+import 'live_updates.dart';
+import 'network_switch.dart';
+import 'notes_conflict_policy.dart';
+import 'sync_failure.dart';
 
 /// Extracts user-friendly error message from exception.
 String _sanitizeError(Object error) {
   final message = error.toString();
-  // Extract meaningful part, hide stack traces and internal details
-  if (message.contains('SocketException')) {
+  if (message.contains('SocketException') ||
+      message.contains('ClientException')) {
     return 'Network connection failed. Check your internet connection.';
   }
   if (message.contains('TimeoutException')) {
@@ -27,142 +34,477 @@ String _sanitizeError(Object error) {
   if (message.contains('FormatException')) {
     return 'Server returned invalid data.';
   }
-  // Generic fallback - avoid exposing internal details
   if (message.length > 100) {
     return 'Sync failed. Please try again.';
   }
   return message;
 }
 
-/// Service for synchronizing todos with the server.
+/// What the last run of a sync did.
+@immutable
+class LastSyncSummary {
+  const LastSyncSummary({
+    required this.what,
+    required this.at,
+    required this.stats,
+    required this.stuckOps,
+    this.firstError,
+  });
+
+  /// `Sync`, `Send now`, `Get changes`, `Full resync`, `Automatic sync`.
+  final String what;
+  final DateTime at;
+  final SyncStats stats;
+  final int stuckOps;
+  final FailureReason? firstError;
+
+  String get headline =>
+      '$what — ${stats.pushed} sent, ${stats.pulled} received, '
+      '${stats.conflicts} conflicts, ${stats.errors} errors';
+}
+
+/// Service for synchronizing todos and notes with the server.
 ///
-/// Uses [SyncEngine] with [RestTransport] for HTTP communication.
-/// Uses manual conflict resolution strategy.
+/// Owns the [SyncEngine] and everything the sync panel drives: automatic
+/// sync and its countdown, "send right after every change", the manual
+/// buttons and the stuck list.
 class SyncService extends ChangeNotifier {
   SyncService({
     required AppDatabase db,
     required String baseUrl,
     required ConflictHandler conflictHandler,
-    required SyncableTable<Todo> todoSync,
-    int maxRetries = 5,
+    required this.todoSync,
+    SyncableTable<Note>? noteSync,
+    this.settings,
+    NetworkSwitch? networkSwitch,
+    this.search,
+    int maxRetries = 1,
     int maxPushRetries = 5,
   }) : _db = db,
-       _conflictHandler = conflictHandler {
+       _conflictHandler = conflictHandler,
+       networkSwitch = networkSwitch ?? NetworkSwitch() {
+    _noteSync = noteSync ?? noteSyncTable(db);
     _transport = RestTransport(
       base: Uri.parse(baseUrl),
       // No auth for demo
       token: () async => '',
+      client: SwitchableClient(this.networkSwitch),
       maxRetries: maxRetries,
+      // An interactive app must answer "Send now" quickly, also when it
+      // cannot get through. RestTransport's defaults (5 retries backing off
+      // 1 s → 16 s) are meant for unattended background syncs: a tap without
+      // a connection kept this screen "Syncing…" for about a minute — 31 s
+      // for the push, then 31 s for the pull. Nothing is lost by giving up
+      // sooner: the change stays queued and the next sync (or live update,
+      // or tap) tries again.
+      backoffMin: const Duration(milliseconds: 250),
+      backoffMax: const Duration(seconds: 1),
+      requestTimeout: const Duration(seconds: 10),
     );
+    _maxPushRetries = maxPushRetries;
 
-    _engine = SyncEngine(
+    _buildEngine();
+
+    itemStates = ItemSyncStateStore(
       db: db,
-      transport: _transport,
-      tables: [todoSync],
-      config: SyncConfig(
-        // Use manual strategy for conflict resolution UI
-        conflictStrategy: ConflictStrategy.manual,
-        pageSize: 500,
-        maxPushRetries: maxPushRetries,
-        // Connect conflict resolver function
-        conflictResolver: conflictHandler.resolve,
-      ),
+      maxTryCount: const SyncConfig().maxOutboxTryCount,
+      conflictedItems: () => conflictHandler.conflictedItems,
     );
+    conflictHandler.addListener(itemStates.conflictsChanged);
 
-    // Listen to sync events
-    _subscription = _engine.events.listen(_handleEvent);
+    live = LiveUpdates(
+      backendUrl: Uri.parse(baseUrl),
+      onChanged: _pullBecauseServerSaidSo,
+      log: (message) => _conflictHandler.logEvent(message),
+    );
+    live.addListener(notifyListeners);
   }
 
   final AppDatabase _db;
   final ConflictHandler _conflictHandler;
-  late final RestTransport _transport;
-  late final SyncEngine _engine;
-  late final StreamSubscription<SyncEvent> _subscription;
 
-  /// Current sync status.
+  /// The todo table registered with the engine.
+  final SyncableTable<Todo> todoSync;
+
+  /// Where this device's panel settings live; `null` in tests.
+  final SettingsRepository? settings;
+
+  /// The search index, re-armed after a sync brought new rows in.
+  final AppSearch? search;
+
+  /// The client-side "airplane mode" the Sync lab flips.
+  final NetworkSwitch networkSwitch;
+
+  late final SyncableTable<Note> _noteSync;
+  late final RestTransport _transport;
+  late final int _maxPushRetries;
+  late SyncEngine<AppDatabase> _engine;
+  StreamSubscription<SyncEvent>? _engineSubscription;
+
+  /// Per-item sync states for the chips on every card.
+  late final ItemSyncStateStore itemStates;
+
+  /// The backend's live change feed.
+  late final LiveUpdates live;
+
+  StreamSubscription<int>? _pendingSubscription;
+  StreamSubscription<int>? _stuckSubscription;
+
+  /// Events are forwarded through our own stream: the engine is rebuilt when
+  /// "send right after every change" is toggled, and a rebuild closes its
+  /// stream underneath anybody listening to it.
+  final _events = StreamController<SyncEvent>.broadcast();
+  Stream<SyncEvent> get events => _events.stream;
+
+  /// The retry budget after which an operation counts as stuck.
+  int get maxOutboxTryCount => const SyncConfig().maxOutboxTryCount;
+
   SyncStatus _status = SyncStatus.idle;
   SyncStatus get status => _status;
 
-  /// Last sync error, if any.
   String? _error;
   String? get error => _error;
 
-  /// Last sync statistics.
   SyncStats? _lastStats;
   SyncStats? get lastStats => _lastStats;
 
-  /// Sync progress (0.0 to 1.0).
-  double _progress = 0.0;
+  LastSyncSummary? _lastSync;
+  LastSyncSummary? get lastSync => _lastSync;
+
+  double _progress = 0;
   double get progress => _progress;
 
-  /// Whether currently syncing.
   bool get isSyncing => _status == SyncStatus.syncing;
 
-  /// Stream of sync events.
-  Stream<SyncEvent> get events => _engine.events;
+  int _pendingCount = 0;
 
-  /// Gets the conflict handler for UI access.
+  /// Operations still waiting in the outbox, stuck ones included.
+  int get pendingCount => _pendingCount;
+
+  int _stuckCount = 0;
+
+  /// Operations that ran out of retries.
+  int get stuckCount => _stuckCount;
+
+  AutoSyncSettings _autoSync = AutoSyncSettings.off;
+  AutoSyncSettings get autoSync => _autoSync;
+
+  DateTime? _autoSyncStartedAt;
+
+  /// When the next automatic sync is due, or `null` when it is off.
+  Duration? timeUntilNextAutoSync([DateTime? now]) => timeUntilNextSync(
+    settings: _autoSync,
+    startedAt: _autoSyncStartedAt,
+    now: now ?? DateTime.now(),
+  );
+
+  bool _pushOnChange = false;
+
+  /// Whether a write is pushed right away instead of waiting for a sync.
+  bool get pushOnChange => _pushOnChange;
+
+  /// How long the engine waits after a write before pushing, so a burst of
+  /// edits becomes one request.
+  Duration get pushDebounce => const SyncConfig().enqueuePushDebounce;
+
   ConflictHandler get conflictHandler => _conflictHandler;
 
-  /// Performs a full sync (push + pull).
-  Future<SyncStats> sync() async {
-    _status = SyncStatus.syncing;
-    _error = null;
-    _progress = 0.0;
+  /// The kinds this app syncs.
+  static const kinds = {'todos', 'notes'};
+
+  // ---------------------------------------------------------------------
+  // Engine lifecycle
+  // ---------------------------------------------------------------------
+
+  void _buildEngine() {
+    _engine = SyncEngine<AppDatabase>(
+      db: _db,
+      transport: _transport,
+      tables: [todoSync, _noteSync],
+      config: SyncConfig(
+        // Todos ask the user; see `tableConflictConfigs` for notes.
+        conflictStrategy: ConflictStrategy.manual,
+        pageSize: 500,
+        maxPushRetries: _maxPushRetries,
+        conflictResolver: _conflictHandler.resolve,
+        pushOnEnqueue: _pushOnChange,
+      ),
+      tableConflictConfigs: {
+        // Notes settle themselves. This is `manual` with an automatic
+        // resolver rather than `ConflictStrategy.autoPreserve` because
+        // `autoPreserve` cannot resolve a conflicting delete — see
+        // `notes_conflict_policy.dart`.
+        'notes': TableConflictConfig(
+          strategy: ConflictStrategy.manual,
+          resolver: (conflict) => resolveNoteConflict(
+            conflict,
+            log: (message) => _conflictHandler.logEvent(message),
+          ),
+        ),
+      },
+    );
+    _engineSubscription = _engine.events.listen(_handleEvent);
+  }
+
+  /// Rebuilds the engine, which is the only way to change a [SyncConfig].
+  Future<void> _rebuildEngine() async {
+    // A sync in flight holds the old engine; let it finish first, otherwise
+    // its completion lands on a disposed event stream.
+    while (isSyncing) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    final wasAuto = _autoSync.enabled;
+    await _engineSubscription?.cancel();
+    _engine
+      ..stopAuto()
+      ..dispose();
+    _buildEngine();
+    if (wasAuto) _applyAutoSync();
+  }
+
+  // ---------------------------------------------------------------------
+  // Settings
+  // ---------------------------------------------------------------------
+
+  /// Starts everything that talks to the outside world.
+  ///
+  /// Nothing in the constructor opens a socket, a timer or a database
+  /// stream: a service that starts real work the moment it is built cannot
+  /// be built inside a widget test, and hides the app's startup order. `main`
+  /// calls this once, after the providers are in place.
+  Future<void> start() async {
+    _pendingSubscription ??= _db.watchOutboxCount().listen(
+      (count) => _update(() => _pendingCount = count),
+    );
+    _stuckSubscription ??= _db
+        .watchStuckOutboxCount(minTryCount: maxOutboxTryCount)
+        .listen((count) => _update(() => _stuckCount = count));
+    itemStates.start();
+    await _loadSettings();
+  }
+
+  /// Restores this device's panel settings and starts what they ask for.
+  Future<void> _loadSettings() async {
+    final settings = this.settings;
+    if (settings != null) {
+      _autoSync = AutoSyncSettings(
+        enabled: await settings.readBool(
+          SettingKeys.autoSyncEnabled,
+          orElse: false,
+        ),
+        interval: Duration(
+          seconds: await settings.readInt(
+            SettingKeys.autoSyncSeconds,
+            orElse: 60,
+          ),
+        ),
+      );
+      _pushOnChange = await settings.readBool(
+        SettingKeys.pushOnChange,
+        orElse: false,
+      );
+      if (_pushOnChange) await _rebuildEngine();
+      await live.setEnabled(
+        value: await settings.readBool(SettingKeys.liveUpdates, orElse: true),
+      );
+    } else {
+      await live.setEnabled(value: true);
+    }
+    _applyAutoSync();
     notifyListeners();
+  }
 
-    _conflictHandler.logEvent('Starting sync...');
+  Future<void> setAutoSync(AutoSyncSettings value) async {
+    _autoSync = value;
+    _applyAutoSync();
+    await settings?.writeBool(
+      SettingKeys.autoSyncEnabled,
+      value: value.enabled,
+    );
+    await settings?.writeInt(
+      SettingKeys.autoSyncSeconds,
+      value.interval.inSeconds,
+    );
+    _conflictHandler.logEvent(
+      value.enabled
+          ? 'Automatic sync on, ${describeInterval(value.interval)}'
+          : 'Automatic sync off — changes stay on this device until you '
+                'press Send now',
+    );
+    notifyListeners();
+  }
 
+  void _applyAutoSync() {
+    _engine.stopAuto();
+    if (_autoSync.enabled) {
+      _engine.startAuto(interval: _autoSync.interval);
+      _autoSyncStartedAt = DateTime.now();
+    } else {
+      _autoSyncStartedAt = null;
+    }
+  }
+
+  Future<void> setPushOnChange({required bool value}) async {
+    if (_pushOnChange == value) return;
+    _pushOnChange = value;
+    await _rebuildEngine();
+    await settings?.writeBool(SettingKeys.pushOnChange, value: value);
+    _conflictHandler.logEvent(
+      value
+          ? 'Every change is now sent about '
+                '${pushDebounce.inMilliseconds} ms after you make it'
+          : 'Changes now wait for a sync',
+    );
+    notifyListeners();
+  }
+
+  Future<void> setLiveUpdates({required bool value}) async {
+    await live.setEnabled(value: value);
+    await settings?.writeBool(SettingKeys.liveUpdates, value: value);
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------
+  // The buttons
+  // ---------------------------------------------------------------------
+
+  /// Push and pull.
+  Future<SyncStats> sync() => _run('Sync');
+
+  /// Push only: deliver what is queued here.
+  Future<SyncStats> sendNow() => _run('Send now', pullKinds: const {});
+
+  /// Pull only: fetch what other devices did.
+  Future<SyncStats> getChanges() => _run('Get changes', pushKinds: const {});
+
+  /// Forgets the cursors and reads everything again.
+  Future<SyncStats> fullResync({bool clearData = false}) async {
+    _begin();
     try {
-      final stats = await _engine.sync();
-      _lastStats = stats;
-      _status = SyncStatus.idle;
-
-      _conflictHandler.logEvent(
-        'Sync completed: ${stats.pushed} pushed, ${stats.pulled} pulled',
-      );
-
-      notifyListeners();
+      final stats = await _engine.fullResync(clearData: clearData);
+      _finish('Full resync', stats, null, 0);
+      await search?.refresh();
       return stats;
-    } catch (e) {
-      _error = _sanitizeError(e);
-      _status = SyncStatus.error;
-
-      _conflictHandler.logEvent(
-        'Sync failed: $_error',
-        level: SyncLogLevel.error,
-      );
-
-      notifyListeners();
+    } on Object catch (e) {
+      _fail(e);
       rethrow;
     }
+  }
+
+  Future<SyncStats> _run(
+    String what, {
+    Set<String>? pushKinds,
+    Set<String>? pullKinds,
+  }) async {
+    _begin();
+    try {
+      final result = await _engine.syncRun(
+        pushKinds: pushKinds,
+        pullKinds: pullKinds,
+      );
+      _finish(what, result.stats, result.firstError, result.stuckOpsCount);
+      await search?.refresh();
+      return result.stats;
+    } on Object catch (e) {
+      _fail(e);
+      rethrow;
+    }
+  }
+
+  void _begin() {
+    _status = SyncStatus.syncing;
+    _error = null;
+    _progress = 0;
+    notifyListeners();
+  }
+
+  void _finish(
+    String what,
+    SyncStats stats,
+    SyncErrorInfo? firstError,
+    int stuckOps,
+  ) {
+    _lastStats = stats;
+    _lastSync = LastSyncSummary(
+      what: what,
+      at: DateTime.now(),
+      stats: stats,
+      stuckOps: stuckOps,
+      firstError: firstError == null ? null : describeFailure(firstError),
+    );
+    _status = SyncStatus.idle;
+    _progress = 1;
+    if (_autoSync.enabled) _autoSyncStartedAt ??= DateTime.now();
+    _conflictHandler.logEvent(_lastSync!.headline);
+    notifyListeners();
+  }
+
+  void _fail(Object e) {
+    _error = _sanitizeError(e);
+    _status = SyncStatus.error;
+    _conflictHandler.logEvent(
+      'Sync failed: $_error',
+      level: SyncLogLevel.error,
+    );
+    notifyListeners();
+  }
+
+  /// Starts automatic sync at the given interval.
+  ///
+  /// The panel goes through [setAutoSync], which also remembers the choice;
+  /// this is the plain version for tests and for code that just wants the
+  /// timer running.
+  void startAuto({Duration interval = const Duration(minutes: 5)}) {
+    _autoSync = AutoSyncSettings(enabled: true, interval: interval);
+    _applyAutoSync();
+    _conflictHandler.logEvent('Auto-sync started (interval: $interval)');
+    notifyListeners();
+  }
+
+  /// Stops automatic sync.
+  void stopAuto() {
+    _autoSync = _autoSync.copyWith(enabled: false);
+    _applyAutoSync();
+    _conflictHandler.logEvent('Auto-sync stopped');
+    notifyListeners();
+  }
+
+  /// Gets pending operation count.
+  ///
+  /// [pendingCount] is the same number kept live for the UI; this reads it
+  /// on demand.
+  Future<int> getPendingCount() async {
+    final ops = await _db.takeOutbox();
+    return ops.length;
+  }
+
+  /// The operations that ran out of retries.
+  Future<List<Op>> stuckOperations() => _engine.getStuckOperations();
+
+  /// Puts stuck operations back in the queue with a fresh budget.
+  Future<void> retryStuck() async {
+    await _engine.retryStuckOperations();
+    _conflictHandler.logEvent('Stuck changes put back in the queue');
+    notifyListeners();
+  }
+
+  /// Throws stuck operations away. The local rows keep whatever they have.
+  Future<void> discardStuck() async {
+    await _engine.dropStuckOperations();
+    _conflictHandler.logEvent(
+      'Stuck changes discarded',
+      level: SyncLogLevel.warning,
+    );
+    notifyListeners();
   }
 
   /// Checks server health.
   Future<bool> checkHealth() async {
     try {
       return await _transport.health();
-    } catch (e) {
+    } on Object {
       return false;
     }
-  }
-
-  /// Starts automatic sync at the given interval.
-  void startAuto({Duration interval = const Duration(minutes: 5)}) {
-    _engine.startAuto(interval: interval);
-    _conflictHandler.logEvent('Auto-sync started (interval: $interval)');
-  }
-
-  /// Stops automatic sync.
-  void stopAuto() {
-    _engine.stopAuto();
-    _conflictHandler.logEvent('Auto-sync stopped');
-  }
-
-  /// Gets pending operation count.
-  Future<int> getPendingCount() async {
-    final ops = await _db.takeOutbox();
-    return ops.length;
   }
 
   /// Triggers server-side simulation endpoint.
@@ -186,7 +528,7 @@ class SyncService extends ChangeNotifier {
         'Server simulation triggered: $endpoint',
         level: SyncLogLevel.warning,
       );
-    } catch (e) {
+    } on Object catch (e) {
       _conflictHandler.logEvent(
         'Simulation failed: $e',
         level: SyncLogLevel.error,
@@ -195,11 +537,19 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// A pull of one kind, because the server said that kind changed.
+  Future<void> _pullBecauseServerSaidSo(String kind) async {
+    if (isSyncing) return;
+    await _run('Live update', pushKinds: const {}, pullKinds: {kind});
+  }
+
   void _handleEvent(SyncEvent event) {
+    _events.add(event);
+
     switch (event) {
       case SyncStarted(:final phase):
         _status = SyncStatus.syncing;
-        _progress = 0.0;
+        _progress = 0;
         _conflictHandler.logEvent('Sync $phase started...');
         notifyListeners();
 
@@ -212,7 +562,7 @@ class SyncService extends ChangeNotifier {
       case SyncCompleted(:final stats):
         _lastStats = stats;
         _status = SyncStatus.idle;
-        _progress = 1.0;
+        _progress = 1;
         notifyListeners();
 
       case SyncErrorEvent(:final error):
@@ -227,6 +577,15 @@ class SyncService extends ChangeNotifier {
       ):
         _conflictHandler.logEvent('$operationType $kind: $entityId');
 
+      case OperationFailedEvent(:final opId, :final errorInfo, :final kind):
+        // The precise reason, while it is still in memory; the outbox only
+        // keeps the message as a string.
+        itemStates.recordFailure(opId, errorInfo);
+        _conflictHandler.logEvent(
+          '$kind: ${describeFailure(errorInfo).words}',
+          level: SyncLogLevel.warning,
+        );
+
       case CacheUpdateEvent(:final kind, :final upserts, :final deletes):
         _conflictHandler.logEvent(
           'Cache: $kind - $upserts upserts, $deletes deletes',
@@ -240,20 +599,33 @@ class SyncService extends ChangeNotifier {
 
       case ConflictResolvedEvent(:final conflict, :final resolution):
         _conflictHandler.logEvent(
-          'Resolved: ${conflict.kind}/${conflict.entityId} -> ${resolution.runtimeType}',
+          'Resolved: ${conflict.kind}/${conflict.entityId} -> '
+          '${resolution.runtimeType}',
         );
 
       default:
-        // Other events - just log in debug mode
         if (kDebugMode) {
           debugPrint('SyncEvent: $event');
         }
     }
   }
 
+  void _update(VoidCallback change) {
+    change();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
-    _subscription.cancel();
+    _pendingSubscription?.cancel();
+    _stuckSubscription?.cancel();
+    _engineSubscription?.cancel();
+    _conflictHandler.removeListener(itemStates.conflictsChanged);
+    live
+      ..removeListener(notifyListeners)
+      ..dispose();
+    itemStates.dispose();
+    _events.close();
     _engine.dispose();
     super.dispose();
   }

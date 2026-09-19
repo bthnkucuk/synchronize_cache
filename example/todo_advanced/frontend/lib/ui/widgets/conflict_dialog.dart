@@ -41,6 +41,12 @@ class _ConflictDialogState extends State<ConflictDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    // A conflicting *delete* is a different question: the local side has no
+    // version to compare, only an intent. Offering a field-by-field merge
+    // there would be meaningless — and the engine cannot push a merged
+    // delete anyway — so the dialog asks the one question that matters.
+    if (widget.conflict.isDelete) return _buildDeleteConflict(context, theme);
+
     return AlertDialog(
       title: const Row(
         children: [
@@ -112,6 +118,84 @@ class _ConflictDialogState extends State<ConflictDialog> {
           onPressed: _isResolving ? null : () => _resolveWithLocal(context),
           icon: const Icon(Icons.phone_android),
           label: const Text('Use Local'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeleteConflict(BuildContext context, ThemeData theme) {
+    final server = widget.conflict.serverTodo;
+
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.warning_amber, color: Colors.orange),
+          SizedBox(width: 8),
+          Expanded(child: Text('Deleted here, edited elsewhere')),
+        ],
+      ),
+      content: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.8,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You deleted "${server.title}" on this device. Another '
+                'device changed it before your delete got through.',
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'What the other device has now',
+                      style: theme.textTheme.labelMedium,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(server.title, style: theme.textTheme.titleSmall),
+                    if (server.description != null &&
+                        server.description!.isNotEmpty)
+                      Text(
+                        server.description!,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    Text(
+                      'Priority ${server.priority}'
+                      '${server.completed ? ' · done' : ''}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Nothing is lost while you decide — the delete stays queued '
+                'on this device.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        OutlinedButton.icon(
+          onPressed: _isResolving ? null : () => _resolveWithServer(context),
+          icon: const Icon(Icons.undo),
+          label: const Text('Keep their version'),
+        ),
+        FilledButton.icon(
+          onPressed: _isResolving ? null : () => _resolveWithLocal(context),
+          icon: const Icon(Icons.delete_forever),
+          label: const Text('Delete anyway'),
         ),
       ],
     );

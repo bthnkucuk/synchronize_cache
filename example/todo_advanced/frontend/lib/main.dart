@@ -3,12 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 
+import 'app/device.dart';
 import 'database/database.dart';
+import 'repositories/note_repository.dart';
+import 'repositories/settings_repository.dart';
 import 'repositories/todo_repository.dart';
+import 'search/app_search.dart';
 import 'services/conflict_handler.dart';
+import 'services/lab_actions.dart';
 import 'services/sync_service.dart';
+import 'sync/note_sync.dart';
 import 'sync/todo_sync.dart';
-import 'ui/screens/todo_list_screen.dart';
+import 'ui/screens/home_screen.dart';
 
 /// Backend server URL.
 ///
@@ -32,25 +38,49 @@ void main() async {
     SemanticsBinding.instance.ensureSemantics();
   }
 
-  // Open database
-  final db = AppDatabase.open();
+  // Which device this tab is. `?device=B` in the browser, or
+  // `--dart-define=DEVICE=B` natively; device A keeps the original database.
+  final device = Device.fromEnvironment();
+  final db = AppDatabase.open(name: device.databaseName);
 
-  // Create services
+  // Two synced kinds, one engine.
   final todoSync = todoSyncTable(db);
+  final noteSync = noteSyncTable(db);
   final todoRepo = TodoRepository(db, todoSync);
+  final noteRepo = NoteRepository(db, noteSync);
+  final settings = SettingsRepository(db);
+
+  final search = AppSearch(db);
   final conflictHandler = ConflictHandler();
   final syncService = SyncService(
     db: db,
     baseUrl: kBackendUrl,
     conflictHandler: conflictHandler,
     todoSync: todoSync,
+    noteSync: noteSync,
+    settings: settings,
+    search: search,
   );
+
+  // Start indexing and restore this device's sync preferences. Both are
+  // awaited so the first frame already shows the real state instead of
+  // flipping a switch under the user a moment later.
+  await search.start();
+  await syncService.start();
 
   runApp(
     MultiProvider(
       providers: [
+        Provider<Device>.value(value: device),
         Provider<AppDatabase>.value(value: db),
         Provider<TodoRepository>.value(value: todoRepo),
+        Provider<NoteRepository>.value(value: noteRepo),
+        Provider<SettingsRepository>.value(value: settings),
+        Provider<AppSearch>.value(value: search),
+        Provider<LabActions>(
+          create: (_) => LabActions(backendUrl: kBackendUrl),
+          dispose: (_, actions) => actions.dispose(),
+        ),
         ChangeNotifierProvider<ConflictHandler>.value(value: conflictHandler),
         ChangeNotifierProvider<SyncService>.value(value: syncService),
       ],
@@ -82,7 +112,7 @@ class TodoAdvancedApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const TodoListScreen(),
+      home: const HomeScreen(),
     );
   }
 }

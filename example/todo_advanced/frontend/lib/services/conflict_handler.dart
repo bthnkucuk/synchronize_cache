@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 
 import '../models/todo.dart';
+import 'item_sync_state.dart' show ItemKey;
 
 /// Handles conflict resolution for sync operations.
 ///
@@ -12,6 +13,9 @@ import '../models/todo.dart';
 /// 2. Notifies listeners (UI shows conflict dialog)
 /// 3. User chooses resolution: local, server, or merged
 /// 4. Resolution is applied and sync continues
+///
+/// This is the *manual* strategy, which todos use. Notes take the automatic
+/// route in `notes_conflict_policy.dart` — the contrast is the point.
 class ConflictHandler extends ChangeNotifier {
   ConflictHandler();
 
@@ -32,6 +36,12 @@ class ConflictHandler extends ChangeNotifier {
   /// Number of pending conflicts.
   int get conflictCount =>
       _pendingConflicts.length + (_currentConflict != null ? 1 : 0);
+
+  /// Every `(kind, id)` waiting for a decision, for the per-item chips.
+  Set<ItemKey> get conflictedItems => {
+    for (final info in [..._pendingConflicts, ?_currentConflict])
+      (info.conflict.kind, info.conflict.entityId),
+  };
 
   /// Sync event log for debugging.
   final List<SyncLogEntry> _log = [];
@@ -62,13 +72,20 @@ class ConflictHandler extends ChangeNotifier {
   ///
   /// This is called by the sync engine when a conflict is detected.
   Future<ConflictResolution> resolve(Conflict conflict) async {
-    // Parse conflict data safely - malformed data should not crash sync
-    final Todo localTodo;
+    // A queued *delete* carries no payload, so `localData` is empty — that is
+    // the only way a resolver can tell a delete from an edit (`Conflict` has
+    // no operation type). The two need different questions: an edit is "whose
+    // text wins", a delete is "does it go or does it come back".
+    final isDelete = conflict.localData.isEmpty;
+
     final Todo serverTodo;
+    final Todo localTodo;
     try {
-      localTodo = Todo.fromJson(conflict.localData.cast<String, dynamic>());
       serverTodo = Todo.fromJson(conflict.serverData.cast<String, dynamic>());
-    } catch (e) {
+      localTodo = isDelete
+          ? serverTodo
+          : Todo.fromJson(conflict.localData.cast<String, dynamic>());
+    } on Object catch (e) {
       logEvent('Failed to parse conflict data: $e', level: SyncLogLevel.error);
       // Defer resolution on parse error - will retry on next sync
       return const DeferResolution();
@@ -78,15 +95,20 @@ class ConflictHandler extends ChangeNotifier {
       conflict: conflict,
       localTodo: localTodo,
       serverTodo: serverTodo,
+      isDelete: isDelete,
     );
 
     logEvent(
-      'Conflict detected for "${info.localTodo.title}"',
+      isDelete
+          ? 'You deleted "${serverTodo.title}" while another device was '
+                'still editing it'
+          : 'Conflict detected for "${info.localTodo.title}"',
       level: SyncLogLevel.warning,
     );
 
     // Add to queue
     _pendingConflicts.add(info);
+    notifyListeners();
 
     // If no conflict is currently being resolved, start resolution
     if (_currentConflict == null) {
@@ -134,7 +156,11 @@ class ConflictHandler extends ChangeNotifier {
     return info.resolution ?? const AcceptServer();
   }
 
-  /// Resolves the current conflict by keeping local version.
+  /// Keeps what this device wants.
+  ///
+  /// For an edit that force-pushes the local version; for a delete it
+  /// force-deletes, which is why the library's force path has to accept a
+  /// `DeleteOp` — and it does.
   void resolveWithLocal() {
     if (_currentConflict == null || _resolutionCompleter == null) return;
 
@@ -142,14 +168,18 @@ class ConflictHandler extends ChangeNotifier {
     conflict.resolution = const AcceptClient();
 
     logEvent(
-      'Resolved with local: "${conflict.localTodo.title}"',
-      level: SyncLogLevel.info,
+      conflict.isDelete
+          ? 'Deleted anyway: "${conflict.serverTodo.title}"'
+          : 'Resolved with local: "${conflict.localTodo.title}"',
     );
 
     _completeResolution(const AcceptClient());
   }
 
-  /// Resolves the current conflict by keeping server version.
+  /// Takes the other device's version.
+  ///
+  /// For a delete this brings the row back: the queued delete is dropped and
+  /// the server's record is written locally.
   void resolveWithServer() {
     if (_currentConflict == null || _resolutionCompleter == null) return;
 
@@ -157,8 +187,10 @@ class ConflictHandler extends ChangeNotifier {
     conflict.resolution = const AcceptServer();
 
     logEvent(
-      'Resolved with server: "${conflict.serverTodo.title}"',
-      level: SyncLogLevel.info,
+      conflict.isDelete
+          ? 'Kept the other device\'s version of '
+                '"${conflict.serverTodo.title}"; the delete was dropped'
+          : 'Resolved with server: "${conflict.serverTodo.title}"',
     );
 
     _completeResolution(const AcceptServer());
@@ -169,14 +201,20 @@ class ConflictHandler extends ChangeNotifier {
     if (_currentConflict == null || _resolutionCompleter == null) return;
 
     final conflict = _currentConflict!;
+    // A merged *delete* is meaningless, and the engine cannot push one: it
+    // only force-pushes merged data for upserts. Fall back to keeping the
+    // other device's version rather than producing an operation that would
+    // sit in the outbox forever.
+    if (conflict.isDelete) {
+      resolveWithServer();
+      return;
+    }
+
     final mergedData = mergedTodo.toJson();
     final resolution = AcceptMerged(mergedData.cast<String, Object?>());
     conflict.resolution = resolution;
 
-    logEvent(
-      'Resolved with merge: "${mergedTodo.title}"',
-      level: SyncLogLevel.info,
-    );
+    logEvent('Resolved with merge: "${mergedTodo.title}"');
 
     _completeResolution(resolution);
   }
@@ -218,16 +256,31 @@ class ConflictInfo {
     required this.conflict,
     required this.localTodo,
     required this.serverTodo,
+    this.isDelete = false,
   });
 
   final Conflict conflict;
+
+  /// The version this device wanted to send.
+  ///
+  /// For a delete ([isDelete]) there is no local *version* — the user asked
+  /// for the row to be gone — so this mirrors [serverTodo] and only the
+  /// title is meaningful.
   final Todo localTodo;
+
+  /// What the server holds, from the `current` record in its `409`.
   final Todo serverTodo;
+
+  /// Whether the queued operation was a delete rather than an edit.
+  final bool isDelete;
 
   ConflictResolution? resolution;
 
   /// Gets the fields that differ between local and server.
+  ///
+  /// Empty for a delete: nothing was edited here, the row was removed.
   List<String> get conflictingFields {
+    if (isDelete) return const [];
     final fields = <String>[];
 
     if (localTodo.title != serverTodo.title) fields.add('title');

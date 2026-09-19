@@ -3,152 +3,75 @@ import 'package:provider/provider.dart';
 
 import '../../models/todo.dart';
 import '../../repositories/todo_repository.dart';
-import '../../services/conflict_handler.dart';
-import '../../services/sync_service.dart';
-import '../widgets/conflict_dialog.dart';
-import '../widgets/sync_status_indicator.dart';
 import '../widgets/todo_card.dart';
-import 'scenarios_screen.dart';
 import 'todo_edit_screen.dart';
 
-/// Main screen showing list of todos.
-class TodoListScreen extends StatefulWidget {
+/// The todo list.
+///
+/// The app bar, the conflict dialog and the navigation live in
+/// `HomeScreen`; this is one destination inside it. The server simulations
+/// that used to hang off this screen now have a screen of their own — the
+/// Sync lab — where each of them says what it proves.
+class TodoListScreen extends StatelessWidget {
   const TodoListScreen({super.key});
-
-  @override
-  State<TodoListScreen> createState() => _TodoListScreenState();
-}
-
-class _TodoListScreenState extends State<TodoListScreen> {
-  /// Tracks if conflict dialog is currently shown to prevent duplicates.
-  bool _isShowingConflictDialog = false;
 
   @override
   Widget build(BuildContext context) {
     final repo = context.read<TodoRepository>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Todo Advanced'),
-        actions: [
-          IconButton(
-            tooltip: 'Sync scenarios',
-            icon: const Icon(Icons.science_outlined),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(builder: (_) => const ScenariosScreen()),
-            ),
-          ),
-          const SyncStatusIndicator(),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Stack(
-        children: [
-          // Todo list
-          StreamBuilder<List<Todo>>(
-            stream: repo.watchAll(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+      body: StreamBuilder<List<Todo>>(
+        stream: repo.watchAll(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-              if (snapshot.hasError) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 48,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text('Failed to load todos'),
-                      const SizedBox(height: 8),
-                      ElevatedButton.icon(
-                        onPressed: () => setState(() {}),
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
-                      ),
-                    ],
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: Theme.of(context).colorScheme.error,
                   ),
-                );
-              }
+                  const SizedBox(height: 16),
+                  const Text('Failed to load todos'),
+                ],
+              ),
+            );
+          }
 
-              final todos = snapshot.data ?? [];
+          final todos = snapshot.data ?? const <Todo>[];
+          if (todos.isEmpty) return const _EmptyState();
 
-              if (todos.isEmpty) {
-                return const _EmptyState();
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: todos.length,
-                itemBuilder: (context, index) {
-                  final todo = todos[index];
-                  return TodoCard(
-                    key: ValueKey(todo.id),
-                    todo: todo,
-                    onToggle: () => _toggleTodo(context, repo, todo),
-                    onTap: () => _editTodo(context, todo),
-                    onDelete: () => _deleteTodo(context, repo, todo),
-                  );
-                },
+          return ListView.builder(
+            padding: const EdgeInsets.only(top: 8, bottom: 88),
+            itemCount: todos.length,
+            itemBuilder: (context, index) {
+              final todo = todos[index];
+              return TodoCard(
+                key: ValueKey(todo.id),
+                todo: todo,
+                onToggle: () => repo.toggleCompleted(todo),
+                onTap: () => _editTodo(context, todo),
+                onDelete: () => _deleteTodo(context, repo, todo),
               );
             },
-          ),
-
-          // Conflict listener
-          Consumer<ConflictHandler>(
-            builder: (context, handler, _) {
-              final conflict = handler.currentConflict;
-              if (conflict != null && !_isShowingConflictDialog) {
-                _isShowingConflictDialog = true;
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _showConflictDialog(context, conflict);
-                });
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-        ],
+          );
+        },
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Simulation button
-          FloatingActionButton.small(
-            heroTag: 'simulate',
-            onPressed: () => _showSimulationMenu(context),
-            tooltip: 'Server simulation',
-            child: const Icon(Icons.science),
-          ),
-          const SizedBox(height: 8),
-          // Add button
-          FloatingActionButton.extended(
-            heroTag: 'add',
-            onPressed: () => _createTodo(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Add Todo'),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'add',
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const TodoEditScreen()),
+        ),
+        icon: const Icon(Icons.add),
+        label: const Text('Add Todo'),
       ),
-    );
-  }
-
-  Future<void> _toggleTodo(
-    BuildContext context,
-    TodoRepository repo,
-    Todo todo,
-  ) async {
-    await repo.toggleCompleted(todo);
-  }
-
-  Future<void> _createTodo(BuildContext context) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute<void>(builder: (_) => const TodoEditScreen()),
     );
   }
 
@@ -183,36 +106,16 @@ class _TodoListScreenState extends State<TodoListScreen> {
       ),
     );
 
-    if (confirmed == true && context.mounted) {
-      await repo.delete(todo);
+    if (confirmed != true || !context.mounted) return;
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Todo deleted')));
-      }
-    }
-  }
-
-  Future<void> _showConflictDialog(
-    BuildContext context,
-    ConflictInfo conflict,
-  ) async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => ConflictDialog(conflict: conflict),
-    );
-    _isShowingConflictDialog = false;
-  }
-
-  void _showSimulationMenu(BuildContext context) {
-    final syncService = context.read<SyncService>();
-    final repo = context.read<TodoRepository>();
-
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) =>
-          _SimulationMenu(syncService: syncService, repo: repo),
+    await repo.delete(todo);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Deleted here. The server still has it until the delete is sent.',
+        ),
+      ),
     );
   }
 }
@@ -246,179 +149,5 @@ class _EmptyState extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class _SimulationMenu extends StatelessWidget {
-  const _SimulationMenu({required this.syncService, required this.repo});
-
-  final SyncService syncService;
-  final TodoRepository repo;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Server Simulation',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Trigger server-side changes to test conflict resolution:',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          ListTile(
-            leading: const Icon(Icons.notifications),
-            title: const Text('Add Reminder'),
-            subtitle: const Text('Server adds reminder text to a todo'),
-            onTap: () => _addReminder(context),
-          ),
-
-          ListTile(
-            leading: const Icon(Icons.check_circle),
-            title: const Text('Auto-Complete Overdue'),
-            subtitle: const Text('Server marks overdue todos as completed'),
-            onTap: () => _autoComplete(context),
-          ),
-
-          ListTile(
-            leading: const Icon(Icons.priority_high),
-            title: const Text('Change Priority'),
-            subtitle: const Text('Server changes priority of a todo'),
-            onTap: () => _changePriority(context),
-          ),
-
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _addReminder(BuildContext context) async {
-    Navigator.pop(context);
-
-    final todos = await repo.getAll();
-    if (todos.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No todos to add reminder to')),
-        );
-      }
-      return;
-    }
-
-    // Pick first non-completed todo
-    final todo = todos.firstWhere(
-      (t) => !t.completed,
-      orElse: () => todos.first,
-    );
-
-    try {
-      await syncService.triggerServerSimulation('/simulate/reminder', {
-        'id': todo.id,
-        'text': 'Server reminder: Please review this task!',
-      });
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Reminder added to "${todo.title}". Sync to see conflict.',
-            ),
-          ),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to add reminder. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _autoComplete(BuildContext context) async {
-    Navigator.pop(context);
-
-    try {
-      await syncService.triggerServerSimulation('/simulate/complete', {});
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Auto-complete triggered. Sync to see changes.'),
-          ),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to auto-complete. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _changePriority(BuildContext context) async {
-    Navigator.pop(context);
-
-    final todos = await repo.getAll();
-    if (todos.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No todos to change priority')),
-        );
-      }
-      return;
-    }
-
-    // Pick first todo with priority > 1
-    final todo = todos.firstWhere(
-      (t) => t.priority > 1,
-      orElse: () => todos.first,
-    );
-
-    final newPriority = todo.priority > 1 ? 1 : 5;
-
-    try {
-      await syncService.triggerServerSimulation('/simulate/prioritize', {
-        'id': todo.id,
-        'priority': newPriority,
-      });
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Priority changed for "${todo.title}". Sync to see conflict.',
-            ),
-          ),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to change priority. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 }
