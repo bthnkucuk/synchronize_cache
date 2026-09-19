@@ -166,6 +166,92 @@ void main() {
       },
     );
 
+    test('an empty page that names a next page is not the end', () async {
+      // Regression: the emptiness check ran before `nextPageToken` was read,
+      // so a server whose filter hid every row of one page ended the pull
+      // early and the rows behind it were never fetched.
+      final tokens = <String?>[];
+      when(
+        () => transport.pull(
+          kind: any(named: 'kind'),
+          updatedSince: any(named: 'updatedSince'),
+          pageSize: any(named: 'pageSize'),
+          pageToken: any(named: 'pageToken'),
+          afterId: any(named: 'afterId'),
+          includeDeleted: any(named: 'includeDeleted'),
+        ),
+      ).thenAnswer((invocation) async {
+        final token = invocation.namedArguments[#pageToken] as String?;
+        tokens.add(token);
+        return switch (token) {
+          null => const PullPage(items: [], nextPageToken: 'page-2'),
+          'page-2' => PullPage(
+            items: [
+              {
+                'id': 'behind-the-gap',
+                'updated_at': DateTime.utc(2024).toIso8601String(),
+                'name': 'A',
+              },
+            ],
+          ),
+          _ => const PullPage(items: []),
+        };
+      });
+
+      final pulled = await buildService().pullKind('test_item');
+
+      expect(pulled, 1);
+      expect(tokens, [null, 'page-2']);
+    });
+
+    test(
+      'a server that keeps answering empty pages cannot spin the pull',
+      () async {
+        var calls = 0;
+        when(
+          () => transport.pull(
+            kind: any(named: 'kind'),
+            updatedSince: any(named: 'updatedSince'),
+            pageSize: any(named: 'pageSize'),
+            pageToken: any(named: 'pageToken'),
+            afterId: any(named: 'afterId'),
+            includeDeleted: any(named: 'includeDeleted'),
+          ),
+        ).thenAnswer((_) async {
+          calls++;
+          if (calls > 200) throw StateError('pull loop is spinning');
+          // A fresh token every time, never any rows.
+          return PullPage(items: const [], nextPageToken: 'token-$calls');
+        });
+
+        final pulled = await buildService().pullKind('test_item');
+
+        expect(pulled, 0);
+        expect(calls, lessThanOrEqualTo(40));
+      },
+    );
+
+    test('an empty page repeating the same token ends the pull', () async {
+      var calls = 0;
+      when(
+        () => transport.pull(
+          kind: any(named: 'kind'),
+          updatedSince: any(named: 'updatedSince'),
+          pageSize: any(named: 'pageSize'),
+          pageToken: any(named: 'pageToken'),
+          afterId: any(named: 'afterId'),
+          includeDeleted: any(named: 'includeDeleted'),
+        ),
+      ).thenAnswer((_) async {
+        calls++;
+        return const PullPage(items: [], nextPageToken: 'stuck');
+      });
+
+      await buildService().pullKind('test_item');
+
+      expect(calls, 2, reason: 'first request + one request with the token');
+    });
+
     test('paginates while a nextPageToken is returned', () async {
       final ts1 = DateTime.utc(2024, 1, 1, 10);
       final ts2 = DateTime.utc(2024, 1, 2, 10);

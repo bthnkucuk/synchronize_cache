@@ -31,6 +31,10 @@ final class PullService<DB extends GeneratedDatabase> {
   final SyncConfig _config;
   final StreamController<SyncEvent> _events;
 
+  /// Empty pages followed in a row before a pull gives up on a server that
+  /// never returns rows.
+  static const _maxConsecutiveEmptyPages = 32;
+
   /// Pull changes for specified kinds.
   Future<int> pullKinds(Set<String> kinds) async {
     var total = 0;
@@ -49,6 +53,7 @@ final class PullService<DB extends GeneratedDatabase> {
 
     int done = 0;
     String? token;
+    var emptyPages = 0;
 
     try {
       final cursor = await _cursorService.get(kind);
@@ -66,7 +71,21 @@ final class PullService<DB extends GeneratedDatabase> {
           includeDeleted: true,
         );
 
-        if (page.items.isEmpty) break;
+        if (page.items.isEmpty) {
+          // No rows, but the server may still name a next page (a filter
+          // hid every row of this one). Follow it — unless it repeats, or a
+          // server keeps producing empty pages without end.
+          final next = page.nextPageToken;
+          emptyPages++;
+          if (next == null ||
+              next == token ||
+              emptyPages > _maxConsecutiveEmptyPages) {
+            break;
+          }
+          token = next;
+          continue;
+        }
+        emptyPages = 0;
 
         int upserts = 0;
         int deletes = 0;
