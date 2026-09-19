@@ -2,14 +2,12 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:http/http.dart' as http;
-// The app's generated database declares its own companions for the sync
-// tables; those are the ones that fit `db.syncOutbox`.
-import 'package:offline_first_sync_drift/offline_first_sync_drift.dart'
-    hide SyncOutboxCompanion;
+import 'package:offline_first_sync_drift/offline_first_sync_drift.dart';
 import 'package:offline_first_sync_drift_rest/offline_first_sync_drift_rest.dart';
 import 'package:uuid/uuid.dart';
 
 import '../database/database.dart';
+import '../sync/note_sync.dart';
 import '../sync/todo_sync.dart';
 import 'recording_client.dart';
 import 'scenario.dart';
@@ -113,6 +111,25 @@ final List<Scenario> syncScenarios = [
         'After another client deletes a synced todo, the next pull marks the '
         'local row as deleted, so the app stops showing it.',
     run: _remoteDeleteArrives,
+  ),
+  const Scenario(
+    id: 'D1',
+    title: 'Two devices, one backend',
+    expectation:
+        'A todo and a note created on device A reach device B through the '
+        'server; an edit made on B reaches A; and a delete made on A makes '
+        'the row disappear from B.',
+    run: _twoDevicesShareOneBackend,
+  ),
+  const Scenario(
+    id: 'R1',
+    title: 'What the UI watches follows a sync without a restart',
+    expectation:
+        'A subscription to the pending count that was opened before a write '
+        'reports 1 after the write and 0 after the sync that delivered it — '
+        'the same subscription, no reload. Item labels and the "waiting" '
+        'badge are built on exactly this.',
+    run: _streamsFollowASync,
   ),
   const Scenario(
     id: 'P1',
@@ -871,6 +888,65 @@ Future<ScenarioOutcome> _remoteDeleteArrives(ScenarioContext ctx) async {
 }
 
 // ---------------------------------------------------------------------------
+// R1
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _streamsFollowASync(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 40);
+  final engine = _engine(ctx, client, config: const SyncConfig());
+  final seen = <int>[];
+  final subscription = ctx.db.watchOutboxCount().listen(seen.add);
+
+  Future<bool> reports(int expected) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 3));
+    while (seen.isEmpty || seen.last != expected) {
+      if (DateTime.now().isAfter(deadline)) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+    }
+    return true;
+  }
+
+  try {
+    // The first sync of a database is a full resync; get it out of the way.
+    await engine.sync();
+    await reports(0);
+
+    final now = DateTime.now().toUtc();
+    await _writer(ctx).insertAndEnqueue(
+      Todo(
+        id: 'scenario-${_uuid.v4()}',
+        title: 'Watched while it syncs',
+        updatedAt: now,
+      ),
+      localTimestamp: now,
+    );
+    final sawTheWrite = await reports(1);
+
+    final stats = await engine.sync(pushKinds: {_kind}, pullKinds: const {});
+    final sawTheSync = await reports(0);
+    final reallyQueued = (await ctx.db.takeOutbox(limit: 10)).length;
+
+    final evidence =
+        'The pending-count stream reported $seen (expected to end 1, 0); the '
+        'sync pushed ${stats.pushed} operation(s) and the outbox really holds '
+        '$reallyQueued.';
+
+    if (sawTheWrite && sawTheSync && stats.pushed == 1 && reallyQueued == 0) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The sync went through, but what the UI watches never heard about it: '
+      'labels and counters stay as they were until the app is restarted. '
+      '$evidence',
+    );
+  } finally {
+    await subscription.cancel();
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // P1
 // ---------------------------------------------------------------------------
 
@@ -1142,6 +1218,137 @@ Future<List<String>> _planOf(
 }
 
 // ---------------------------------------------------------------------------
+// D1
+// ---------------------------------------------------------------------------
+
+/// The name of the scratch database that plays the second device.
+const _deviceBDatabase = 'todo_advanced_scenarios_device_b';
+
+Future<ScenarioOutcome> _twoDevicesShareOneBackend(ScenarioContext ctx) async {
+  // A second database is *all* that makes a second device: same code, same
+  // backend, separate local storage. In the app this is what `?device=B`
+  // does.
+  final deviceB = AppDatabase.open(name: _deviceBDatabase);
+  final clientA = RecordingClient(maxRequests: 80);
+  final clientB = RecordingClient(maxRequests: 80);
+
+  SyncEngine<AppDatabase> engineFor(AppDatabase db, RecordingClient client) =>
+      SyncEngine<AppDatabase>(
+        db: db,
+        transport: _transport(ctx, client),
+        tables: [todoSyncTable(db), noteSyncTable(db)],
+      );
+
+  final engineA = engineFor(ctx.db, clientA);
+  final engineB = engineFor(deviceB, clientB);
+
+  try {
+    await _wipe(deviceB);
+
+    final now = DateTime.now().toUtc();
+    final suffix = _uuid.v4();
+    final todo = Todo(
+      id: 'scenario-todo-$suffix',
+      title: 'Written on device A',
+      updatedAt: now,
+    );
+    final note = Note(
+      id: 'scenario-note-$suffix',
+      title: 'Note from device A',
+      body: 'Body from device A',
+      updatedAt: now,
+    );
+
+    // 1. A creates both kinds and pushes them.
+    await SyncWriter<AppDatabase>(ctx.db)
+        .forTable(todoSyncTable(ctx.db))
+        .insertAndEnqueue(todo, localTimestamp: now);
+    await SyncWriter<AppDatabase>(ctx.db)
+        .forTable(noteSyncTable(ctx.db))
+        .insertAndEnqueue(note, localTimestamp: now);
+    await engineA.sync();
+
+    // 2. B pulls and must have both rows.
+    await engineB.sync();
+    final todoOnB = await _todoIn(deviceB, todo.id);
+    final noteOnB = await _noteIn(deviceB, note.id);
+    if (todoOnB == null || noteOnB == null) {
+      return ScenarioOutcome.fail(
+        'After device B pulled, it has todo=${todoOnB != null} '
+        'note=${noteOnB != null}; both should be there.',
+      );
+    }
+
+    // 3. B edits the todo and pushes it.
+    const editedTitle = 'Edited on device B';
+    await SyncWriter<AppDatabase>(deviceB)
+        .forTable(todoSyncTable(deviceB))
+        .replaceAndEnqueue(
+          _copy(todoOnB, title: editedTitle),
+          baseUpdatedAt: todoOnB.updatedAt,
+          changedFields: {'title'},
+        );
+    await engineB.sync();
+
+    // 4. A pulls and must see B's edit.
+    await engineA.sync();
+    final todoBackOnA = await _localTodo(ctx, todo.id);
+    if (todoBackOnA?.title != editedTitle) {
+      return ScenarioOutcome.fail(
+        'Device A still shows "${todoBackOnA?.title}" after pulling; device '
+        'B had changed it to "$editedTitle".',
+      );
+    }
+
+    // 5. A deletes it, B pulls, and B must stop showing it.
+    await SyncWriter<AppDatabase>(ctx.db)
+        .forTable(todoSyncTable(ctx.db))
+        .writeAndEnqueueDelete(
+          localWrite: () async => (ctx.db.delete(
+            ctx.db.todos,
+          )..where((t) => t.id.equals(todo.id))).go(),
+          id: todo.id,
+          baseUpdatedAt: todoBackOnA!.updatedAt,
+        );
+    await engineA.sync();
+    await engineB.sync();
+
+    final afterDelete = await _todoIn(deviceB, todo.id);
+    final visibleOnB =
+        await (deviceB.select(deviceB.todos)..where(
+              (t) =>
+                  t.id.equals(todo.id) &
+                  t.deletedAt.isNull() &
+                  t.deletedAtLocal.isNull(),
+            ))
+            .get();
+
+    final evidence =
+        'Device B received the todo and the note, its edit reached device A, '
+        'and after A deleted the todo B holds deletedAt='
+        '${afterDelete?.deletedAt?.toIso8601String()} with '
+        '${visibleOnB.length} visible row(s).';
+
+    if (visibleOnB.isEmpty) return ScenarioOutcome.pass(evidence);
+    return ScenarioOutcome.fail(
+      'Device B still shows the todo that device A deleted. $evidence',
+    );
+  } finally {
+    engineA.dispose();
+    engineB.dispose();
+    clientA.close();
+    clientB.close();
+    await deviceB.close();
+  }
+}
+
+Future<Todo?> _todoIn(AppDatabase db, String id) =>
+    (db.select(db.todos)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+Future<Note?> _noteIn(AppDatabase db, String id) =>
+    (db.select(db.notes)..where((n) => n.id.equals(id))).getSingleOrNull();
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
@@ -1150,6 +1357,7 @@ Future<void> wipeScenarioDatabase(AppDatabase db) => _wipe(db);
 
 Future<void> _wipe(AppDatabase db) async {
   await db.delete(db.todos).go();
+  await db.delete(db.notes).go();
   await db.customStatement('DELETE FROM sync_outbox');
   await db.customStatement('DELETE FROM sync_outbox_meta');
   await db.customStatement('DELETE FROM sync_cursors');

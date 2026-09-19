@@ -10,6 +10,8 @@ import 'package:todo_advanced_frontend/services/conflict_handler.dart';
 import 'package:todo_advanced_frontend/services/sync_service.dart';
 import 'package:todo_advanced_frontend/sync/todo_sync.dart';
 import 'package:todo_advanced_frontend/ui/screens/todo_list_screen.dart';
+import 'package:todo_advanced_frontend/ui/widgets/sync_state_chip.dart';
+import 'package:todo_advanced_frontend/ui/widgets/sync_status_indicator.dart';
 
 import '../helpers/test_database.dart';
 
@@ -49,7 +51,17 @@ void main() {
         ChangeNotifierProvider.value(value: syncService),
         ChangeNotifierProvider.value(value: conflictHandler),
       ],
-      child: const MaterialApp(home: TodoListScreen()),
+      // `TodoListScreen` is one destination inside `HomeScreen`, which owns
+      // the app bar; recreate just that chrome here.
+      child: MaterialApp(
+        home: Scaffold(
+          appBar: AppBar(
+            title: const Text('Todo Advanced'),
+            actions: const [SyncStatusIndicator()],
+          ),
+          body: const TodoListScreen(),
+        ),
+      ),
     );
   }
 
@@ -182,15 +194,30 @@ void main() {
       await cleanupWidget(tester);
     });
 
-    testWidgets('shows FAB buttons for adding and simulation', (tester) async {
+    testWidgets('shows the add button', (tester) async {
       await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 
-      // Find FABs - advanced version has two FABs
-      expect(find.byType(FloatingActionButton), findsNWidgets(2));
+      // The server simulations moved to the Sync lab, so one FAB is left.
+      expect(find.byType(FloatingActionButton), findsOneWidget);
       expect(find.text('Add Todo'), findsOneWidget);
       expect(find.byIcon(Icons.add), findsOneWidget);
-      expect(find.byIcon(Icons.science), findsOneWidget);
+
+      await cleanupWidget(tester);
+    });
+
+    testWidgets('every card carries a sync state chip', (tester) async {
+      await tester.pumpWidget(createApp());
+      await repo.create(title: 'Never sent');
+      await tester.pumpAndSettle();
+
+      // The chip renders for every row. Which state it shows is decided by
+      // `deriveItemSyncStates`, covered exhaustively in
+      // test/services/item_sync_state_test.dart — a widget test cannot keep
+      // the outbox subscription alive, because `pumpAndSettle` runs in a
+      // fake-async zone that never completes real database I/O.
+      expect(find.byType(SyncStateChip), findsOneWidget);
+      expect(find.text('Synced'), findsOneWidget);
 
       await cleanupWidget(tester);
     });
@@ -248,12 +275,19 @@ void main() {
       await cleanupWidget(tester);
     });
 
-    testWidgets('simulation button is available', (tester) async {
+    testWidgets('the status badge opens the sync panel', (tester) async {
       await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 
-      // Verify simulation button is present (science icon)
-      expect(find.byIcon(Icons.science), findsOneWidget);
+      expect(find.text('Online'), findsOneWidget);
+
+      await tester.tap(find.text('Online'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Automatic sync'), findsOneWidget);
+      expect(find.text('Send now'), findsOneWidget);
+      expect(find.text('Get changes'), findsOneWidget);
 
       await cleanupWidget(tester);
     });

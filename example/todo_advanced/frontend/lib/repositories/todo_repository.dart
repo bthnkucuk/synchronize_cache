@@ -135,7 +135,11 @@ class TodoRepository {
     final now = DateTime.now().toUtc();
 
     // Soft delete locally
-    final deleted = todo.copyWith(deletedAtLocal: now);
+    // `updatedAt` moves too, even though the *base* version sent to the
+    // server is still the one below: a server-side tombstone carries a new
+    // `updated_at`, and anything derived from this table — the search index
+    // above all — only notices a row whose version moved forward.
+    final deleted = todo.copyWith(deletedAtLocal: now, updatedAt: now);
     await _writer.writeAndEnqueueDelete(
       localWrite: () async {
         await _db.update(_db.todos).replace(deleted.toInsertable());

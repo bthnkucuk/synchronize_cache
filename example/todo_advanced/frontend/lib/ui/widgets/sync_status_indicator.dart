@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../services/auto_sync.dart';
 import '../../services/sync_service.dart';
 import '../screens/sync_log_screen.dart';
+import 'sync_panel.dart';
 
-/// Widget showing current sync status with sync button.
-class SyncStatusIndicator extends StatelessWidget {
+/// The app bar's sync summary, and the way into the sync panel.
+///
+/// Three facts at a glance — is it syncing, is anything queued, when is the
+/// next automatic run — and a tap opens everything else.
+class SyncStatusIndicator extends StatefulWidget {
   const SyncStatusIndicator({super.key});
 
+  @override
+  State<SyncStatusIndicator> createState() => _SyncStatusIndicatorState();
+}
+
+class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
   @override
   Widget build(BuildContext context) {
     return Consumer<SyncService>(
@@ -19,8 +29,15 @@ class SyncStatusIndicator extends StatelessWidget {
             if (syncService.conflictHandler.hasConflicts)
               _ConflictBadge(count: syncService.conflictHandler.conflictCount),
 
-            // Status indicator
-            _StatusBadge(status: syncService.status),
+            // Status indicator, which opens the panel
+            InkWell(
+              onTap: () => showSyncPanel(context),
+              borderRadius: BorderRadius.circular(12),
+              child: _StatusBadge(
+                status: syncService.status,
+                pending: syncService.pendingCount,
+              ),
+            ),
 
             const SizedBox(width: 8),
 
@@ -58,44 +75,47 @@ class SyncStatusIndicator extends StatelessWidget {
   }
 
   Future<void> _sync(BuildContext context, SyncService syncService) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final stats = await syncService.sync();
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Synced: ${stats.pushed} pushed, ${stats.pulled} pulled',
-            ),
-            duration: const Duration(seconds: 2),
+      final next = syncService.timeUntilNextAutoSync();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Synced: ${stats.pushed} sent, ${stats.pulled} received'
+            '${next == null ? '' : ' — next automatic sync in '
+                      '${formatCountdown(next)}'}',
           ),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sync failed. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } on Object {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Sync failed. Your changes are still queued.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 }
 
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
+  const _StatusBadge({required this.status, this.pending = 0});
 
   final SyncStatus status;
 
+  /// Changes still waiting in the outbox.
+  final int pending;
+
   @override
   Widget build(BuildContext context) {
-    final (color, label, icon) = switch (status) {
+    final (color, baseLabel, icon) = switch (status) {
       SyncStatus.idle => (Colors.green, 'Online', Icons.cloud_done),
       SyncStatus.syncing => (Colors.blue, 'Syncing', Icons.sync),
       SyncStatus.error => (Colors.red, 'Error', Icons.cloud_off),
     };
+    final label = pending == 0 ? baseLabel : '$baseLabel · $pending waiting';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

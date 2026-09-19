@@ -16,10 +16,16 @@ dependencies:
     path: ../../../packages/offline_first_sync_drift
   offline_first_sync_drift_rest:
     path: ../../../packages/offline_first_sync_drift_rest
+  # Global full-text search over every kind (FTS5 + trigram, in the bundled
+  # sqlite3.wasm as well).
+  search_engine:
+    path: ../../../packages/search_engine
   json_annotation: ^4.12.0
   uuid: ^4.6.0
   provider: ^6.1.5+1
   http: ^1.6.0
+  # The live change feed: one implementation for the browser and the VM.
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:

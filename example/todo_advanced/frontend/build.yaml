@@ -1,11 +1,34 @@
 targets:
   $default:
     builders:
+      # Modular generation, not the default monolithic part file.
+      #
+      # `search_engine` (and `offline_first_sync_drift`) ship their tables as
+      # Dart classes without `@UseRowClass`, so a monolithic build would
+      # generate this app its *own* `SearchLookupData` next to the package's.
+      # `SearchDatabaseMixin` looks its tables up as
+      # `TableInfo<SearchLookup, SearchLookupData>` — with two classes of that
+      # name the lookup finds nothing and every search throws
+      # "SearchLookup table not found". Modular generation imports the
+      # packages' generated files instead of duplicating them.
       drift_dev:
-        options:
+        enabled: false
+
+      drift_dev:analyzer:
+        enabled: true
+        options: &options
           # Required for sync correctness, not a style choice. By default drift
           # stores DateTime as unix SECONDS, which truncates the server's
           # `updated_at`. The app then sends that truncated value back as
           # `_baseUpdatedAt`, it never equals the server's version, and every
           # edit is rejected as a conflict.
           store_date_time_values_as_text: true
+          sqlite:
+            modules:
+              # `global_search` is a `CREATE VIRTUAL TABLE … USING fts5(…)`;
+              # without this the generator cannot parse it at all.
+              - fts5
+
+      drift_dev:modular:
+        enabled: true
+        options: *options

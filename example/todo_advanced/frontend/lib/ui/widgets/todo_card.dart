@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/todo.dart';
+import 'sync_state_chip.dart';
 
 /// Card widget displaying a single todo item.
 class TodoCard extends StatelessWidget {
@@ -71,6 +72,15 @@ class TodoCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       DueDateChip(dueDate: todo.dueDate!),
                     ],
+
+                    // Where this one item stands between this device and
+                    // the server. Tap it for the full story.
+                    const SizedBox(height: 6),
+                    SyncStateChip(
+                      kind: 'todos',
+                      id: todo.id,
+                      title: todo.title,
+                    ),
                   ],
                 ),
               ),
