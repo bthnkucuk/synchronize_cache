@@ -5,6 +5,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 import 'package:todo_advanced_backend/models/todo.dart';
+import 'package:todo_advanced_backend/repositories/note_repository.dart';
 import 'package:todo_advanced_backend/repositories/todo_repository.dart';
 import 'package:todo_advanced_backend/services/simulation_service.dart';
 
@@ -20,7 +21,7 @@ void main() {
 
   setUp(() {
     repository = TodoRepository();
-    simulationService = SimulationService(repository);
+    simulationService = SimulationService(repository, NoteRepository());
     context = _MockRequestContext();
     when(() => context.read<TodoRepository>()).thenReturn(repository);
     when(() => context.read<SimulationService>()).thenReturn(simulationService);
@@ -313,6 +314,79 @@ void main() {
       final response = await todos_id.onRequest(context, 'non-existent');
 
       expect(response.statusCode, HttpStatus.notFound);
+    });
+
+    // What RestTransport actually sends: a DELETE has no body, so the version
+    // travels in the query string.
+    group('with ?_baseUpdatedAt', () {
+      test('deletes when the version still matches', () async {
+        final now = DateTime.utc(2026, 9, 19, 18, 17, 8, 281);
+        repository.create(Todo(id: 'todo-1', title: 'Test', updatedAt: now));
+
+        when(() => context.request).thenReturn(
+          Request.delete(
+            Uri.parse(
+              'http://localhost/todos/todo-1'
+              '?_baseUpdatedAt=${Uri.encodeQueryComponent(now.toIso8601String())}',
+            ),
+            headers: {},
+          ),
+        );
+
+        final response = await todos_id.onRequest(context, 'todo-1');
+
+        expect(response.statusCode, HttpStatus.noContent);
+        expect(repository.get('todo-1')!.deletedAt, isNotNull);
+      });
+
+      test('returns 409 with the current record on a stale version', () async {
+        final now = DateTime.utc(2026, 9, 19, 18, 17, 8, 281);
+        repository.create(
+          Todo(id: 'todo-1', title: 'Edited elsewhere', updatedAt: now),
+        );
+        final stale = now.subtract(const Duration(hours: 1));
+
+        when(() => context.request).thenReturn(
+          Request.delete(
+            Uri.parse(
+              'http://localhost/todos/todo-1'
+              '?_baseUpdatedAt=${Uri.encodeQueryComponent(stale.toIso8601String())}',
+            ),
+            headers: {},
+          ),
+        );
+
+        final response = await todos_id.onRequest(context, 'todo-1');
+
+        expect(response.statusCode, HttpStatus.conflict);
+
+        final body = jsonDecode(await response.body()) as Map<String, dynamic>;
+        expect(body['error'], 'conflict');
+        expect(body['current']['title'], 'Edited elsewhere');
+        // The record must survive a rejected delete.
+        expect(repository.get('todo-1')!.deletedAt, isNull);
+      });
+
+      test('X-Force-Delete wins over a stale version', () async {
+        final now = DateTime.utc(2026, 9, 19, 18, 17, 8, 281);
+        repository.create(Todo(id: 'todo-1', title: 'Test', updatedAt: now));
+        final stale = now.subtract(const Duration(hours: 1));
+
+        when(() => context.request).thenReturn(
+          Request.delete(
+            Uri.parse(
+              'http://localhost/todos/todo-1'
+              '?_baseUpdatedAt=${Uri.encodeQueryComponent(stale.toIso8601String())}',
+            ),
+            headers: {'x-force-delete': 'true'},
+          ),
+        );
+
+        expect(
+          (await todos_id.onRequest(context, 'todo-1')).statusCode,
+          HttpStatus.noContent,
+        );
+      });
     });
 
     test('returns 409 conflict with X-Base-Updated-At mismatch', () async {

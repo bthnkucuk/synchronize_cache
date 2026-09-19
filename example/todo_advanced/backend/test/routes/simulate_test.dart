@@ -4,12 +4,15 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
+import 'package:todo_advanced_backend/models/note.dart';
 import 'package:todo_advanced_backend/models/todo.dart';
+import 'package:todo_advanced_backend/repositories/note_repository.dart';
 import 'package:todo_advanced_backend/repositories/todo_repository.dart';
 import 'package:todo_advanced_backend/services/simulation_service.dart';
 
 import '../../routes/simulate/bare_conflict.dart' as simulate_bare_conflict;
 import '../../routes/simulate/complete.dart' as simulate_complete;
+import '../../routes/simulate/edit_note.dart' as simulate_edit_note;
 import '../../routes/simulate/empty_page.dart' as simulate_empty_page;
 import '../../routes/simulate/fail_writes.dart' as simulate_fail_writes;
 import '../../routes/simulate/prioritize.dart' as simulate_prioritize;
@@ -19,18 +22,21 @@ class _MockRequestContext extends Mock implements RequestContext {}
 
 void main() {
   late TodoRepository repository;
+  late NoteRepository noteRepository;
   late SimulationService simulationService;
   late _MockRequestContext context;
 
   setUp(() {
     repository = TodoRepository();
-    simulationService = SimulationService(repository);
+    noteRepository = NoteRepository();
+    simulationService = SimulationService(repository, noteRepository);
     context = _MockRequestContext();
     when(() => context.read<SimulationService>()).thenReturn(simulationService);
   });
 
   tearDown(() {
     repository.clear();
+    noteRepository.clear();
   });
 
   group('POST /simulate/reminder', () {
@@ -340,6 +346,45 @@ void main() {
       expect(response.statusCode, HttpStatus.badRequest);
       expect(simulationService.takeWriteFailure(), isNull);
     });
+
+    test('an armed id fails only that record, and only it uses up a '
+        'slot', () async {
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/fail_writes'),
+          body: jsonEncode({'status': 422, 'requests': 2, 'id': 'poisoned'}),
+        ),
+      );
+
+      final response = await simulate_fail_writes.onRequest(context);
+      expect(response.statusCode, HttpStatus.ok);
+
+      // Other records keep flowing, and do not eat the armed slots.
+      expect(simulationService.takeWriteFailure('healthy'), isNull);
+      expect(simulationService.takeWriteFailure(), isNull);
+
+      expect(simulationService.takeWriteFailure('poisoned'), 422);
+      expect(simulationService.takeWriteFailure('poisoned'), 422);
+      expect(simulationService.takeWriteFailure('poisoned'), isNull);
+    });
+
+    test('arming without an id goes back to failing every write', () async {
+      simulationService.failNextWrites(
+        status: 422,
+        count: 1,
+        entityId: 'poisoned',
+      );
+
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/fail_writes'),
+          body: jsonEncode({'status': 503, 'requests': 1}),
+        ),
+      );
+      await simulate_fail_writes.onRequest(context);
+
+      expect(simulationService.takeWriteFailure('anything'), 503);
+    });
   });
 
   group('POST /simulate/empty_page', () {
@@ -358,12 +403,152 @@ void main() {
       expect(simulationService.takeEmptyPage(), isFalse);
     });
 
+    test('an armed kind is not consumed by the other kind', () async {
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/empty_page'),
+          body: jsonEncode({'pages': 1, 'kind': 'notes'}),
+        ),
+      );
+
+      expect(
+        (await simulate_empty_page.onRequest(context)).statusCode,
+        HttpStatus.ok,
+      );
+      expect(simulationService.takeEmptyPage('todos'), isFalse);
+      expect(simulationService.takeEmptyPage('notes'), isTrue);
+      expect(simulationService.takeEmptyPage('notes'), isFalse);
+    });
+
     test('returns 405 for non-POST methods', () async {
       when(() => context.request).thenReturn(
         Request.get(Uri.parse('http://localhost/simulate/empty_page')),
       );
 
       expect((await simulate_empty_page.onRequest(context)).statusCode, 405);
+    });
+  });
+
+  group('POST /simulate/edit_note', () {
+    test('changes only the fields that were sent', () async {
+      noteRepository.create(
+        Note(
+          id: 'note-1',
+          title: 'Original title',
+          body: 'Original body',
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/edit_note'),
+          body: jsonEncode({'id': 'note-1', 'body': 'Edited elsewhere'}),
+        ),
+      );
+
+      final response = await simulate_edit_note.onRequest(context);
+
+      expect(response.statusCode, HttpStatus.ok);
+
+      final body = jsonDecode(await response.body()) as Map<String, dynamic>;
+      expect(body['message'], 'Note edited');
+      expect(body['note']['body'], 'Edited elsewhere');
+      expect(body['note']['title'], 'Original title');
+    });
+
+    test('bumps the version so the next pull sees it', () async {
+      final before = DateTime.utc(2024);
+      noteRepository.create(
+        Note(id: 'note-1', title: 'Original', updatedAt: before),
+      );
+
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/edit_note'),
+          body: jsonEncode({'id': 'note-1', 'title': 'Edited elsewhere'}),
+        ),
+      );
+
+      await simulate_edit_note.onRequest(context);
+
+      expect(noteRepository.get('note-1')!.updatedAt.isAfter(before), isTrue);
+    });
+
+    test('returns 404 for a non-existent note', () async {
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/edit_note'),
+          body: jsonEncode({'id': 'nope', 'title': 'Edited'}),
+        ),
+      );
+
+      final response = await simulate_edit_note.onRequest(context);
+
+      expect(response.statusCode, HttpStatus.notFound);
+
+      final body = jsonDecode(await response.body()) as Map<String, dynamic>;
+      expect(body['error'], 'Note not found');
+    });
+
+    test('returns 404 for a deleted note', () async {
+      noteRepository
+        ..create(
+          Note(id: 'note-1', title: 'Gone', updatedAt: DateTime.utc(2024)),
+        )
+        ..delete('note-1');
+
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/edit_note'),
+          body: jsonEncode({'id': 'note-1', 'title': 'Edited'}),
+        ),
+      );
+
+      expect(
+        (await simulate_edit_note.onRequest(context)).statusCode,
+        HttpStatus.notFound,
+      );
+    });
+
+    test('returns 400 when nothing would change', () async {
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/edit_note'),
+          body: jsonEncode({'id': 'note-1'}),
+        ),
+      );
+
+      final response = await simulate_edit_note.onRequest(context);
+
+      expect(response.statusCode, HttpStatus.badRequest);
+
+      final body = jsonDecode(await response.body()) as Map<String, dynamic>;
+      expect(body['error'], contains('at least one of'));
+    });
+
+    test('returns 400 when the id is missing', () async {
+      when(() => context.request).thenReturn(
+        Request.post(
+          Uri.parse('http://localhost/simulate/edit_note'),
+          body: jsonEncode({'title': 'Edited'}),
+        ),
+      );
+
+      final response = await simulate_edit_note.onRequest(context);
+
+      expect(response.statusCode, HttpStatus.badRequest);
+
+      final body = jsonDecode(await response.body()) as Map<String, dynamic>;
+      expect(body['error'], contains('Missing required field'));
+    });
+
+    test('returns 405 for non-POST methods', () async {
+      when(() => context.request).thenReturn(
+        Request.get(Uri.parse('http://localhost/simulate/edit_note')),
+      );
+
+      expect((await simulate_edit_note.onRequest(context)).statusCode, 405);
     });
   });
 }
