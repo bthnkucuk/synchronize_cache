@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:todo_advanced_backend/models/todo.dart';
 import 'package:todo_advanced_backend/repositories/todo_repository.dart';
+import 'package:todo_advanced_backend/utils/server_clock.dart';
 
 Future<Response> onRequest(RequestContext context, String id) async {
   return switch (context.request.method) {
@@ -41,7 +42,7 @@ Future<Response> _put(RequestContext context, String id) async {
   try {
     final body = await context.request.body();
     final json = jsonDecode(body) as Map<String, dynamic>;
-    final now = DateTime.now().toUtc();
+    final now = serverNow();
 
     // Validate required fields
     final title = json['title'];

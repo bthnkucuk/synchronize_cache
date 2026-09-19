@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:todo_advanced_backend/models/todo.dart';
 import 'package:todo_advanced_backend/repositories/todo_repository.dart';
+import 'package:todo_advanced_backend/utils/server_clock.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
@@ -77,7 +78,7 @@ Future<Response> _post(RequestContext context) async {
     }
 
     final id = json['id'] as String? ?? _uuid.v4();
-    final now = DateTime.now().toUtc();
+    final now = serverNow();
 
     // Validate priority range (1-5)
     final priority = (json['priority'] as int? ?? 3).clamp(1, 5);

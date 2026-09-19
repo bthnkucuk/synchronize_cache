@@ -1,0 +1,11 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          # Required for sync correctness, not a style choice. By default drift
+          # stores DateTime as unix SECONDS, which truncates the server's
+          # `updated_at`. The app then sends that truncated value back as
+          # `_baseUpdatedAt`, it never equals the server's version, and every
+          # edit is rejected as a conflict.
+          store_date_time_values_as_text: true

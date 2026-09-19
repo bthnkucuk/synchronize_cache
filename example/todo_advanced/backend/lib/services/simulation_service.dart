@@ -1,5 +1,6 @@
 import 'package:todo_advanced_backend/models/todo.dart';
 import 'package:todo_advanced_backend/repositories/todo_repository.dart';
+import 'package:todo_advanced_backend/utils/server_clock.dart';
 
 /// Service for simulating server-side modifications to todos.
 ///
@@ -37,7 +38,7 @@ class SimulationService {
     final current = _repository.get(id);
     if (current == null || current.deletedAt != null) return null;
 
-    final now = DateTime.now().toUtc();
+    final now = serverNow();
     final newDescription = current.description != null
         ? '${current.description}\n\n📋 Reminder: $reminderText'
         : '📋 Reminder: $reminderText';
@@ -59,7 +60,7 @@ class SimulationService {
   /// Simulates a server-side cron job that marks overdue incomplete todos.
   /// Returns list of todos that were auto-completed.
   List<Todo> autoCompleteOverdue() {
-    final now = DateTime.now().toUtc();
+    final now = serverNow();
     final completed = <Todo>[];
 
     final allTodos = _repository.list(limit: 1000);
@@ -93,7 +94,7 @@ class SimulationService {
     final current = _repository.get(id);
     if (current == null || current.deletedAt != null) return null;
 
-    final now = DateTime.now().toUtc();
+    final now = serverNow();
     final updated = current.copyWith(priority: newPriority, updatedAt: now);
 
     final result = _repository.update(id, updated, forceUpdate: true);

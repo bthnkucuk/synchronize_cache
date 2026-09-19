@@ -64,6 +64,15 @@ final List<Scenario> syncScenarios = [
         'stores the cursor 2024-01-01T10:00:00Z in every time zone.',
     run: _zoneLessTimestampsKeepTheCursor,
   ),
+  const Scenario(
+    id: 'K1-10',
+    title: 'Your own edits never conflict with yourself',
+    expectation:
+        'With nobody else writing, an edit after sync — and then two quick '
+        'edits pushed by a single sync — are accepted without any conflict, '
+        'although the app stamps updatedAt with "now" on every edit.',
+    run: _ownEditsDoNotConflict,
+  ),
 ];
 
 // ---------------------------------------------------------------------------
@@ -385,6 +394,82 @@ Future<ScenarioOutcome> _zoneLessTimestampsKeepTheCursor(
   return ScenarioOutcome.fail(
     'The cursor moved by the device UTC offset. West of UTC it jumps ahead '
     'and rows in the gap are skipped until the next full resync. $evidence',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// K1-10
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _ownEditsDoNotConflict(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 60);
+  // Every conflict in this scenario is spurious, so count them instead of
+  // letting autoPreserve resolve them out of sight.
+  var conflicts = 0;
+  final engine = _engine(
+    ctx,
+    client,
+    config: SyncConfig(
+      conflictStrategy: ConflictStrategy.manual,
+      conflictResolver: (_) async {
+        conflicts++;
+        return const AcceptClient();
+      },
+    ),
+  );
+
+  try {
+    final synced = await _createAndSync(ctx, engine, title: 'Mine alone');
+
+    await _editLikeTheApp(ctx, synced.id, title: 'First edit');
+    await engine.sync();
+    final afterOneEdit = conflicts;
+
+    await _editLikeTheApp(ctx, synced.id, title: 'Second edit');
+    await _editLikeTheApp(ctx, synced.id, title: 'Third edit');
+    await engine.sync();
+    final afterTwoQuickEdits = conflicts - afterOneEdit;
+
+    final server = await _serverTodo(ctx, synced.id);
+    final pending = (await ctx.db.takeOutbox()).length;
+    final evidence =
+        'Conflicts after one edit: $afterOneEdit; after two quick edits in '
+        'one sync: $afterTwoQuickEdits; server title="${server['title']}"; '
+        '$pending operation(s) left in the outbox.';
+
+    if (conflicts == 0 && server['title'] == 'Third edit' && pending == 0) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The server rejected this client\'s own edits as conflicts although '
+      'nobody else wrote to the todo. $evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+  }
+}
+
+/// Edits the way `TodoRepository.update` does: the new row is stamped with
+/// "now", and the version that was edited is passed as the base.
+Future<void> _editLikeTheApp(
+  ScenarioContext ctx,
+  String id, {
+  required String title,
+}) async {
+  final before = (await _localTodo(ctx, id))!;
+  await _writer(ctx).replaceAndEnqueue(
+    Todo(
+      id: before.id,
+      title: title,
+      description: before.description,
+      completed: before.completed,
+      priority: before.priority,
+      dueDate: before.dueDate,
+      updatedAt: DateTime.now().toUtc(),
+    ),
+    baseUpdatedAt: before.updatedAt,
+    changedFields: {'title'},
   );
 }
 
