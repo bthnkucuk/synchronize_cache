@@ -25,19 +25,13 @@ enum ConflictStrategy {
 }
 
 /// Conflict resolution result.
-sealed class ConflictResolution {
-  const ConflictResolution();
-}
+sealed class const ConflictResolution();
 
 /// Accept server version.
-class AcceptServer extends ConflictResolution {
-  const AcceptServer();
-}
+class const AcceptServer() extends ConflictResolution;
 
 /// Accept client version (retry push with force).
-class AcceptClient extends ConflictResolution {
-  const AcceptClient();
-}
+class const AcceptClient() extends ConflictResolution;
 
 /// Use merged data.
 class AcceptMerged extends ConflictResolution {
@@ -61,14 +55,10 @@ class MergeInfo {
 }
 
 /// Defer resolution (keep operation in outbox).
-class DeferResolution extends ConflictResolution {
-  const DeferResolution();
-}
+class const DeferResolution() extends ConflictResolution;
 
 /// Discard operation (remove from outbox).
-class DiscardOperation extends ConflictResolution {
-  const DiscardOperation();
-}
+class const DiscardOperation() extends ConflictResolution;
 
 /// Conflict details.
 class Conflict {
@@ -130,23 +120,17 @@ typedef MergeFunction = Map<String, Object?> Function(
 );
 
 /// Push operation result.
-sealed class PushResult {
-  const PushResult();
-}
+sealed class const PushResult();
 
 /// Operation pushed successfully.
-class PushSuccess extends PushResult {
-  const PushSuccess({this.serverData, this.serverVersion});
-
-  /// Data returned by server (if any).
-  final Map<String, Object?>? serverData;
-
-  /// Server version after the operation.
-  final String? serverVersion;
-}
+final class const PushSuccess({
+  final Map<String, Object?>? serverData,
+  final String? serverVersion,
+}) extends PushResult;
 
 /// Conflict during push.
-class PushConflict extends PushResult {
+
+final class PushConflict extends PushResult {
   const PushConflict({
     required this.serverData,
     required this.serverTimestamp,

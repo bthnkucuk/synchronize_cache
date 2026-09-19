@@ -7,7 +7,7 @@ import 'package:offline_first_sync_drift/src/op.dart';
 final class const PullPage({
   required final List<Map<String, Object?>> items,
   final String? nextPageToken,
-}) {}
+});
 
 /// Push result for a single operation.
 final class const OpPushResult({
