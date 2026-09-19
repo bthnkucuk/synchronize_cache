@@ -13,8 +13,8 @@ Integration patterns for `offline_first_sync_drift` with Flutter: Provider/River
 dependencies:
   drift: ^2.26.1
   drift_flutter: ^0.2.4
-  offline_first_sync_drift: ^0.2.1
-  offline_first_sync_drift_rest: ^0.2.1
+  offline_first_sync_drift: ^0.2.2
+  offline_first_sync_drift_rest: ^0.2.2
   provider: ^6.1.5
   connectivity_plus: ^6.1.4
   # uuid: ^4.5.1 # optional (only if you generate ids on the client)

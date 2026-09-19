@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-19
+
+### Fixed
+
+- **Being offline no longer parks the outbox.** `maxOutboxTryCount` (default
+  5) counted every failed push, including "no network". After five sync
+  attempts without a connection — 25 minutes with `startAuto()`'s default
+  interval — every queued write was "stuck": `take()` skipped it from then on
+  and it was never sent, not even once the connection was back, unless the app
+  called `retryStuckOperations()`. An expired token (`401`) or a server outage
+  (`5xx`) did the same. The budget is now only used up by failures that are
+  about the operation: see "Changed".
+  **Upgrade note:** operations parked by the old behaviour stay parked. If
+  your app may have users in that state, call `engine.retryStuckOperations()`
+  once after upgrading.
+- The pull cursor keeps the microseconds of the server version
+  (`sync_cursors.ts`; no schema change, cursors written by older versions are
+  still read). Truncated to milliseconds it pointed just before the last row
+  of a server with microsecond versions, so every later pull downloaded that
+  row — and everything else within the same millisecond — again.
+- Timestamps between 1966 and 1973 survive the outbox and the cursor table:
+  their microsecond value is below the threshold that tells microseconds from
+  the milliseconds older versions wrote, so e.g. a base version of
+  `1970-01-01T00:00:05Z` (a legacy row whose `updated_at` was defaulted) came
+  back as `01:23:20`. Such values are now stored as milliseconds.
+
+### Changed
+
+- A failed push only counts against an operation's retry budget when the
+  failure is about the operation: a `4xx` other than `401`, `403`, `408`,
+  `425`, `429`, or an error without a status. No network, timeouts, `401` /
+  `403`, `408` / `425` / `429` and any `5xx` leave `try_count` alone. They are
+  still reported — `OperationFailedEvent` (now with `willRetry: true`),
+  `SyncStats.errors`, `last_error` / `last_tried_at` in `sync_outbox_meta`.
+- `SyncErrorInfo.fromError` classifies a bare `TimeoutException` as `network`,
+  and `408` / `425` / `429` as `retryable`.
+
+### Added
+
+- `SyncErrorInfo.isEnvironmental`: whether a failure describes the conditions
+  an operation was sent under rather than the operation.
+- `recordOutboxFailures(..., countAttempts: false)` /
+  `OutboxService.recordFailures(..., countAttempts: false)`: store the last
+  error without counting an attempt.
+
 ## [0.2.1] - 2026-09-19
 
 ### Added

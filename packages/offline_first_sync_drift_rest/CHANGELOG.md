@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-09-19
+
+### Changed
+
+- Requires `offline_first_sync_drift: ^0.2.2`.
+- A push that fails with an HTTP status is reported as
+  `PushError(TransportException)` carrying `statusCode` and `responseBody` —
+  single requests and the entries of a batch response alike. It used to be an
+  `http.ClientException('Push failed 401')`: the status only existed inside a
+  string, so the engine could not tell an expired token or an outage from a
+  rejected operation (`SyncErrorInfo.category` was always `unknown`).
+  `FetchError` already worked this way.
+- Once an op fails because the network is gone (after its retries) or the
+  token was rejected (`401`), the remaining ops of that `push()` are not sent
+  and get the same error. Each of them used to run through its own retries
+  and timeouts first: with the defaults more than 30 s per queued op, for a
+  queue that could not go anywhere. A `403`, a `4xx` or a `5xx` may be about
+  one op and does not stop the batch.
+
+### Fixed
+
+- A payload that cannot be encoded as JSON is that op's error
+  (`TransportException`, no request sent). It was encoded inside the retry
+  loop, retried `maxRetries` times and then reported as a network failure.
+
 ## [0.2.1] - 2026-09-19
 
 ### Changed
