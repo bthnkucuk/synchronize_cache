@@ -19,6 +19,7 @@ export 'src/config.dart';
 export 'src/conflict_resolution.dart';
 export 'src/sync_events.dart';
 export 'src/sync_error.dart';
+export 'src/server_timestamp.dart';
 export 'src/syncable_table.dart';
 export 'src/transport_adapter.dart';
 export 'src/changed_fields.dart';

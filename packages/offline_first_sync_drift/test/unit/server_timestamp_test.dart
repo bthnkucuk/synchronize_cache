@@ -1,4 +1,4 @@
-import 'package:offline_first_sync_drift/src/internal/server_timestamp.dart';
+import 'package:offline_first_sync_drift/src/server_timestamp.dart';
 import 'package:test/test.dart';
 
 void main() {

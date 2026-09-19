@@ -6,7 +6,7 @@ import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/cursor.dart';
 import 'package:offline_first_sync_drift/src/exceptions.dart';
-import 'package:offline_first_sync_drift/src/internal/server_timestamp.dart';
+import 'package:offline_first_sync_drift/src/server_timestamp.dart';
 import 'package:offline_first_sync_drift/src/services/cursor_service.dart';
 import 'package:offline_first_sync_drift/src/sync_events.dart';
 import 'package:offline_first_sync_drift/src/syncable_table.dart';
