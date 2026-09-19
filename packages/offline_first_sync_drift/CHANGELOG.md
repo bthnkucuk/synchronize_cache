@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-19
+
+### Breaking
+
+- The minimum Dart SDK is now **3.13** (was 3.7).
+- `ConflictUtils.preservingMerge` — and therefore the default
+  `ConflictStrategy.autoPreserve` — now treats a field that is listed in
+  `changedFields` and is `null` locally as a deliberate clear: the merged
+  result contains `null`. It used to keep the server's old value, silently
+  undoing the user's edit. Without `changedFields` the server value is still
+  preserved.
+
 ### Added
 
 - Add opt-in `pushOnEnqueue` config (default `false`). When enabled, every
@@ -22,6 +34,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now run in parallel; same-kind concurrent calls coalesce as before. Full-resync
   gating unchanged — a full resync still serialises all concurrent callers onto a
   single `_fullResyncFuture`.
+- All-final classes (ops, sync events, services, `PullPage`, …) are annotated
+  `@immutable` and have `const` constructors. Adds a dependency on `meta`.
+- Constructors use private named parameters (`this._db`); call sites keep the
+  public names (`db:`), so nothing changes for callers.
+- Dependencies: `drift` ^2.35.0.
+
+### Fixed
+
+- `PushService.pushAll` no longer spins forever when a conflict stays
+  unresolved (e.g. `ConflictStrategy.manual` with `DeferResolution`, or a
+  `forcePush` that keeps conflicting). The operation was neither acked nor
+  counted as a failure, so the push loop re-took and re-pushed it without end:
+  `sync()` never returned and the server was hit continuously. The loop now
+  stops after such a batch and the operation is retried by the next sync.
+- List merge no longer duplicates items that have no `id`: equal, separately
+  decoded maps were compared by identity and appended again on every conflict
+  (a one-item list grew to 2, 4, 8, 16 …).
+- The pull cursor reads a server timestamp without a zone designator
+  (`2024-01-01T10:00:00`) as UTC. It was parsed as device-local time; west of
+  UTC the cursor jumped ahead and rows in the gap were skipped until the next
+  full resync.
+- A pulled item without any id (`id` / `ID` / `uuid`) now throws
+  `ParseException` instead of persisting the cursor id `"null"`.
 
 ## [0.1.2] - 2026-02-13
 
