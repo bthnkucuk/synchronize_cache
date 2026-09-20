@@ -220,6 +220,10 @@ engine.startAuto(interval: Duration(hours: 1));
 
 > Calling `startAuto()` automatically cancels the previous timer (calls `stopAuto()` internally).
 
+A tick that fails — the device is offline, the server is down — reports itself
+on `engine.events` (`SyncErrorEvent`, `OperationFailedEvent`) like any other
+sync. Nothing is thrown at you: there is no caller to catch it.
+
 ### `stopAuto()` — Stop Periodic Sync
 
 ```dart
@@ -293,6 +297,34 @@ fullResync()
   │
   └─ SyncCompleted(took, at, stats)
 ```
+
+### Interrupted and Push-only
+
+A full resync can be hundreds of requests. Every page it stores moves that
+kind's cursor, and a marker (`CursorKinds.fullResyncInProgress`) records that
+it is under way — so when it is cut off (connection lost, app closed), the
+next sync **continues** from the cursors it reached instead of starting over.
+An interrupted resync is always due, whenever the last complete one was: the
+next sync that pulls finishes it and removes the marker.
+`fullResync(clearData: true)` always starts from scratch: it is an explicit
+request for a clean slate.
+
+The periodic check only runs for a sync that pulls. `sync(pushKinds: {...},
+pullKinds: {})` — a "send now", the debounced push after a local write —
+never sets off a full resync; the next sync that pulls does. This includes a
+database's very first sync.
+
+### Rows the App Cannot Read
+
+A pulled row that `fromJson` cannot parse, or that the database rejects, is
+skipped and reported as a `SyncErrorEvent` with a `ParseException` naming its
+id; the rest of the page is stored and the cursor moves on. Without this a
+single bad row on the server would stop the kind from syncing: the cursor
+could never get past it. The same goes for a page item that is not a JSON
+object at all, and for a row without `updated_at` or `id` at the end of a
+page: the cursor goes to the last row that names both. Set
+`SyncConfig(skipInvalidPulledRows: false)` while developing, when such a row
+means your model is wrong.
 
 ### `fullResyncInterval` in SyncConfig
 
@@ -431,6 +463,23 @@ final stuck = await engine.getStuckOperations();   // look at them
 await engine.retryStuckOperations();               // give them a new budget
 await engine.dropStuckOperations();                // or give up on them
 ```
+
+`dropStuckOperations()` does more than delete: a dropped operation's effect is
+still in the local row, so each affected row is fetched from the server and
+written back (or removed if the server does not have it). If the server
+cannot be reached, the operation is kept — "nothing queued" always means
+"same as the server". Two cases leave the row as it is: newer operations of
+the same row are still queued (the row is theirs), or the server's version is
+one the app cannot read (the operations are dropped as asked and a
+`SyncErrorEvent` with a `ParseException` says so).
+
+A **conflict that cannot be resolved** uses the budget too: the server's
+`409` carries a record `fromJson` cannot read, your `conflictResolver` or
+`mergeFunction` throws, the forced push fails. It is reported as an
+`OperationFailedEvent`, the other conflicts of the batch are settled as usual
+(each one is acknowledged as soon as it is resolved), and after
+`maxOutboxTryCount` attempts the operation is stuck instead of failing every
+sync of its kind.
 
 The budget exists for operations the server will **never** accept (`400`,
 `413`, `422`, a payload that cannot be serialized …). Only such failures use
@@ -580,48 +629,47 @@ await engine.cursors.setLastFullResync(DateTime.now());
 
 ## Race Condition Protection
 
-`SyncEngine` prevents concurrent execution of multiple syncs through a shared Future mechanism.
+`SyncEngine` never runs two syncs of the same data at once. Callers that
+overlap share one run and get the same result.
 
 ### How It Works
 
+There is one in-flight run **per kind**, and one for a full resync:
+
 ```dart
-/// Current sync Future.
-Future<SyncStats>? _syncFuture;
+/// Runs under way, one per kind.
+final _kindRunFutures = <String, Future<SyncRunResult>>{};
 
-/// Current full resync Future.
-Future<SyncStats>? _fullResyncFuture;
-
-Future<SyncStats> sync({Set<String>? kinds}) {
-  // If sync is already running, return the same Future
-  if (_syncFuture != null) {
-    return _syncFuture!;
-  }
-
-  _syncFuture = _doSync(kinds: kinds);
-  return _syncFuture!.whenComplete(() => _syncFuture = null);
-}
+/// The full resync under way, if any.
+Future<SyncRunResult>? _fullResyncFuture;
 ```
+
+- `sync()` for a kind that is already syncing joins that run; different kinds
+  sync in parallel.
+- While a full resync is running, every `sync()` call joins it.
+- A full resync that starts while per-kind runs are under way — the debounced
+  push after a local write, a sync of one kind — **waits for them** before it
+  pushes. They have taken operations from the outbox that are not acknowledged
+  yet; pushing at the same time would send those twice.
 
 ### What Happens with Concurrent Calls
 
 ```
-Call 1: engine.sync()  ──► creates _syncFuture ──► push → pull ──► SyncStats
+Call 1: engine.sync(kinds: {'todos'}) ──► run for "todos" ──► push → pull ──► result
                                     │
-Call 2: engine.sync()  ──► sees _syncFuture != null ──► awaits the same Future
+Call 2: engine.sync(kinds: {'todos'}) ──► joins the run for "todos"
                                     │
-Call 3: engine.sync()  ──► sees _syncFuture != null ──► awaits the same Future
+Call 3: engine.sync(kinds: {'notes'}) ──► its own run, in parallel
                                     │
-                          whenComplete() ──► _syncFuture = null
+Call 4: engine.fullResync()           ──► waits for both, then push → pull of everything
                                     │
-Call 4: engine.sync()  ──► _syncFuture == null ──► creates a new Future
+Call 5: engine.sync()                 ──► joins the full resync
 ```
 
-All concurrent callers receive the same `SyncStats` result. This prevents:
+This prevents:
 - Duplicate sending of outbox operations
 - Parallel pulls with identical cursors
 - Unnecessary server load
-
-The same mechanism works for `fullResync()` via a separate `_fullResyncFuture`.
 
 ---
 
@@ -686,17 +734,11 @@ engine.events.listen((event) {
 
 ### `engine.dispose()`
 
-```dart
-void dispose() {
-  stopAuto();       // Cancels the auto-sync Timer
-  _events.close();  // Closes the event StreamController
-}
-```
-
 The `dispose()` method:
 
-1. Calls `stopAuto()` — cancels the periodic timer
-2. Closes the `_events` StreamController — all subscribers receive `done`
+1. Calls `stopAuto()` and cancels pending debounced pushes
+2. Detaches the engine from the database's outbox hook
+3. Closes the `events` stream — all subscribers receive `done`
 
 **When to call:**
 
@@ -713,7 +755,7 @@ void dispose() {
 }
 ```
 
-> `dispose()` does not close the database (`db`) and does not cancel a currently running `sync()`. If you need to wait for sync completion, do so before calling `dispose()`.
+> `dispose()` does not close the database (`db`) and does not cancel a currently running `sync()`: that run finishes quietly (its events go nowhere) and its `Future` completes as usual. If you close the database right after, wait for the sync first. Calling `sync()` or `fullResync()` on a disposed engine throws a `StateError`.
 
 ---
 

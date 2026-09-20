@@ -179,8 +179,15 @@ for (final opResult in result.results) {
       conflictOps[op] = conflict;
 
     case PushNotFound():
-      // Entity not found on server (deleted?) -- treat as success
-      successOpIds.add(opResult.opId);
+      if (op is DeleteOp) {
+        // Already gone -- exactly what the delete wanted
+        successOpIds.add(opResult.opId);
+      } else {
+        // The server has no such record and will not create it: a failed
+        // operation (counted, stuck once the retry budget is used up)
+        counters.errors++;
+        _events.add(OperationFailedEvent(...));
+      }
 
     case PushError():
       // Error -- keep in outbox for next attempt
