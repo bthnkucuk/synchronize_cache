@@ -37,4 +37,5 @@ export 'src/services/pull_service.dart';
 // Core
 export 'src/sync_database.dart';
 export 'src/sync_engine.dart';
+export 'src/sync_run_result.dart';
 export 'src/sync_coordinator.dart';

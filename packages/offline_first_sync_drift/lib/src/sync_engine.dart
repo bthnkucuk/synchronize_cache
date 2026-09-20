@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:drift/drift.dart';
 import 'package:offline_first_sync_drift/src/config.dart';
-import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/exceptions.dart';
+import 'package:offline_first_sync_drift/src/internal/enqueue_push_scheduler.dart';
 import 'package:offline_first_sync_drift/src/internal/event_emitter.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/services/conflict_service.dart';
@@ -11,38 +11,13 @@ import 'package:offline_first_sync_drift/src/services/cursor_service.dart';
 import 'package:offline_first_sync_drift/src/services/outbox_service.dart';
 import 'package:offline_first_sync_drift/src/services/pull_service.dart';
 import 'package:offline_first_sync_drift/src/services/push_service.dart';
+import 'package:offline_first_sync_drift/src/services/stuck_operations_service.dart';
 import 'package:offline_first_sync_drift/src/sync_database.dart';
 import 'package:offline_first_sync_drift/src/sync_error.dart';
 import 'package:offline_first_sync_drift/src/sync_events.dart';
+import 'package:offline_first_sync_drift/src/sync_run_result.dart';
 import 'package:offline_first_sync_drift/src/syncable_table.dart';
 import 'package:offline_first_sync_drift/src/transport_adapter.dart';
-
-/// Rich result model for a sync run.
-class SyncRunResult {
-  const SyncRunResult({
-    required this.push,
-    required this.pull,
-    required this.stats,
-    required this.duration,
-    required this.kindsPushed,
-    required this.kindsPulled,
-    required this.stuckOpsCount,
-    this.firstError,
-  });
-
-  final PushStats push;
-  final PullStats pull;
-  final SyncStats stats;
-  final Duration duration;
-  final Set<String> kindsPushed;
-  final Set<String> kindsPulled;
-  final int stuckOpsCount;
-  final SyncErrorInfo? firstError;
-
-  bool get hadErrors => stats.errors > 0 || firstError != null;
-}
-
-final class const PullStats({required final int pulled});
 
 /// Synchronization engine: push → pull with pagination and conflict resolution.
 ///
@@ -86,7 +61,7 @@ class SyncEngine<DB extends GeneratedDatabase>({
       );
     }
 
-    _registerEnqueuePushHook();
+    _enqueuePush.attach();
   }
 
   final Map<String, SyncableTable<dynamic>> _tables = _buildTablesMap(tables);
@@ -122,6 +97,21 @@ class SyncEngine<DB extends GeneratedDatabase>({
     cursorService: _cursorService,
     config: _config,
     events: _events,
+  );
+
+  late final StuckOperationsService<DB> _stuckOperations =
+      StuckOperationsService<DB>(
+        db: _db,
+        outbox: _outboxService,
+        transport: _transport,
+        tables: _tables,
+        config: _config,
+        events: _events,
+      );
+  late final EnqueuePushScheduler _enqueuePush = EnqueuePushScheduler(
+    db: _syncDb,
+    config: _config,
+    push: _pushAfterEnqueue,
   );
 
   SyncDatabaseMixin get _syncDb => _db as SyncDatabaseMixin;
@@ -176,14 +166,12 @@ class SyncEngine<DB extends GeneratedDatabase>({
   CursorService get cursors => _cursorService;
 
   /// Return operations that reached stuck threshold.
-  Future<List<Op>> getStuckOperations({Set<String>? kinds}) => _outboxService
-      .getStuck(minTryCount: _config.maxOutboxTryCount, kinds: kinds);
+  Future<List<Op>> getStuckOperations({Set<String>? kinds}) =>
+      _stuckOperations.getStuck(kinds: kinds);
 
   /// Reset retry counters for stuck operations.
-  Future<void> retryStuckOperations({Set<String>? kinds}) async {
-    final stuck = await getStuckOperations(kinds: kinds);
-    await _outboxService.resetTryCount(stuck.map((op) => op.opId));
-  }
+  Future<void> retryStuckOperations({Set<String>? kinds}) =>
+      _stuckOperations.retry(kinds: kinds);
 
   /// Drop stuck operations from outbox.
   ///
@@ -201,146 +189,12 @@ class SyncEngine<DB extends GeneratedDatabase>({
   /// still queued (the row is theirs, also when they were enqueued while the
   /// server was being asked), or the server's version is one this app cannot
   /// read (dropped as asked, and reported with a [ParseException]).
-  Future<void> dropStuckOperations({Set<String>? kinds}) async {
-    final stuck = await getStuckOperations(kinds: kinds);
-
-    final byEntity = <(String, String), List<String>>{};
-    for (final op in stuck) {
-      byEntity.putIfAbsent((op.kind, op.id), () => []).add(op.opId);
-    }
-
-    // Row by row, each one settled on its own: a row that cannot be restored
-    // (or an error while trying) does not keep the others.
-    for (final MapEntry(key: (kind, id), value: opIds) in byEntity.entries) {
-      if (await _hasLiveOps(kind, id)) {
-        // Newer edits of the same row that are still on their way keep their
-        // say: the row is theirs until they are pushed.
-        await _outboxService.ack(opIds);
-      } else {
-        await _discard(kind, id, opIds);
-      }
-    }
-  }
-
-  /// Whether `(kind, id)` has operations queued that are not stuck.
-  Future<bool> _hasLiveOps(String kind, String id) async {
-    final rows = await _db
-        .customSelect(
-          'SELECT 1 FROM ${TableNames.syncOutbox} '
-          'WHERE ${TableColumns.kind} = ? AND ${TableColumns.entityId} = ? '
-          'AND ${TableColumns.tryCount} < ? LIMIT 1',
-          variables: [
-            Variable.withString(kind),
-            Variable.withString(id),
-            Variable.withInt(_config.maxOutboxTryCount),
-          ],
-        )
-        .get();
-    return rows.isNotEmpty;
-  }
-
-  /// Drops the stuck operations [opIds] of `(kind, id)` and makes the local
-  /// row what the server has. Leaves both alone when the server could not be
-  /// asked.
-  Future<void> _discard(String kind, String id, List<String> opIds) async {
-    final tableConfig = _tables[kind];
-    if (tableConfig == null) {
-      await _outboxService.ack(opIds);
-      return;
-    }
-
-    final FetchResult result;
-    try {
-      result = await _transport.fetch(kind: kind, id: id);
-    } on Object catch (e, st) {
-      _events.emit(SyncErrorEvent(SyncPhase.push, e, st));
-      return;
-    }
-
-    Insertable<dynamic>? serverRow;
-    switch (result) {
-      case FetchError(:final error, :final stackTrace):
-        _events.emit(SyncErrorEvent(SyncPhase.push, error, stackTrace));
-        return;
-      case FetchSuccess(:final data):
-        try {
-          serverRow = tableConfig.getInsertable(tableConfig.fromJson(data));
-        } on Object catch (e, st) {
-          // The server has the row, in a form this app cannot read — a pull
-          // skips such a row too. The operations are dropped as asked; the
-          // local row cannot be made the server's, and the app is told.
-          _reportUnrestoredRow(kind, id, e, st);
-        }
-      case FetchNotFound():
-        break;
-    }
-
-    await _db.transaction(() async {
-      // An edit made while the server was being asked owns the row now.
-      if (!await _hasLiveOps(kind, id)) {
-        try {
-          if (serverRow != null) {
-            await _db.into(tableConfig.table).insertOnConflictUpdate(serverRow);
-          } else if (result is FetchNotFound) {
-            await _deleteLocalRow(tableConfig, id);
-          }
-        } on Object catch (e, st) {
-          _reportUnrestoredRow(kind, id, e, st);
-        }
-      }
-      await _outboxService.ack(opIds);
-    });
-  }
-
-  Future<void> _deleteLocalRow(
-    SyncableTable<dynamic> tableConfig,
-    String id,
-  ) async {
-    final pk = tableConfig.table.$primaryKey;
-    if (pk.length != 1) return;
-    await _db.customUpdate(
-      'DELETE FROM "${tableConfig.table.actualTableName}" '
-      'WHERE "${pk.first.name}" = ?',
-      variables: [Variable.withString(id)],
-      updates: {tableConfig.table},
-      updateKind: UpdateKind.delete,
-    );
-  }
-
-  void _reportUnrestoredRow(
-    String kind,
-    String id,
-    Object error,
-    StackTrace stackTrace,
-  ) {
-    _events.emit(
-      SyncErrorEvent(
-        SyncPhase.push,
-        ParseException(
-          'Dropped the stuck operations of "$kind" $id, but its row could '
-          'not be restored from the server: $error',
-          error,
-          stackTrace,
-        ),
-        stackTrace,
-      ),
-    );
-  }
+  Future<void> dropStuckOperations({Set<String>? kinds}) =>
+      _stuckOperations.drop(kinds: kinds);
 
   Timer? _autoTimer;
 
-  /// Per-kind debounce timers driving [SyncConfig.pushOnEnqueue] auto-pushes.
-  final Map<String, Timer> _enqueuePushTimers = {};
-
-  /// Set of kinds with a pending debounced push.
-  final Set<String> _pendingPushKinds = {};
-
-  /// Stable closure registered as the database `onOutboxCommitted` hook.
-  /// Stored as a field so it can be reliably compared at dispose time.
-  late final OnOutboxCommittedCallback _enqueueHook = _scheduleEnqueuePush;
-
-  /// Whether [dispose] has been called. Guards against scheduling a push
-  /// after the engine is torn down.
+  /// Whether [dispose] has been called.
   bool _disposed = false;
 
   /// Per-kind in-flight sync Futures.
@@ -505,7 +359,7 @@ class SyncEngine<DB extends GeneratedDatabase>({
     }).toList();
 
     final results = await Future.wait(futures);
-    return _mergeResults(results);
+    return SyncRunResult.merge(results);
   }
 
   /// Run push+pull for exactly one kind, without the full-resync gate.
@@ -513,11 +367,34 @@ class SyncEngine<DB extends GeneratedDatabase>({
     required String kind,
     required Set<String> pushKinds,
     required Set<String> pullKinds,
+  }) => _reportedRun(
+    started: DateTime.now(),
+    kindsPushed: pushKinds,
+    kindsPulled: pullKinds,
+    failure: (e, st) => SyncOperationException(
+      'Sync failed for kind=$kind',
+      phase: 'sync',
+      cause: e,
+      stackTrace: st,
+    ),
+    steps: (run) async {
+      if (pushKinds.isNotEmpty) await run.push(pushKinds);
+      if (pullKinds.isNotEmpty) await run.pull(pullKinds);
+    },
+  );
+
+  /// Runs [steps] and reports them the way every run is reported: the first
+  /// error seen on [events] while it ran, [SyncCompleted] with the totals, a
+  /// [SyncErrorEvent] naming the phase that failed, and a [SyncRunResult].
+  Future<SyncRunResult> _reportedRun({
+    required DateTime started,
+    required Set<String> kindsPushed,
+    required Set<String> kindsPulled,
+    required SyncOperationException Function(Object error, StackTrace st)
+    failure,
+    required Future<void> Function(_Run run) steps,
   }) async {
-    final started = DateTime.now();
-    var stats = const SyncStats();
-    var pushStats = const PushStats();
-    var pullStats = const PullStats(pulled: 0);
+    final run = _Run(_pushService, _pullService, _events);
 
     SyncErrorInfo? firstError;
     final sub = events.listen((event) {
@@ -529,27 +406,10 @@ class SyncEngine<DB extends GeneratedDatabase>({
       }
     });
 
-    var phase = SyncPhase.push;
     try {
-      if (pushKinds.isNotEmpty) {
-        _events.emit(const SyncStarted(SyncPhase.push));
-        pushStats = await _pushService.pushAll(kinds: pushKinds);
-        stats = stats.copyWith(
-          pushed: pushStats.pushed,
-          conflicts: pushStats.conflicts,
-          conflictsResolved: pushStats.conflictsResolved,
-          errors: pushStats.errors,
-        );
-      }
+      await steps(run);
 
-      if (pullKinds.isNotEmpty) {
-        phase = SyncPhase.pull;
-        _events.emit(const SyncStarted(SyncPhase.pull));
-        final pulled = await _pullService.pullKinds(pullKinds);
-        pullStats = PullStats(pulled: pulled);
-        stats = stats.copyWith(pulled: pullStats.pulled);
-      }
-
+      final stats = run.stats;
       _events.emit(
         SyncCompleted(
           DateTime.now().difference(started),
@@ -559,85 +419,27 @@ class SyncEngine<DB extends GeneratedDatabase>({
       );
 
       return SyncRunResult(
-        push: pushStats,
-        pull: pullStats,
+        push: run.pushStats,
+        pull: PullStats(pulled: run.pulled),
         stats: stats,
         duration: DateTime.now().difference(started),
-        kindsPushed: pushKinds,
-        kindsPulled: pullKinds,
+        kindsPushed: kindsPushed,
+        kindsPulled: kindsPulled,
         stuckOpsCount: await _outboxService.countStuck(
           minTryCount: _config.maxOutboxTryCount,
         ),
         firstError: firstError,
       );
     } on SyncException catch (e, st) {
-      _events.emit(SyncErrorEvent(phase, e, st));
+      _events.emit(SyncErrorEvent(run.phase, e, st));
       rethrow;
     } catch (e, st) {
-      final exception = SyncOperationException(
-        'Sync failed for kind=$kind',
-        phase: 'sync',
-        cause: e,
-        stackTrace: st,
-      );
-      _events.emit(SyncErrorEvent(phase, exception, st));
+      final exception = failure(e, st);
+      _events.emit(SyncErrorEvent(run.phase, exception, st));
       throw exception;
     } finally {
       await sub.cancel();
     }
-  }
-
-  /// Merge a list of per-kind [SyncRunResult]s into one aggregate result.
-  SyncRunResult _mergeResults(List<SyncRunResult> results) {
-    if (results.length == 1) return results.first;
-
-    var pushed = 0;
-    var conflicts = 0;
-    var conflictsResolved = 0;
-    var errors = 0;
-    var pulled = 0;
-    final kindsPushed = <String>{};
-    final kindsPulled = <String>{};
-    SyncErrorInfo? firstError;
-    Duration duration = Duration.zero;
-
-    for (final r in results) {
-      pushed += r.push.pushed;
-      conflicts += r.push.conflicts;
-      conflictsResolved += r.push.conflictsResolved;
-      errors += r.push.errors;
-      pulled += r.pull.pulled;
-      kindsPushed.addAll(r.kindsPushed);
-      kindsPulled.addAll(r.kindsPulled);
-      firstError ??= r.firstError;
-      if (r.duration > duration) duration = r.duration;
-    }
-
-    final mergedPushStats = PushStats(
-      pushed: pushed,
-      conflicts: conflicts,
-      conflictsResolved: conflictsResolved,
-      errors: errors,
-    );
-    final mergedPullStats = PullStats(pulled: pulled);
-    final mergedStats = SyncStats(
-      pushed: pushed,
-      pulled: pulled,
-      conflicts: conflicts,
-      conflictsResolved: conflictsResolved,
-      errors: errors,
-    );
-
-    return SyncRunResult(
-      push: mergedPushStats,
-      pull: mergedPullStats,
-      stats: mergedStats,
-      duration: duration,
-      kindsPushed: kindsPushed,
-      kindsPulled: kindsPulled,
-      stuckOpsCount: results.last.stuckOpsCount,
-      firstError: firstError,
-    );
   }
 
   /// Reactive count of pending operations (excluding stuck by default).
@@ -707,158 +509,77 @@ class SyncEngine<DB extends GeneratedDatabase>({
     required FullResyncReason reason,
     required bool clearData,
     required DateTime started,
-  }) async {
-    var stats = const SyncStats();
-    var pushStats = const PushStats();
-    var pullStats = const PullStats(pulled: 0);
-
-    SyncErrorInfo? firstError;
-    final sub = events.listen((event) {
-      if (firstError != null) return;
-      if (event is SyncErrorEvent) {
-        firstError = event.errorInfo;
-      } else if (event is OperationFailedEvent) {
-        firstError = event.errorInfo;
-      }
-    });
-
-    var phase = SyncPhase.push;
-    try {
-      await _ensureOutboxIndexes();
-
-      // Per-kind runs that are under way — the debounced push after a local
-      // write, a sync of one kind — have taken operations from the outbox and
-      // not acknowledged them yet. Pushing now would send those a second
-      // time. No new one can start: `_runSync` joins this resync instead.
-      while (_kindRunFutures.isNotEmpty) {
-        await Future.wait([
-          for (final run in _kindRunFutures.values.toList())
-            run.then<void>((_) {}, onError: (Object _) {}),
-        ]);
-      }
-
-      _events
-        ..emit(FullResyncStarted(reason))
-        ..emit(const SyncStarted(SyncPhase.push));
-
-      pushStats = await _pushService.pushAll();
-      stats = stats.copyWith(
-        pushed: pushStats.pushed,
-        conflicts: pushStats.conflicts,
-        conflictsResolved: pushStats.conflictsResolved,
-        errors: pushStats.errors,
-      );
-
-      // A full resync can be hundreds of requests. Every page it stores moves
-      // that kind's cursor, so an interrupted one has not lost anything — as
-      // long as the next attempt does not reset the cursors (and wipe the
-      // tables) again. It used to: on a connection that drops now and then
-      // the resync started over every time and might never finish.
-      // `clearData` is an explicit request for a clean slate, so it always
-      // starts over; call `fullResync()` without it to continue instead.
-      final resuming =
-          !clearData && await _cursorService.isFullResyncInProgress();
-      if (!resuming) {
-        await _cursorService.resetAll(_tables.keys.toSet());
-
-        if (clearData) {
-          final tableNames = _tables.values
-              .map((t) => t.table.actualTableName)
-              .toList();
-          await _syncDb.clearSyncableTables(tableNames);
-        }
-        await _cursorService.setFullResyncInProgress(inProgress: true);
-      }
-
-      phase = SyncPhase.pull;
-      _events.emit(const SyncStarted(SyncPhase.pull));
-      final pulled = await _pullService.pullKinds(_tables.keys.toSet());
-      pullStats = PullStats(pulled: pulled);
-      stats = stats.copyWith(pulled: pullStats.pulled);
-
-      await _cursorService.setLastFullResync(DateTime.now());
-      await _cursorService.setFullResyncInProgress(inProgress: false);
-
-      _events.emit(
-        SyncCompleted(
-          DateTime.now().difference(started),
-          DateTime.now(),
-          stats: stats,
-        ),
-      );
-
-      return SyncRunResult(
-        push: pushStats,
-        pull: pullStats,
-        stats: stats,
-        duration: DateTime.now().difference(started),
-        kindsPushed: _tables.keys.toSet(),
-        kindsPulled: _tables.keys.toSet(),
-        stuckOpsCount: await _outboxService.countStuck(
-          minTryCount: _config.maxOutboxTryCount,
-        ),
-        firstError: firstError,
-      );
-    } on SyncException catch (e, st) {
-      _events.emit(SyncErrorEvent(phase, e, st));
-      rethrow;
-    } catch (e, st) {
-      final exception = SyncOperationException(
+  }) {
+    final allKinds = _tables.keys.toSet();
+    return _reportedRun(
+      started: started,
+      kindsPushed: allKinds,
+      kindsPulled: allKinds,
+      failure: (e, st) => SyncOperationException(
         'Full resync failed',
         phase: 'fullResync',
         cause: e,
         stackTrace: st,
-      );
-      _events.emit(SyncErrorEvent(phase, exception, st));
-      throw exception;
-    } finally {
-      await sub.cancel();
-    }
+      ),
+      steps: (run) async {
+        await _ensureOutboxIndexes();
+
+        // Per-kind runs that are under way — the debounced push after a
+        // local write, a sync of one kind — have taken operations from the
+        // outbox and not acknowledged them yet. Pushing now would send those
+        // a second time. No new one can start: `_runSync` joins this resync
+        // instead.
+        while (_kindRunFutures.isNotEmpty) {
+          await Future.wait([
+            for (final kindRun in _kindRunFutures.values.toList())
+              kindRun.then<void>((_) {}, onError: (Object _) {}),
+          ]);
+        }
+
+        _events.emit(FullResyncStarted(reason));
+        await run.push(null);
+
+        // A full resync can be hundreds of requests. Every page it stores
+        // moves that kind's cursor, so an interrupted one has not lost
+        // anything — as long as the next attempt does not reset the cursors
+        // (and wipe the tables) again. It used to: on a connection that
+        // drops now and then the resync started over every time and might
+        // never finish. `clearData` is an explicit request for a clean
+        // slate, so it always starts over; call `fullResync()` without it to
+        // continue instead.
+        final resuming =
+            !clearData && await _cursorService.isFullResyncInProgress();
+        if (!resuming) {
+          await _cursorService.resetAll(allKinds);
+
+          if (clearData) {
+            final tableNames = _tables.values
+                .map((t) => t.table.actualTableName)
+                .toList();
+            await _syncDb.clearSyncableTables(tableNames);
+          }
+          await _cursorService.setFullResyncInProgress(inProgress: true);
+        }
+
+        await run.pull(allKinds);
+
+        await _cursorService.setLastFullResync(DateTime.now());
+        await _cursorService.setFullResyncInProgress(inProgress: false);
+      },
+    );
   }
 
-  /// Register the post-commit outbox hook on the database mixin so that every
-  /// successful enqueue made through [SyncEntityWriter] schedules a debounced
-  /// per-kind auto-push when [SyncConfig.pushOnEnqueue] is enabled. If the
-  /// flag is disabled the hook becomes a no-op early; we still install it so
-  /// the config can be re-read at runtime via [SyncConfig.copyWith] if a
-  /// future caller wants to flip it.
-  void _registerEnqueuePushHook() {
-    _syncDb.onOutboxCommitted = _enqueueHook;
-  }
-
-  /// Schedule (or reset) a debounced per-kind push.
-  ///
-  /// Same kind with rapid successive writes resets the timer (coalesces).
-  /// Different kinds debounce independently and run in parallel via the
-  /// per-kind sync locks.
-  void _scheduleEnqueuePush(String kind) {
-    if (!_config.pushOnEnqueue) return;
-    if (_disposed) return;
-    _pendingPushKinds.add(kind);
-    _enqueuePushTimers[kind]?.cancel();
-    _enqueuePushTimers[kind] = Timer(_config.enqueuePushDebounce, () {
-      _enqueuePushTimers.remove(kind);
-      _pendingPushKinds.remove(kind);
-      if (_disposed) return;
-      // Fire-and-forget; sync() reports its own errors via the events stream.
-      // Restrict to push-only for this kind so we don't trigger an unwanted
-      // pull cycle on every write. Empty pullKinds means "no kinds to pull".
-      unawaited(
-        sync(
-          pushKinds: {kind},
-          pullKinds: const <String>{},
-        ).catchError((Object _) => const SyncStats()),
-      );
-    });
-  }
-
-  /// Cancel all pending debounced enqueue-pushes and clear pending state.
-  void _cancelEnqueuePushTimers() {
-    for (final timer in _enqueuePushTimers.values) {
-      timer.cancel();
-    }
-    _enqueuePushTimers.clear();
-    _pendingPushKinds.clear();
+  /// What [SyncConfig.pushOnEnqueue] does after a local write.
+  void _pushAfterEnqueue(String kind) {
+    // Fire-and-forget; sync() reports its own errors via the events stream.
+    // Restrict to push-only for this kind so we don't trigger an unwanted
+    // pull cycle on every write. Empty pullKinds means "no kinds to pull".
+    unawaited(
+      sync(
+        pushKinds: {kind},
+        pullKinds: const <String>{},
+      ).catchError((Object _) => const SyncStats()),
+    );
   }
 
   /// Release resources.
@@ -868,12 +589,42 @@ class SyncEngine<DB extends GeneratedDatabase>({
   void dispose() {
     _disposed = true;
     stopAuto();
-    _cancelEnqueuePushTimers();
-    // Detach the hook so a database that outlives the engine does not retain
-    // a reference to the disposed engine's closure.
-    if (identical(_syncDb.onOutboxCommitted, _enqueueHook)) {
-      _syncDb.onOutboxCommitted = null;
-    }
+    _enqueuePush.dispose();
     _events.close();
+  }
+}
+
+/// The progress of one run: which phase it is in and what it has moved so
+/// far — what [SyncEngine._reportedRun] needs to report it, also when it
+/// fails half way.
+class _Run {
+  _Run(this._pushService, this._pullService, this._events);
+
+  final PushService _pushService;
+  final PullService<GeneratedDatabase> _pullService;
+  final StreamController<SyncEvent> _events;
+
+  var phase = SyncPhase.push;
+  var pushStats = const PushStats();
+  var pulled = 0;
+
+  SyncStats get stats => SyncStats(
+    pushed: pushStats.pushed,
+    pulled: pulled,
+    conflicts: pushStats.conflicts,
+    conflictsResolved: pushStats.conflictsResolved,
+    errors: pushStats.errors,
+  );
+
+  /// Pushes the queued operations of [kinds]; `null` means every kind.
+  Future<void> push(Set<String>? kinds) async {
+    _events.emit(const SyncStarted(SyncPhase.push));
+    pushStats = await _pushService.pushAll(kinds: kinds);
+  }
+
+  Future<void> pull(Set<String> kinds) async {
+    phase = SyncPhase.pull;
+    _events.emit(const SyncStarted(SyncPhase.pull));
+    pulled = await _pullService.pullKinds(kinds);
   }
 }
