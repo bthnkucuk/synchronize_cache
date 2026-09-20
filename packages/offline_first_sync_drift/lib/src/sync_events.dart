@@ -4,7 +4,7 @@ import 'package:offline_first_sync_drift/src/sync_error.dart';
 
 /// Synchronization events for logging, UI, and metrics.
 
-sealed class SyncEvent {}
+sealed class const SyncEvent() {}
 
 /// Synchronization phase.
 enum SyncPhase { push, pull }

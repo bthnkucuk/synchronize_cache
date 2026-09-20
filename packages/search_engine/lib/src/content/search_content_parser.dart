@@ -7,6 +7,6 @@
 /// [hint] is a free-form context channel — typically a mime-type or path
 /// suffix the binding already knows. Implementations may ignore it.
 // ignore: one_member_abstracts
-abstract interface class SearchContentParser {
+abstract interface class const SearchContentParser() {
   Future<String> parse({required String body, String? hint});
 }

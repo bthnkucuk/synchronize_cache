@@ -21,11 +21,7 @@ final class const OpPushResult({
 }
 
 /// Push result for a batch of operations.
-class BatchPushResult {
-  const BatchPushResult({required this.results});
-
-  final List<OpPushResult> results;
-
+final class const BatchPushResult({required final List<OpPushResult> results}) {
   /// Whether all operations succeeded.
   bool get allSuccess => results.every((r) => r.isSuccess);
 
@@ -46,7 +42,7 @@ class BatchPushResult {
 }
 
 /// Network transport interface.
-abstract interface class TransportAdapter {
+abstract interface class const TransportAdapter() {
   /// Pull a page of data from the server.
   Future<PullPage> pull({
     required String kind,
