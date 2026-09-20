@@ -95,6 +95,73 @@ class SimulationService {
     _emptyPageKind = kind;
   }
 
+  int _poisonedLists = 0;
+  String? _poisonedKind;
+  int _failingLists = 0;
+  int _listsBeforeFailing = 0;
+  int _listFailureStatus = 503;
+
+  /// Makes the next [count] non-empty list responses (of [kind], or of any
+  /// kind) carry one record the client cannot read: its required fields are
+  /// `null`.
+  ///
+  /// One such row — a bad migration, a field another client wrote with the
+  /// wrong type — is all it takes to find out whether a client skips it or
+  /// stops syncing that kind for good.
+  void poisonNextLists({int count = 1, String? kind}) {
+    _poisonedLists = count;
+    _poisonedKind = kind;
+  }
+
+  /// Whether the current list response must carry a poisoned record.
+  bool takePoisonedList(String kind) {
+    if (_poisonedLists <= 0) return false;
+    if (_poisonedKind != null && _poisonedKind != kind) return false;
+    _poisonedLists--;
+    return true;
+  }
+
+  int _poisonedConflicts = 0;
+  String? _poisonedConflictId;
+
+  /// Makes the next [count] conflict answers (`409`) about [entityId] carry a
+  /// `current` record the client cannot read: its fields are `null`.
+  ///
+  /// The push-side twin of [poisonNextLists]: does one conflict the client
+  /// cannot resolve fail its whole sync, or only that one operation?
+  void poisonNextConflicts({required String entityId, int count = 1}) {
+    _poisonedConflicts = count;
+    _poisonedConflictId = entityId;
+  }
+
+  /// Whether the current `409` about [entityId] must carry a poisoned record.
+  bool takePoisonedConflict(String entityId) {
+    if (_poisonedConflicts <= 0 || _poisonedConflictId != entityId) {
+      return false;
+    }
+    _poisonedConflicts--;
+    return true;
+  }
+
+  /// Lets [after] list requests through, then fails the next [count] with
+  /// [status]: a connection that drops in the middle of a long download.
+  void failListsAfter({required int after, int count = 1, int status = 503}) {
+    _listsBeforeFailing = after;
+    _failingLists = count;
+    _listFailureStatus = status;
+  }
+
+  /// The status the current list request must fail with, or `null`.
+  int? takeListFailure() {
+    if (_failingLists <= 0) return null;
+    if (_listsBeforeFailing > 0) {
+      _listsBeforeFailing--;
+      return null;
+    }
+    _failingLists--;
+    return _listFailureStatus;
+  }
+
   /// Whether the current list request for [kind] must return an empty page.
   bool takeEmptyPage([String? kind]) {
     if (_emptyPages <= 0) return false;

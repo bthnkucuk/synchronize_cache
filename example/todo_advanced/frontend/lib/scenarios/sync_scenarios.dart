@@ -122,6 +122,58 @@ final List<Scenario> syncScenarios = [
     run: _twoDevicesShareOneBackend,
   ),
   const Scenario(
+    id: 'K1-13',
+    title: 'One unreadable row cannot stop a kind from syncing',
+    expectation:
+        'When the server keeps sending a row the app cannot read among good '
+        'ones, the good rows arrive, the bad one is reported, and the next '
+        'sync moves on instead of failing at the same place again.',
+    run: _poisonedRowIsSkipped,
+  ),
+  const Scenario(
+    id: 'K1-14',
+    title: 'An interrupted full resync continues instead of starting over',
+    expectation:
+        'When a full resync is cut off after its first page, the next sync '
+        'asks for what follows that page — not for everything again — and '
+        'a push-only sync never sets off a full resync.',
+    run: _interruptedResyncResumes,
+  ),
+  const Scenario(
+    id: 'K2-48',
+    title: 'An edit the server answers with 404 is not dropped silently',
+    expectation:
+        'A rejected edit stays queued and is reported as an error; it used '
+        'to be acknowledged like a success and vanished without a trace.',
+    run: _notFoundUpsertIsNotDropped,
+  ),
+  const Scenario(
+    id: 'K2-49',
+    title: 'Discarding a stuck change puts the server version back',
+    expectation:
+        'After a change the server keeps rejecting is discarded, the item '
+        'shows what the server has — not the edit that was given up while '
+        'nothing marks it as unsent any more.',
+    run: _discardRestoresTheRow,
+  ),
+  const Scenario(
+    id: 'K1-15',
+    title: 'One conflict that cannot be resolved does not block the kind',
+    expectation:
+        'When the server reports a conflict with a record the app cannot '
+        'read, the conflict next to it is still resolved and acknowledged, '
+        'the sync does not fail, and the pull still runs.',
+    run: _unreadableConflictDoesNotBlockTheKind,
+  ),
+  const Scenario(
+    id: 'K2-50',
+    title: 'A full resync does not resend what a push is already sending',
+    expectation:
+        'While the push of a new item is still on its way, a full resync '
+        'waits for it: the item is sent once, not twice at the same time.',
+    run: _fullResyncWaitsForThePush,
+  ),
+  const Scenario(
     id: 'R1',
     title: 'What the UI watches follows a sync without a restart',
     expectation:
@@ -880,6 +932,388 @@ Future<ScenarioOutcome> _remoteDeleteArrives(ScenarioContext ctx) async {
       'The todo was deleted on the server, but this device never hears about '
       'it and keeps showing it: the pull did not deliver the tombstone. '
       '$evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K1-13
+// ---------------------------------------------------------------------------
+
+/// Creates a todo on the server only, as another device would.
+Future<String> _createOnServer(ScenarioContext ctx, String title) async {
+  final id = 'scenario-${_uuid.v4()}';
+  final response = await http.post(
+    Uri.parse('${ctx.backendUrl}/$_kind'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({'id': id, 'title': title}),
+  );
+  if (response.statusCode >= 300) {
+    throw StateError('creating a todo failed: ${response.statusCode}');
+  }
+  return id;
+}
+
+Future<ScenarioOutcome> _poisonedRowIsSkipped(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 60);
+  final engine = _engine(ctx, client, config: const SyncConfig());
+  final reported = <String>[];
+  final subscription = engine.events.listen((event) {
+    if (event is SyncErrorEvent && event.error is ParseException) {
+      reported.add((event.error as ParseException).message);
+    }
+  });
+
+  try {
+    final ids = [
+      await _createOnServer(ctx, 'Next to a broken row 1'),
+      await _createOnServer(ctx, 'Next to a broken row 2'),
+    ];
+    // The bad row is there for the next three pulls: a client that gives up
+    // on it fails all three and never gets past it.
+    await _simulate(ctx, 'poison_row', {'lists': 3, 'kind': _kind});
+
+    final failures = <String>[];
+    for (var i = 0; i < 3; i++) {
+      try {
+        await engine.sync(pushKinds: const {}, pullKinds: {_kind});
+      } catch (e) {
+        failures.add('$e'.split('\n').first);
+      }
+    }
+    await _simulate(ctx, 'poison_row', {'lists': 0});
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final arrived = [
+      for (final id in ids)
+        if (await _localTodo(ctx, id) != null) id,
+    ];
+    final evidence =
+        'The server sent an unreadable row in front of the real ones in 3 '
+        'pulls: ${failures.length} of them failed, ${arrived.length} of '
+        '${ids.length} good rows arrived, the bad row was reported '
+        '${reported.length} time(s).';
+
+    if (failures.isEmpty &&
+        arrived.length == ids.length &&
+        reported.isNotEmpty) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'One row the app cannot read takes the whole page down. The cursor '
+      'only moves when a page was stored, so every later sync fails at the '
+      'same place: this kind never syncs again. $evidence '
+      '${failures.isEmpty ? '' : 'First failure: ${failures.first}'}',
+    );
+  } finally {
+    await subscription.cancel();
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K1-14
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _interruptedResyncResumes(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 3000);
+  // Small pages, so that the download has several of them.
+  final engine = _engine(ctx, client, config: const SyncConfig(pageSize: 2));
+
+  List<String?> sinceOfLists(int from) => [
+    for (final r in client.requests.skip(from))
+      if (r.method == 'GET' && r.url.path.endsWith('/$_kind'))
+        r.url.queryParameters['updatedSince'],
+  ];
+  bool isEpoch(String? since) =>
+      since == null || DateTime.parse(since).millisecondsSinceEpoch == 0;
+
+  try {
+    for (var i = 0; i < 5; i++) {
+      await _createOnServer(ctx, 'Row $i of a long download');
+    }
+
+    // A push-only sync on a new database must not pull anything.
+    await engine.sync(pushKinds: {_kind}, pullKinds: const {});
+    final listsByPushOnly = sinceOfLists(0).length;
+
+    // The full resync: the first page arrives, the second request fails.
+    await _simulate(ctx, 'fail_lists', {'after': 1, 'requests': 1});
+    var interrupted = false;
+    try {
+      await engine.sync();
+    } catch (_) {
+      interrupted = true;
+    }
+    await _simulate(ctx, 'fail_lists', {'requests': 0});
+    final rowsAfterInterruption =
+        (await ctx.db.select(ctx.db.todos).get()).length;
+
+    final retryFrom = client.requests.length;
+    await engine.sync();
+    final retry = sinceOfLists(retryFrom);
+    final restarted = retry.isNotEmpty && isEpoch(retry.first);
+
+    final evidence =
+        'A push-only sync on a new database sent $listsByPushOnly list '
+        'request(s). The full resync was interrupted: $interrupted, with '
+        '$rowsAfterInterruption row(s) stored. The next sync began at '
+        'updatedSince=${retry.isEmpty ? '-' : retry.first} and needed '
+        '${retry.length} list request(s).';
+
+    if (listsByPushOnly == 0 &&
+        interrupted &&
+        rowsAfterInterruption > 0 &&
+        !restarted) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The resync throws away what it had already downloaded and starts '
+      'from the beginning — on a connection that drops now and then it may '
+      'never finish — or a push-only sync downloaded every table. $evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K2-48
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _notFoundUpsertIsNotDropped(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 60);
+  final engine = _engine(ctx, client, config: const SyncConfig());
+
+  try {
+    final synced = await _createAndSync(ctx, engine, title: 'Original title');
+    await _editLocally(
+      ctx,
+      _copy(synced, title: 'An edit the server will not find'),
+      base: synced,
+      changedFields: {'title'},
+    );
+
+    await _simulate(ctx, 'fail_writes', {
+      'status': 404,
+      'requests': 1,
+      'id': synced.id,
+    });
+    final stats = await engine.sync(pushKinds: {_kind}, pullKinds: const {});
+    await _simulate(ctx, 'fail_writes', {'status': 404, 'requests': 0});
+
+    final queued = (await ctx.db.takeOutbox(limit: 10)).length;
+    final server = await _serverTodo(ctx, synced.id);
+    final evidence =
+        'The server answered the edit with 404. errors=${stats.errors}, '
+        'pushed=${stats.pushed}, $queued op(s) still queued, server title='
+        '"${server['title']}".';
+
+    if (stats.errors == 1 && queued == 1) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The edit was acknowledged like a success and removed from the queue: '
+      'the server never got it and nothing tells the user. $evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K2-49
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _discardRestoresTheRow(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 80);
+  const config = SyncConfig();
+  final engine = _engine(ctx, client, config: config);
+
+  try {
+    final synced = await _createAndSync(ctx, engine, title: 'Server version');
+    await _editLocally(
+      ctx,
+      _copy(synced, title: 'The edit that was given up'),
+      base: synced,
+      changedFields: {'title'},
+    );
+
+    await _simulate(ctx, 'fail_writes', {
+      'status': 422,
+      'requests': 100,
+      'id': synced.id,
+    });
+    for (var i = 0; i < config.maxOutboxTryCount; i++) {
+      await engine.sync(pushKinds: {_kind}, pullKinds: const {});
+    }
+    await _simulate(ctx, 'fail_writes', {'status': 422, 'requests': 0});
+    final stuck = (await engine.getStuckOperations()).length;
+
+    await engine.dropStuckOperations();
+
+    final local = await _localTodo(ctx, synced.id);
+    final queued = (await ctx.db.takeOutbox(limit: 10)).length;
+    final evidence =
+        'Stuck before discarding: $stuck. After: $queued op(s) queued, the '
+        'local title is "${local?.title}" (the server has "Server version").';
+
+    if (stuck == 1 && queued == 0 && local?.title == 'Server version') {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The operation is gone but its effect is still in the local row: the '
+      'item differs from the server while nothing marks it as unsent, so it '
+      'looks synced. $evidence',
+    );
+  } finally {
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K1-15
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _unreadableConflictDoesNotBlockTheKind(
+  ScenarioContext ctx,
+) async {
+  final client = RecordingClient(maxRequests: 120);
+  // serverWins reads the conflicting record right away (`fromJson`).
+  final engine = _engine(
+    ctx,
+    client,
+    config: const SyncConfig(conflictStrategy: ConflictStrategy.serverWins),
+  );
+  String? poisonedId;
+
+  try {
+    final good = await _createAndSync(ctx, engine, title: 'Readable conflict');
+    final bad = await _createAndSync(ctx, engine, title: 'Unreadable conflict');
+    poisonedId = bad.id;
+
+    // Another device edits both; this one edits both as well.
+    await _serverSidePriorityChange(ctx, good.id, priority: 1);
+    await _serverSidePriorityChange(ctx, bad.id, priority: 1);
+    await _editLocally(
+      ctx,
+      _copy(good, title: 'Local edit of the readable one'),
+      base: good,
+      changedFields: {'title'},
+    );
+    await _editLocally(
+      ctx,
+      _copy(bad, title: 'Local edit of the unreadable one'),
+      base: bad,
+      changedFields: {'title'},
+    );
+    // Something new on the server, to see whether the pull still runs.
+    final fresh = await _createOnServer(ctx, 'Arrives by pull');
+
+    // What the server says about `bad` in its 409 is not a record the app
+    // can read.
+    await _simulate(ctx, 'poison_conflict', {'id': bad.id, 'requests': 20});
+
+    var threw = false;
+    try {
+      await engine.sync();
+    } catch (_) {
+      threw = true;
+    }
+
+    final queued = [for (final op in await ctx.db.takeOutbox(limit: 10)) op.id];
+    final goodLocal = await _localTodo(ctx, good.id);
+    final pulled = await _localTodo(ctx, fresh) != null;
+    final resolvedStillQueued = queued.contains(good.id)
+        ? ', among them the conflict that WAS resolved'
+        : '';
+    final evidence =
+        'sync() ${threw ? 'threw' : 'completed'}. Still queued: '
+        '${queued.length} op(s)$resolvedStillQueued. The readable item has '
+        'priority ${goodLocal?.priority} (server: 1). The new server row '
+        '${pulled ? 'arrived' : 'did not arrive'}.';
+
+    if (!threw &&
+        queued.length == 1 &&
+        queued.single == bad.id &&
+        goodLocal?.priority == 1 &&
+        pulled) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'One conflict the app cannot resolve fails the sync of the whole kind '
+      '— on every attempt, because it is never counted as one: the conflict '
+      'resolved next to it stays queued (and is resolved again, and again), '
+      'and nothing is pulled. $evidence',
+    );
+  } finally {
+    if (poisonedId != null) {
+      await _simulate(ctx, 'poison_conflict', {
+        'id': poisonedId,
+        'requests': 0,
+      });
+    }
+    engine.dispose();
+    client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K2-50
+// ---------------------------------------------------------------------------
+
+Future<ScenarioOutcome> _fullResyncWaitsForThePush(ScenarioContext ctx) async {
+  final client = RecordingClient(maxRequests: 200);
+  final engine = _engine(ctx, client, config: const SyncConfig());
+
+  try {
+    await engine.sync();
+
+    final now = DateTime.now().toUtc();
+    final todo = Todo(
+      id: 'scenario-${_uuid.v4()}',
+      title: 'Sent once',
+      updatedAt: now,
+    );
+    await _writer(ctx).insertAndEnqueue(todo, localTimestamp: now);
+
+    // The server takes its time with the next request — the push.
+    await _simulate(ctx, 'delay', {'milliseconds': 1500, 'requests': 1});
+
+    // What `pushOnEnqueue` does after a local write…
+    final pushOnly = engine.sync(pushKinds: {_kind}, pullKinds: const {});
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    // A write with a client-made id is a `PUT /todos/<id>`.
+    final sentBeforeFullSync = client.count('PUT', '/$_kind/${todo.id}');
+    // …and a full resync (the periodic one, "Full resync" in the sync panel,
+    // a new database's first sync) while that request is still out.
+    final full = engine.fullResync();
+
+    await Future.wait([
+      pushOnly.then<void>((_) {}, onError: (Object _) {}),
+      full.then<void>((_) {}, onError: (Object _) {}),
+    ]);
+
+    final sent = client.count('PUT', '/$_kind/${todo.id}');
+    final queued = (await ctx.db.takeOutbox(limit: 10)).length;
+    final evidence =
+        'The item was sent $sent time(s) ($sentBeforeFullSync before the '
+        'full resync started); $queued op(s) left in the queue.';
+
+    if (sentBeforeFullSync == 1 && sent == 1 && queued == 0) {
+      return ScenarioOutcome.pass(evidence);
+    }
+    return ScenarioOutcome.fail(
+      'The full resync pushed an operation that a push under way had '
+      'already taken from the queue: the same write reached the server '
+      'twice, at the same time. $evidence',
     );
   } finally {
     engine.dispose();

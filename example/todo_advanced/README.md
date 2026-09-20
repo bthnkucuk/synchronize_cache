@@ -79,7 +79,7 @@ paging or conflicts would not demonstrate anything.
 - **Global search**: FTS5 over todos and notes, results while you type,
   highlighted, Turkish-insensitive (`isik` finds `ışık`)
 - **Sync lab**: nine experiments you arm and drive yourself
-- **Automated sync scenarios**: 14 checks that run against the real engine
+- **Automated sync scenarios**: 21 checks that run against the real engine
   and the real backend and report pass or fail
 - **Sync Log**: history of sync operations
 
@@ -95,7 +95,7 @@ todo_advanced/
 │   │   ├── models/                     # Todo, Note
 │   │   ├── repositories/               # todos, notes, settings
 │   │   ├── search/app_search.dart      # FTS5 wiring + Turkish folding
-│   │   ├── scenarios/                  # the 14 automated checks
+│   │   ├── scenarios/                  # the 21 automated checks
 │   │   ├── services/
 │   │   │   ├── sync_service.dart       # owns the engine and the panel state
 │   │   │   ├── item_sync_state.dart    # the chip on every card
@@ -243,7 +243,7 @@ and — the part that matters in sync — what must **not** happen.
 | 9 | **Delete here what another device just edited** | Todos ask: "Delete anyway" or "Keep their version". Notes decide by themselves — the edit wins and the note comes back. |
 
 The *Automated sync scenarios* button on the same screen opens the other kind
-of check: 14 scenarios that run by themselves against a scratch database and
+of check: 21 scenarios that run by themselves against a scratch database and
 the real backend, and report pass or fail with the evidence. Use the lab to
 *watch* the behaviour, the scenarios to *prove* it.
 
@@ -406,6 +406,9 @@ and `/notes` (plus `/health` for `delay`); `/ws` is never delayed.
 | POST | `/simulate/fail_writes` | `{"status": 422, "requests": 5, "id"?: "…"}` | Writes fail with that status. With `id`, only that record fails — and only it uses up a slot |
 | POST | `/simulate/bare_conflict` | `{"requests": 1}` | A `409` **without** `current`, as a proxy would send |
 | POST | `/simulate/empty_page` | `{"pages": 1, "kind"?: "notes"}` | An empty page that still names a next page |
+| POST | `/simulate/poison_row` | `{"lists": 3, "kind"?: "todos"}` | The next non-empty list responses carry one record the client cannot read (required fields `null`) |
+| POST | `/simulate/poison_conflict` | `{"id": "…", "requests": 5}` | The next `409`s about that record carry a `current` the client cannot read (fields `null`); `requests: 0` disarms it |
+| POST | `/simulate/fail_lists` | `{"after": 1, "requests": 1, "status"?: 503}` | Lets `after` list requests through, then fails the next ones: a download cut off in the middle |
 
 `{"requests": 0}` disarms `fail_writes`.
 
