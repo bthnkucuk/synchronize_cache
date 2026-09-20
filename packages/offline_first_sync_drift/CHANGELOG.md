@@ -5,7 +5,100 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.4] - 2026-09-21
+
+### Fixed
+
+- **One unreadable row no longer stops a kind from syncing.** `pullKind`
+  called `fromJson` for every row of a page without a guard; a single row the
+  model cannot read (a `null` where it needs a value, a field with another
+  type) failed the page. The cursor only moves when a page was stored, so
+  every later sync failed at the same place, forever. Such a row is now
+  skipped and reported as a `SyncErrorEvent` carrying a `ParseException` with
+  its id; the rows around it are stored and the cursor moves on. The same
+  goes for a row the database rejects, for a page item that is not a JSON
+  object at all (`RestTransport` hands over a lazily cast list), and for a
+  row without `updated_at` or `id` at the end of a page — the cursor goes to
+  the last row that names both. A full page that neither moves the cursor nor
+  names a next page ends the pull instead of being requested again without
+  end. `SyncConfig.skipInvalidPulledRows: false` restores the old, strict
+  behaviour (useful while developing).
+- **An interrupted full resync continues instead of starting over.** It reset
+  all cursors first and recorded completion last, so a connection that
+  dropped after page 3 of 200 meant page 1 again next time — on a flaky
+  network it might never finish. The cursors a full resync reaches are kept;
+  a marker cursor (`CursorKinds.fullResyncInProgress`) tells the next sync to
+  carry on from them — whenever the last complete resync was, so the marker
+  never outlives the work. `fullResync(clearData: true)` is still a clean
+  slate.
+- **A push-only sync no longer sets off the periodic full resync.** The
+  full-resync check ran before the kind filters were looked at, so
+  `sync(pushKinds: …, pullKinds: {})` — the debounced push after a local
+  write — downloaded every table when the 7 days were up. It now waits for
+  the first sync that pulls. (A database's very first sync is such a resync:
+  if your first call is push-only, the initial download happens with the
+  first call that pulls.)
+- **An upsert the server answers with "not found" is no longer dropped
+  silently.** `PushNotFound` was acknowledged like a success for every op:
+  the user's edit vanished without an event or a counter. For an upsert it is
+  now a rejection like any other 4xx — `OperationFailedEvent`
+  (`TransportException`, 404), counted, stuck once the retry budget is used
+  up. For a delete it still means "done".
+- **Dropping operations no longer leaves their effect behind.**
+  `dropStuckOperations()` only deleted the ops; the local row kept the edit
+  that was given up, and with nothing queued it looked synced while it
+  differed from the server. Every affected row is now fetched again
+  (`TransportAdapter.fetch`) and written back, or removed when the server
+  does not have it. An op whose row cannot be fetched right now is kept and
+  reported. Rows are settled one by one (row and acknowledgement in one
+  transaction), a row with newer operations still queued — also ones enqueued
+  while the server was being asked — is left to them, and a server row the
+  app cannot read is reported while the ops are dropped as asked. With
+  `skipConflictingOps: true` the row becomes what the server reported in the
+  conflict.
+- **One conflict that cannot be resolved no longer fails every sync of its
+  kind.** Conflicts of a batch were resolved in a loop and acknowledged
+  together afterwards. Resolving can throw — the `409` carries a record
+  `fromJson` cannot read, the app's `conflictResolver`/`mergeFunction` fails,
+  the forced push loses the connection — and that exception skipped the
+  acknowledgement of every conflict resolved before it (rows already
+  rewritten, the merge already on the server, the user already asked: they
+  were asked again) and failed the push, so the pull never ran either. A
+  conflict was never counted as an attempt, so this repeated on every sync.
+  Each conflict is now acknowledged as soon as it is resolved; one that
+  throws is an `OperationFailedEvent`, counted like any other failure (not
+  when it is environmental) and stuck once the budget is used up.
+- **A full resync no longer sends operations a second time while a push of
+  theirs is under way.** It shared its run with other full resyncs, but did
+  not look at per-kind runs: with `pushOnEnqueue` the debounced push after a
+  local write and the app's first `sync()` (a full resync on a new database)
+  pushed the same, not yet acknowledged operations concurrently. It now waits
+  for the per-kind runs that are under way; new ones join it.
+- `SyncErrorEvent.phase` says where a failed run was. It was `SyncPhase.pull`
+  for every failure of `sync()`/`fullResync()`, also when pushing failed.
+- `dispose()` while a sync is running no longer fails that run with
+  "Cannot add new events after calling close" (a `StateError`, outside the
+  `SyncException` hierarchy, which also replaced the run's own error). The
+  run finishes quietly. `sync()`/`fullResync()` on a disposed engine throw a
+  `StateError` that says so.
+- `sync()` on an engine without tables failed with "Bad state: No element"
+  from the second call on.
+- `startAuto()` dropped the future of every tick, so each failed one — all of
+  them while the device is offline — surfaced as an unhandled asynchronous
+  error (a "fatal" in most crash reporters). Failures are on `events`, where
+  they always were.
+
+### Changed
+
+- `AcceptMerged`, `MergeInfo`, `PushNotFound`, `PushError` and
+  `BatchPushResult` are declared with const primary constructors and are now
+  `final`: they can no longer be extended or implemented outside the package
+  (constructing and matching them is unchanged).
+- Internal: `SyncEngine` is written with a primary constructor and lost about
+  a third of its length — stuck-operation handling, the debounced
+  push-on-enqueue and the run-reporting scaffold moved into their own
+  classes, `SyncRunResult`/`PullStats` into `src/sync_run_result.dart` (still
+  exported from the package). No API or behaviour change.
 
 ## [0.2.3] - 2026-09-20
 
