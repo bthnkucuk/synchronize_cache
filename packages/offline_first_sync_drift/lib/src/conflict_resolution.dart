@@ -34,25 +34,16 @@ class const AcceptServer() extends ConflictResolution;
 class const AcceptClient() extends ConflictResolution;
 
 /// Use merged data.
-class AcceptMerged extends ConflictResolution {
-  const AcceptMerged(this.mergedData, {this.mergeInfo});
-
-  final Map<String, Object?> mergedData;
-
-  /// Information about field source selection.
-  final MergeInfo? mergeInfo;
-}
+final class const AcceptMerged(
+  final Map<String, Object?> mergedData, {
+  final MergeInfo? mergeInfo,
+}) extends ConflictResolution;
 
 /// Data merge metadata.
-class MergeInfo {
-  const MergeInfo({required this.localFields, required this.serverFields});
-
-  /// Fields taken from local data.
-  final Set<String> localFields;
-
-  /// Fields taken from server data.
-  final Set<String> serverFields;
-}
+final class const MergeInfo({
+  required final Set<String> localFields,
+  required final Set<String> serverFields,
+});
 
 /// Defer resolution (keep operation in outbox).
 class const DeferResolution() extends ConflictResolution;
@@ -148,17 +139,11 @@ final class PushConflict extends PushResult {
 }
 
 /// Entity not found on server (for update/delete).
-class PushNotFound extends PushResult {
-  const PushNotFound();
-}
+final class const PushNotFound() extends PushResult;
 
 /// Push error (not a conflict).
-class PushError extends PushResult {
-  const PushError(this.error, [this.stackTrace]);
-
-  final Object error;
-  final StackTrace? stackTrace;
-}
+final class const PushError(final Object error, [final StackTrace? stackTrace])
+    extends PushResult;
 
 /// Conflict utility functions.
 abstract final class ConflictUtils {

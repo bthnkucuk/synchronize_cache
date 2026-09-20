@@ -5,7 +5,7 @@
 /// it is a tombstone ([deletedAt]). Everything else is the kind's own
 /// business. Keeping that in one interface is what lets `SyncRepository` and
 /// the route helpers in `lib/api/` be written once and used by every kind.
-abstract interface class SyncRecord {
+abstract interface class const SyncRecord() {
   /// Client-generated identifier. The client picks it so a row created
   /// offline keeps the same id once it reaches the server.
   String get id;

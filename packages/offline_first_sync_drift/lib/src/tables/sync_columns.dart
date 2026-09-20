@@ -3,7 +3,7 @@ import 'package:drift/drift.dart';
 /// Marker interface for syncable tables.
 /// Allows type-safe checks that a table includes
 /// required system fields.
-abstract interface class SynchronizableTable {
+abstract interface class const SynchronizableTable() {
   DateTimeColumn get updatedAt;
   DateTimeColumn get deletedAt;
   DateTimeColumn get deletedAtLocal;
