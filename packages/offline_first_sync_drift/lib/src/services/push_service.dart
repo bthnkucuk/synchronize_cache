@@ -7,6 +7,7 @@ import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
 import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/exceptions.dart';
+import 'package:offline_first_sync_drift/src/internal/event_emitter.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/server_timestamp.dart';
 import 'package:offline_first_sync_drift/src/services/conflict_service.dart';
@@ -168,8 +169,20 @@ final class PushService {
               conflictOps[op] = conflict;
 
             case PushNotFound():
-              doneOpIds.add(op.opId);
-              batchSuccessCount++;
+              if (op is DeleteOp) {
+                // Already gone: exactly what the delete wanted.
+                doneOpIds.add(op.opId);
+                batchSuccessCount++;
+              } else {
+                // The server has no such record and will not create it. This
+                // used to be acknowledged like a success: the user's edit was
+                // dropped without an event, a counter or a trace. It is a
+                // rejection of this op, so it goes the way of every other
+                // one: counted, stuck once the budget is used up, and then
+                // the app decides (retry, or discard and take the server's
+                // word that the record is gone).
+                fail(op, TransportException.httpError(404));
+              }
 
             case final PushError error:
               fail(op, error.error);
@@ -213,8 +226,8 @@ final class PushService {
           });
         }
 
-        opEvents.forEach(_events.add);
-        _events.add(
+        opEvents.forEach(_events.emit);
+        _events.emit(
           PushBatchProcessedEvent(
             batchSize: ops.length,
             successCount: batchSuccessCount,
@@ -223,11 +236,47 @@ final class PushService {
           ),
         );
 
+        // Each conflict is settled on its own, as soon as it is resolved.
+        // They used to be acknowledged together after the loop — and
+        // resolving one can throw: what the server reported is not a record
+        // this app can read, the app's resolver fails, the forced push loses
+        // the connection. That exception skipped the acknowledgement of
+        // every conflict resolved before it (rows already rewritten, the
+        // merge already on the server, the user already asked) and failed
+        // the sync of the kind — on every attempt, because a conflict was
+        // never counted as one.
         var hadUnresolvedConflicts = false;
-        final settledConflictOpIds = <String>{};
-        final resolvedVersions = <(String, String), DateTime>{};
         for (final MapEntry(key: op, value: conflict) in conflictOps.entries) {
-          final result = await _conflictService.resolve(op, conflict);
+          final settledConflictOpIds = <String>{};
+          final resolvedVersions = <(String, String), DateTime>{};
+
+          final ConflictResolutionResult result;
+          try {
+            result = await _conflictService.resolve(op, conflict);
+          } on Object catch (e) {
+            // A failure of this op like any other: counted (unless it says
+            // nothing about the op), stuck once the budget is used up, and
+            // out of the way of the rest of the queue from then on.
+            final failure = <String, String>{op.opId: e.toString()};
+            final environmental = SyncErrorInfo.fromError(e).isEnvironmental;
+            await _outbox.recordFailures(
+              failure,
+              countAttempts: !environmental,
+            );
+            counters.errors++;
+            hadPushErrors = true;
+            _events.emit(
+              OperationFailedEvent(
+                opId: op.opId,
+                kind: op.kind,
+                entityId: op.id,
+                error: e,
+                willRetry: true,
+              ),
+            );
+            continue;
+          }
+
           if (result.resolved) {
             counters.conflictsResolved++;
             settledConflictOpIds.add(op.opId);
@@ -236,17 +285,28 @@ final class PushService {
               _noteServerVersion(resolvedVersions, op, serverData);
             }
           } else if (_config.skipConflictingOps) {
+            // Giving up on the op must not leave its effect in the local row,
+            // where nothing would mark it as unsent any more: the row becomes
+            // what the server reported.
+            try {
+              await _applyServerRow(op.kind, conflict.serverData);
+            } on Object catch (e, st) {
+              // What the server sent is not a complete record. The op is
+              // skipped as configured; the row stays as it is until a pull
+              // brings that record.
+              _events.emit(SyncErrorEvent(SyncPhase.push, e, st));
+            }
             settledConflictOpIds.add(op.opId);
           } else {
             hadUnresolvedConflicts = true;
           }
-        }
 
-        if (settledConflictOpIds.isNotEmpty) {
-          await _db.transaction(() async {
-            await _outbox.ack(settledConflictOpIds);
-            await _outbox.rebaseAll(resolvedVersions);
-          });
+          if (settledConflictOpIds.isNotEmpty) {
+            await _db.transaction(() async {
+              await _outbox.ack(settledConflictOpIds);
+              await _outbox.rebaseAll(resolvedVersions);
+            });
+          }
         }
 
         // Do not spin on the same operations in a single sync run. Failed

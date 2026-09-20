@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:drift/drift.dart';
 import 'package:offline_first_sync_drift/src/config.dart';
+import 'package:offline_first_sync_drift/src/constants.dart';
 import 'package:offline_first_sync_drift/src/exceptions.dart';
+import 'package:offline_first_sync_drift/src/internal/event_emitter.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/services/conflict_service.dart';
 import 'package:offline_first_sync_drift/src/services/cursor_service.dart';
@@ -40,11 +42,7 @@ class SyncRunResult {
   bool get hadErrors => stats.errors > 0 || firstError != null;
 }
 
-class PullStats {
-  const PullStats({required this.pulled});
-
-  final int pulled;
-}
+final class const PullStats({required final int pulled});
 
 /// Synchronization engine: push → pull with pagination and conflict resolution.
 ///
@@ -73,40 +71,58 @@ class PullStats {
 ///
 /// await engine.sync();
 /// ```
-class SyncEngine<DB extends GeneratedDatabase> {
-  SyncEngine({
-    required DB db,
-    required this._transport,
-    required List<SyncableTable<dynamic>> tables,
-    this._config = const SyncConfig(),
-    Map<String, TableConflictConfig>? tableConflictConfigs,
-  }) : _db = db,
-       _tables = _buildTablesMap(tables),
-       _tableConflictConfigs = tableConflictConfigs ?? {} {
-    if (db is! SyncDatabaseMixin) {
+class SyncEngine<DB extends GeneratedDatabase>({
+  required final DB _db,
+  required final TransportAdapter _transport,
+  required List<SyncableTable<dynamic>> tables,
+  final SyncConfig _config = const SyncConfig(),
+  Map<String, TableConflictConfig>? tableConflictConfigs,
+}) {
+  this {
+    if (_db is! SyncDatabaseMixin) {
       throw ArgumentError(
         'Database must implement SyncDatabaseMixin. '
         'Add "with SyncDatabaseMixin" to your database class.',
       );
     }
 
-    _initServices();
     _registerEnqueuePushHook();
   }
 
-  final DB _db;
-  final TransportAdapter _transport;
-  final Map<String, SyncableTable<dynamic>> _tables;
-  final SyncConfig _config;
-  final Map<String, TableConflictConfig> _tableConflictConfigs;
+  final Map<String, SyncableTable<dynamic>> _tables = _buildTablesMap(tables);
+  final Map<String, TableConflictConfig> _tableConflictConfigs =
+      tableConflictConfigs ?? {};
 
   final _events = StreamController<SyncEvent>.broadcast();
 
-  late final OutboxService _outboxService;
-  late final CursorService _cursorService;
-  late final ConflictService<DB> _conflictService;
-  late final PushService _pushService;
-  late final PullService<DB> _pullService;
+  // Created on first use: by then the constructor has checked the database.
+  late final OutboxService _outboxService = OutboxService(_syncDb);
+  late final CursorService _cursorService = CursorService(_syncDb);
+  late final ConflictService<DB> _conflictService = ConflictService<DB>(
+    db: _db,
+    transport: _transport,
+    tables: _tables,
+    config: _config,
+    tableConflictConfigs: _tableConflictConfigs,
+    events: _events,
+  );
+  late final PushService _pushService = PushService(
+    db: _db,
+    outbox: _outboxService,
+    transport: _transport,
+    conflictService: _conflictService,
+    tables: _tables,
+    config: _config,
+    events: _events,
+  );
+  late final PullService<DB> _pullService = PullService<DB>(
+    db: _db,
+    transport: _transport,
+    tables: _tables,
+    cursorService: _cursorService,
+    config: _config,
+    events: _events,
+  );
 
   SyncDatabaseMixin get _syncDb => _db as SyncDatabaseMixin;
 
@@ -150,36 +166,6 @@ class SyncEngine<DB extends GeneratedDatabase> {
     return map;
   }
 
-  void _initServices() {
-    _outboxService = OutboxService(_syncDb);
-    _cursorService = CursorService(_syncDb);
-    _conflictService = ConflictService<DB>(
-      db: _db,
-      transport: _transport,
-      tables: _tables,
-      config: _config,
-      tableConflictConfigs: _tableConflictConfigs,
-      events: _events,
-    );
-    _pushService = PushService(
-      db: _db,
-      outbox: _outboxService,
-      transport: _transport,
-      conflictService: _conflictService,
-      tables: _tables,
-      config: _config,
-      events: _events,
-    );
-    _pullService = PullService<DB>(
-      db: _db,
-      transport: _transport,
-      tables: _tables,
-      cursorService: _cursorService,
-      config: _config,
-      events: _events,
-    );
-  }
-
   /// Stream of sync events for monitoring progress and errors.
   Stream<SyncEvent> get events => _events.stream;
 
@@ -200,9 +186,145 @@ class SyncEngine<DB extends GeneratedDatabase> {
   }
 
   /// Drop stuck operations from outbox.
+  ///
+  /// A dropped operation was never applied by the server, but its effect is
+  /// still in the local row: the edit that was given up, a row that was
+  /// created, a row marked as deleted. With the operation gone nothing would
+  /// say so any more — the row would differ from the server while looking
+  /// synced, until it happens to change there again. So every affected row is
+  /// fetched again and written back (or removed, when the server does not
+  /// have it). An operation whose row cannot be fetched right now — no
+  /// connection — is **kept**, so that "no operation queued" keeps meaning
+  /// "same as the server"; a [SyncErrorEvent] reports it.
+  ///
+  /// Two cases leave the row as it is: newer operations of the same row are
+  /// still queued (the row is theirs, also when they were enqueued while the
+  /// server was being asked), or the server's version is one this app cannot
+  /// read (dropped as asked, and reported with a [ParseException]).
   Future<void> dropStuckOperations({Set<String>? kinds}) async {
     final stuck = await getStuckOperations(kinds: kinds);
-    await _outboxService.ack(stuck.map((op) => op.opId));
+
+    final byEntity = <(String, String), List<String>>{};
+    for (final op in stuck) {
+      byEntity.putIfAbsent((op.kind, op.id), () => []).add(op.opId);
+    }
+
+    // Row by row, each one settled on its own: a row that cannot be restored
+    // (or an error while trying) does not keep the others.
+    for (final MapEntry(key: (kind, id), value: opIds) in byEntity.entries) {
+      if (await _hasLiveOps(kind, id)) {
+        // Newer edits of the same row that are still on their way keep their
+        // say: the row is theirs until they are pushed.
+        await _outboxService.ack(opIds);
+      } else {
+        await _discard(kind, id, opIds);
+      }
+    }
+  }
+
+  /// Whether `(kind, id)` has operations queued that are not stuck.
+  Future<bool> _hasLiveOps(String kind, String id) async {
+    final rows = await _db
+        .customSelect(
+          'SELECT 1 FROM ${TableNames.syncOutbox} '
+          'WHERE ${TableColumns.kind} = ? AND ${TableColumns.entityId} = ? '
+          'AND ${TableColumns.tryCount} < ? LIMIT 1',
+          variables: [
+            Variable.withString(kind),
+            Variable.withString(id),
+            Variable.withInt(_config.maxOutboxTryCount),
+          ],
+        )
+        .get();
+    return rows.isNotEmpty;
+  }
+
+  /// Drops the stuck operations [opIds] of `(kind, id)` and makes the local
+  /// row what the server has. Leaves both alone when the server could not be
+  /// asked.
+  Future<void> _discard(String kind, String id, List<String> opIds) async {
+    final tableConfig = _tables[kind];
+    if (tableConfig == null) {
+      await _outboxService.ack(opIds);
+      return;
+    }
+
+    final FetchResult result;
+    try {
+      result = await _transport.fetch(kind: kind, id: id);
+    } on Object catch (e, st) {
+      _events.emit(SyncErrorEvent(SyncPhase.push, e, st));
+      return;
+    }
+
+    Insertable<dynamic>? serverRow;
+    switch (result) {
+      case FetchError(:final error, :final stackTrace):
+        _events.emit(SyncErrorEvent(SyncPhase.push, error, stackTrace));
+        return;
+      case FetchSuccess(:final data):
+        try {
+          serverRow = tableConfig.getInsertable(tableConfig.fromJson(data));
+        } on Object catch (e, st) {
+          // The server has the row, in a form this app cannot read — a pull
+          // skips such a row too. The operations are dropped as asked; the
+          // local row cannot be made the server's, and the app is told.
+          _reportUnrestoredRow(kind, id, e, st);
+        }
+      case FetchNotFound():
+        break;
+    }
+
+    await _db.transaction(() async {
+      // An edit made while the server was being asked owns the row now.
+      if (!await _hasLiveOps(kind, id)) {
+        try {
+          if (serverRow != null) {
+            await _db.into(tableConfig.table).insertOnConflictUpdate(serverRow);
+          } else if (result is FetchNotFound) {
+            await _deleteLocalRow(tableConfig, id);
+          }
+        } on Object catch (e, st) {
+          _reportUnrestoredRow(kind, id, e, st);
+        }
+      }
+      await _outboxService.ack(opIds);
+    });
+  }
+
+  Future<void> _deleteLocalRow(
+    SyncableTable<dynamic> tableConfig,
+    String id,
+  ) async {
+    final pk = tableConfig.table.$primaryKey;
+    if (pk.length != 1) return;
+    await _db.customUpdate(
+      'DELETE FROM "${tableConfig.table.actualTableName}" '
+      'WHERE "${pk.first.name}" = ?',
+      variables: [Variable.withString(id)],
+      updates: {tableConfig.table},
+      updateKind: UpdateKind.delete,
+    );
+  }
+
+  void _reportUnrestoredRow(
+    String kind,
+    String id,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    _events.emit(
+      SyncErrorEvent(
+        SyncPhase.push,
+        ParseException(
+          'Dropped the stuck operations of "$kind" $id, but its row could '
+          'not be restored from the server: $error',
+          error,
+          stackTrace,
+        ),
+        stackTrace,
+      ),
+    );
   }
 
   Timer? _autoTimer;
@@ -240,7 +362,12 @@ class SyncEngine<DB extends GeneratedDatabase> {
   /// [interval] — time between sync attempts (default: 5 minutes).
   void startAuto({Duration interval = const Duration(minutes: 5)}) {
     stopAuto();
-    _autoTimer = Timer.periodic(interval, (_) => sync());
+    _autoTimer = Timer.periodic(interval, (_) {
+      // Fire-and-forget: a run that fails has reported itself on [events].
+      // Dropping the future turned every failed tick — each one, while the
+      // device is offline — into an unhandled asynchronous error.
+      unawaited(sync().catchError((Object _) => const SyncStats()));
+    });
   }
 
   /// Stop automatic synchronization.
@@ -302,20 +429,31 @@ class SyncEngine<DB extends GeneratedDatabase> {
     Set<String>? pushKinds,
     Set<String>? pullKinds,
   }) async {
+    _checkNotDisposed();
     await _ensureOutboxIndexes();
 
     // 1. If a full resync is already in flight, share it.
     if (_fullResyncFuture != null) return _fullResyncFuture!;
 
     // 2. If a full resync is due, trigger one (fullResync() manages its own
-    //    single-flight _fullResyncFuture lock).
+    //    single-flight _fullResyncFuture lock). One that was interrupted is
+    //    due as well, whenever the last complete one was: the marker must not
+    //    outlive the work, or the next scheduled resync would "continue" a
+    //    resync that incremental pulls finished long ago instead of starting
+    //    from zero.
     final lastFullResync = await _cursorService.getLastFullResync();
     final now = DateTime.now();
     final needsFullResync =
         lastFullResync == null ||
-        now.difference(lastFullResync) >= _config.fullResyncInterval;
+        now.difference(lastFullResync) >= _config.fullResyncInterval ||
+        await _cursorService.isFullResyncInProgress();
 
-    if (needsFullResync) {
+    // The periodic full resync is a pull of everything. A caller that asked
+    // for a push only — the debounced push after a local write, "Send now" —
+    // must not get it as a side effect; the next sync that pulls will.
+    final pushOnly = pullKinds != null && pullKinds.isEmpty;
+
+    if (needsFullResync && !pushOnly) {
       // Delegate to fullResync() so _fullResyncFuture is properly set and all
       // concurrent callers hitting this branch share the same run.
       return _ensureFullResync(
@@ -324,6 +462,11 @@ class SyncEngine<DB extends GeneratedDatabase> {
         started: now,
       );
     }
+
+    // A full resync may have started while the cursors were read. From here
+    // to the registration of the per-kind runs nothing is awaited, so a full
+    // resync that starts later finds them and waits.
+    if (_fullResyncFuture != null) return _fullResyncFuture!;
 
     // 3. Per-kind incremental sync.
     final allKinds = (pushKinds ?? const <String>{}).union(
@@ -386,9 +529,10 @@ class SyncEngine<DB extends GeneratedDatabase> {
       }
     });
 
+    var phase = SyncPhase.push;
     try {
       if (pushKinds.isNotEmpty) {
-        _events.add(const SyncStarted(SyncPhase.push));
+        _events.emit(const SyncStarted(SyncPhase.push));
         pushStats = await _pushService.pushAll(kinds: pushKinds);
         stats = stats.copyWith(
           pushed: pushStats.pushed,
@@ -399,13 +543,14 @@ class SyncEngine<DB extends GeneratedDatabase> {
       }
 
       if (pullKinds.isNotEmpty) {
-        _events.add(const SyncStarted(SyncPhase.pull));
+        phase = SyncPhase.pull;
+        _events.emit(const SyncStarted(SyncPhase.pull));
         final pulled = await _pullService.pullKinds(pullKinds);
         pullStats = PullStats(pulled: pulled);
         stats = stats.copyWith(pulled: pullStats.pulled);
       }
 
-      _events.add(
+      _events.emit(
         SyncCompleted(
           DateTime.now().difference(started),
           DateTime.now(),
@@ -426,7 +571,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
         firstError: firstError,
       );
     } on SyncException catch (e, st) {
-      _events.add(SyncErrorEvent(SyncPhase.pull, e, st));
+      _events.emit(SyncErrorEvent(phase, e, st));
       rethrow;
     } catch (e, st) {
       final exception = SyncOperationException(
@@ -435,7 +580,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
         cause: e,
         stackTrace: st,
       );
-      _events.add(SyncErrorEvent(SyncPhase.pull, exception, st));
+      _events.emit(SyncErrorEvent(phase, exception, st));
       throw exception;
     } finally {
       await sub.cancel();
@@ -513,12 +658,25 @@ class SyncEngine<DB extends GeneratedDatabase> {
   /// If a full resync is already in progress, concurrent callers will
   /// receive the same Future and share the result.
   Future<SyncStats> fullResync({bool clearData = false}) async {
+    _checkNotDisposed();
     final run = await _ensureFullResync(
       reason: FullResyncReason.manual,
       clearData: clearData,
       started: DateTime.now(),
     );
     return run.stats;
+  }
+
+  /// A sync that is running when [dispose] is called finishes quietly;
+  /// starting one afterwards is a mistake of the caller. It always failed —
+  /// with "Cannot add new events after calling close", from the first event
+  /// the run tried to report.
+  void _checkNotDisposed() {
+    if (_disposed) {
+      throw StateError(
+        'This SyncEngine was disposed; create a new one to keep syncing.',
+      );
+    }
   }
 
   /// Internal single-flight wrapper around [_doFullResyncRun].
@@ -564,12 +722,24 @@ class SyncEngine<DB extends GeneratedDatabase> {
       }
     });
 
+    var phase = SyncPhase.push;
     try {
       await _ensureOutboxIndexes();
 
+      // Per-kind runs that are under way — the debounced push after a local
+      // write, a sync of one kind — have taken operations from the outbox and
+      // not acknowledged them yet. Pushing now would send those a second
+      // time. No new one can start: `_runSync` joins this resync instead.
+      while (_kindRunFutures.isNotEmpty) {
+        await Future.wait([
+          for (final run in _kindRunFutures.values.toList())
+            run.then<void>((_) {}, onError: (Object _) {}),
+        ]);
+      }
+
       _events
-        ..add(FullResyncStarted(reason))
-        ..add(const SyncStarted(SyncPhase.push));
+        ..emit(FullResyncStarted(reason))
+        ..emit(const SyncStarted(SyncPhase.push));
 
       pushStats = await _pushService.pushAll();
       stats = stats.copyWith(
@@ -579,23 +749,37 @@ class SyncEngine<DB extends GeneratedDatabase> {
         errors: pushStats.errors,
       );
 
-      await _cursorService.resetAll(_tables.keys.toSet());
+      // A full resync can be hundreds of requests. Every page it stores moves
+      // that kind's cursor, so an interrupted one has not lost anything — as
+      // long as the next attempt does not reset the cursors (and wipe the
+      // tables) again. It used to: on a connection that drops now and then
+      // the resync started over every time and might never finish.
+      // `clearData` is an explicit request for a clean slate, so it always
+      // starts over; call `fullResync()` without it to continue instead.
+      final resuming =
+          !clearData && await _cursorService.isFullResyncInProgress();
+      if (!resuming) {
+        await _cursorService.resetAll(_tables.keys.toSet());
 
-      if (clearData) {
-        final tableNames = _tables.values
-            .map((t) => t.table.actualTableName)
-            .toList();
-        await _syncDb.clearSyncableTables(tableNames);
+        if (clearData) {
+          final tableNames = _tables.values
+              .map((t) => t.table.actualTableName)
+              .toList();
+          await _syncDb.clearSyncableTables(tableNames);
+        }
+        await _cursorService.setFullResyncInProgress(inProgress: true);
       }
 
-      _events.add(const SyncStarted(SyncPhase.pull));
+      phase = SyncPhase.pull;
+      _events.emit(const SyncStarted(SyncPhase.pull));
       final pulled = await _pullService.pullKinds(_tables.keys.toSet());
       pullStats = PullStats(pulled: pulled);
       stats = stats.copyWith(pulled: pullStats.pulled);
 
       await _cursorService.setLastFullResync(DateTime.now());
+      await _cursorService.setFullResyncInProgress(inProgress: false);
 
-      _events.add(
+      _events.emit(
         SyncCompleted(
           DateTime.now().difference(started),
           DateTime.now(),
@@ -616,7 +800,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
         firstError: firstError,
       );
     } on SyncException catch (e, st) {
-      _events.add(SyncErrorEvent(SyncPhase.pull, e, st));
+      _events.emit(SyncErrorEvent(phase, e, st));
       rethrow;
     } catch (e, st) {
       final exception = SyncOperationException(
@@ -625,7 +809,7 @@ class SyncEngine<DB extends GeneratedDatabase> {
         cause: e,
         stackTrace: st,
       );
-      _events.add(SyncErrorEvent(SyncPhase.pull, exception, st));
+      _events.emit(SyncErrorEvent(phase, exception, st));
       throw exception;
     } finally {
       await sub.cancel();
