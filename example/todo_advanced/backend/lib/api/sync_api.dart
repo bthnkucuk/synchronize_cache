@@ -96,6 +96,16 @@ class SyncApi<T extends SyncRecord> {
     final limit = (int.tryParse(params['limit'] ?? '') ?? 500).clamp(1, 1000);
     final pageToken = params['pageToken'];
 
+    // Armed via `POST /simulate/fail_lists`: the connection drops mid-download.
+    final failure = simulations.takeListFailure();
+    if (failure != null) {
+      return Response(
+        statusCode: failure,
+        body: jsonEncode({'error': 'simulated $failure'}),
+        headers: _jsonHeaders,
+      );
+    }
+
     // Armed via `POST /simulate/empty_page`: nothing on this page, more behind
     // it. The token matches no record, so the next request starts from the top.
     if (simulations.takeEmptyPage(kind)) {
@@ -126,11 +136,20 @@ class SyncApi<T extends SyncRecord> {
       result = records;
     }
 
+    final items = result.map((r) => r.toJson()).toList();
+    // Armed via `POST /simulate/poison_row`. The record sits at the front of
+    // the page with the first real record's version, so it never decides
+    // where the client's cursor ends up.
+    if (items.isNotEmpty && simulations.takePoisonedList(kind)) {
+      items.insert(0, {
+        for (final key in items.first.keys) key: null,
+        'id': '!poisoned-${DateTime.now().microsecondsSinceEpoch}',
+        'updated_at': items.first['updated_at'],
+      });
+    }
+
     return Response(
-      body: jsonEncode({
-        'items': result.map((r) => r.toJson()).toList(),
-        'nextPageToken': ?nextPageToken,
-      }),
+      body: jsonEncode({'items': items, 'nextPageToken': ?nextPageToken}),
       headers: {..._jsonHeaders, 'X-Next-Page-Token': ?nextPageToken},
     );
   }
@@ -240,11 +259,23 @@ class SyncApi<T extends SyncRecord> {
     };
   }
 
-  Response _conflict(T current) => Response(
-    statusCode: 409,
-    body: jsonEncode({'error': 'conflict', 'current': current.toJson()}),
-    headers: _jsonHeaders,
-  );
+  Response _conflict(T current) {
+    final record = current.toJson();
+    // Armed via `POST /simulate/poison_conflict`: what the client is told
+    // about the record it conflicts with is not something it can read.
+    final reported = simulations.takePoisonedConflict(current.id)
+        ? {
+            for (final key in record.keys) key: null,
+            'id': current.id,
+            'updated_at': record['updated_at'],
+          }
+        : record;
+    return Response(
+      statusCode: 409,
+      body: jsonEncode({'error': 'conflict', 'current': reported}),
+      headers: _jsonHeaders,
+    );
+  }
 
   Response _error(int statusCode, String message) => Response(
     statusCode: statusCode,

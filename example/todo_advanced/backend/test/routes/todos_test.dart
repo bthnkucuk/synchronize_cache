@@ -127,6 +127,44 @@ void main() {
       expect(alive.map((t) => t['id']), ['alive']);
     });
 
+    test('a poisoned list carries one unreadable record in front of the real '
+        'ones, once', () async {
+      repository.create(
+        Todo(id: 'todo-1', title: 'Real', updatedAt: DateTime.now().toUtc()),
+      );
+      simulationService.poisonNextLists(kind: 'todos');
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos')));
+
+      Future<List<Map<String, dynamic>>> list() async {
+        final response = await todos_index.onRequest(context);
+        final body = jsonDecode(await response.body()) as Map<String, dynamic>;
+        return (body['items'] as List).cast<Map<String, dynamic>>();
+      }
+
+      final poisoned = await list();
+      expect(poisoned, hasLength(2));
+      expect(poisoned.first['id'], startsWith('!poisoned-'));
+      expect(poisoned.first['title'], isNull);
+      expect(poisoned.first['updated_at'], poisoned.last['updated_at']);
+      expect(poisoned.last['id'], 'todo-1');
+
+      expect(await list(), hasLength(1));
+    });
+
+    test('armed list failures let some requests through first', () async {
+      simulationService.failListsAfter(after: 1, count: 1, status: 503);
+      when(() => context.request)
+          .thenReturn(Request.get(Uri.parse('http://localhost/todos')));
+
+      final statuses = [
+        for (var i = 0; i < 3; i++)
+          (await todos_index.onRequest(context)).statusCode,
+      ];
+
+      expect(statuses, [200, 503, 200]);
+    });
+
     test('an armed empty page has no items, names a next page, and the '
         'request for that page starts from the top', () async {
       repository.create(
@@ -228,6 +266,45 @@ void main() {
       expect(body['error'], 'conflict');
       expect(body['current'], isNotNull);
       expect(body['current']['title'], 'Original');
+    });
+
+    test('a poisoned conflict reports a record nobody can read — for the '
+        'record it was armed for, as often as it was armed', () async {
+      final now = DateTime.now().toUtc();
+      repository
+        ..create(Todo(id: 'todo-1', title: 'Original', updatedAt: now))
+        ..create(Todo(id: 'todo-2', title: 'Other', updatedAt: now));
+      simulationService.poisonNextConflicts(entityId: 'todo-1');
+
+      Future<Map<String, dynamic>> conflictOf(String id) async {
+        when(() => context.request).thenReturn(
+          Request.put(
+            Uri.parse('http://localhost/todos/$id'),
+            body: jsonEncode({
+              'title': 'Updated',
+              '_baseUpdatedAt': now
+                  .subtract(const Duration(hours: 1))
+                  .toIso8601String(),
+            }),
+            headers: {},
+          ),
+        );
+        final response = await todos_id.onRequest(context, id);
+        expect(response.statusCode, HttpStatus.conflict);
+        final body = jsonDecode(await response.body()) as Map<String, dynamic>;
+        return body['current'] as Map<String, dynamic>;
+      }
+
+      // Another record's conflict is untouched and does not use it up.
+      expect((await conflictOf('todo-2'))['title'], 'Other');
+
+      final poisoned = await conflictOf('todo-1');
+      expect(poisoned['id'], 'todo-1');
+      expect(poisoned['title'], isNull);
+      expect(poisoned['completed'], isNull);
+      expect(poisoned['updated_at'], isNotNull);
+
+      expect((await conflictOf('todo-1'))['title'], 'Original');
     });
 
     test('updates with X-Force-Update header ignoring conflict', () async {
