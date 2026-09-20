@@ -2106,7 +2106,8 @@ void main() {
   });
 
   group('PushNotFound handling', () {
-    test('push ignores PushNotFound results', () async {
+    test('an upsert the server answers with "not found" is not dropped '
+        'silently', () async {
       final transport = NotFoundTransport();
 
       final engine = SyncEngine(
@@ -2138,10 +2139,62 @@ void main() {
         ),
       );
 
-      await engine.sync();
+      final failures = <OperationFailedEvent>[];
+      final sub = engine.events
+          .where((e) => e is OperationFailedEvent)
+          .cast<OperationFailedEvent>()
+          .listen(failures.add);
+      addTearDown(sub.cancel);
 
-      final outbox = await db.takeOutbox();
-      expect(outbox, isEmpty);
+      final stats = await engine.sync();
+      await pumpEventQueue();
+
+      // It used to be acknowledged like a success: the edit vanished without
+      // an event or a counter. It is a rejection of this op.
+      expect(stats.errors, 1);
+      expect((await db.takeOutbox()).map((op) => op.opId), ['not-found-op']);
+      expect(
+        failures.single.error,
+        isA<TransportException>().having((e) => e.statusCode, 'status', 404),
+      );
+
+      // …and like every rejection it ends up stuck, where the app can see it.
+      for (var i = 0; i < 4; i++) {
+        await engine.sync();
+      }
+      expect((await engine.getStuckOperations()).map((op) => op.opId), [
+        'not-found-op',
+      ]);
+    });
+
+    test('a delete the server answers with "not found" is done', () async {
+      final engine = SyncEngine(
+        db: db,
+        transport: NotFoundTransport(),
+        tables: [
+          SyncableTable<TestItem>(
+            kind: 'test_item',
+            table: db.testItems,
+            fromJson: TestItem.fromJson,
+            toJson: (item) => item.toJson(),
+            toInsertable: (item) => item.toInsertable(),
+          ),
+        ],
+      );
+      addTearDown(engine.dispose);
+      await db.enqueue(
+        DeleteOp(
+          opId: 'gone-already',
+          kind: 'test_item',
+          id: 'item-1',
+          localTimestamp: DateTime.now().toUtc(),
+        ),
+      );
+
+      final stats = await engine.sync();
+
+      expect(stats.errors, 0);
+      expect(await db.takeOutbox(), isEmpty);
     });
   });
 

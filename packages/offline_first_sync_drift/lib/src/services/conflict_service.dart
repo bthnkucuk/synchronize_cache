@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:meta/meta.dart';
 import 'package:offline_first_sync_drift/src/config.dart';
 import 'package:offline_first_sync_drift/src/conflict_resolution.dart';
+import 'package:offline_first_sync_drift/src/internal/event_emitter.dart';
 import 'package:offline_first_sync_drift/src/op.dart';
 import 'package:offline_first_sync_drift/src/sync_events.dart';
 import 'package:offline_first_sync_drift/src/syncable_table.dart';
@@ -71,7 +72,7 @@ class ConflictService<DB extends GeneratedDatabase> {
       changedFields: changedFields,
     );
 
-    _events.add(ConflictDetectedEvent(conflict: conflict, strategy: strategy));
+    _events.emit(ConflictDetectedEvent(conflict: conflict, strategy: strategy));
 
     // A delete carries no local data, so there is nothing to merge: the only
     // choices are to delete anyway or to keep what the other side wrote. The
@@ -120,7 +121,7 @@ class ConflictService<DB extends GeneratedDatabase> {
       case ConflictStrategy.manual:
         final resolver = tableConfig?.resolver ?? _config.conflictResolver;
         if (resolver == null) {
-          _events.add(
+          _events.emit(
             ConflictUnresolvedEvent(
               conflict: conflict,
               reason: 'No conflict resolver provided for manual strategy',
@@ -137,7 +138,7 @@ class ConflictService<DB extends GeneratedDatabase> {
           changedFields: conflict.changedFields,
         );
 
-        _events.add(
+        _events.emit(
           DataMergedEvent(
             kind: conflict.kind,
             entityId: conflict.entityId,
@@ -165,7 +166,7 @@ class ConflictService<DB extends GeneratedDatabase> {
     switch (resolution) {
       case AcceptServer():
         await _applyServerData(conflict);
-        _events.add(
+        _events.emit(
           ConflictResolvedEvent(
             conflict: conflict,
             resolution: resolution,
@@ -182,7 +183,7 @@ class ConflictService<DB extends GeneratedDatabase> {
         final pushed = await _forcePushOp(op);
         final success = pushed != null;
         if (success) {
-          _events.add(
+          _events.emit(
             ConflictResolvedEvent(
               conflict: conflict,
               resolution: resolution,
@@ -206,7 +207,7 @@ class ConflictService<DB extends GeneratedDatabase> {
         final pushed = await _pushMergedData(op, mergedData);
         final success = pushed != null;
         if (success) {
-          _events.add(
+          _events.emit(
             ConflictResolvedEvent(
               conflict: conflict,
               resolution: resolution,
@@ -221,7 +222,7 @@ class ConflictService<DB extends GeneratedDatabase> {
         );
 
       case DeferResolution():
-        _events.add(
+        _events.emit(
           ConflictUnresolvedEvent(
             conflict: conflict,
             reason: 'Resolution deferred',
@@ -230,7 +231,7 @@ class ConflictService<DB extends GeneratedDatabase> {
         return const ConflictResolutionResult(resolved: false);
 
       case DiscardOperation():
-        _events.add(
+        _events.emit(
           ConflictResolvedEvent(conflict: conflict, resolution: resolution),
         );
         return const ConflictResolutionResult(resolved: true);

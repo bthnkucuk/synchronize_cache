@@ -25,6 +25,7 @@ class SyncConfig {
     this.conflictRetryDelay = const Duration(milliseconds: 500),
     this.skipConflictingOps = false,
     this.maxOutboxTryCount = 5,
+    this.skipInvalidPulledRows = true,
     this.retryTransportErrorsInEngine = false,
     this.pushOnEnqueue = false,
     this.enqueuePushDebounce = const Duration(milliseconds: 250),
@@ -99,6 +100,17 @@ class SyncConfig {
   /// Max attempt count before an outbox operation is considered stuck.
   final int maxOutboxTryCount;
 
+  /// What a pull does with a row it cannot store (`fromJson` throws, or the
+  /// database rejects it).
+  ///
+  /// `true` (default): the row is skipped and reported as a
+  /// [SyncErrorEvent] with a [ParseException]; the rest of the page is stored
+  /// and the cursor moves on. `false`: the pull fails, as it always did —
+  /// useful while developing, when such a row means the model is wrong. In
+  /// production it means that one bad row on the server stops this kind from
+  /// syncing at all: the cursor never gets past it.
+  final bool skipInvalidPulledRows;
+
   /// Whether push transport errors should be retried at engine level.
   ///
   /// Keep this false when transport already has robust retry logic
@@ -140,6 +152,7 @@ class SyncConfig {
     Duration? conflictRetryDelay,
     bool? skipConflictingOps,
     int? maxOutboxTryCount,
+    bool? skipInvalidPulledRows,
     bool? retryTransportErrorsInEngine,
     bool? pushOnEnqueue,
     Duration? enqueuePushDebounce,
@@ -161,6 +174,7 @@ class SyncConfig {
     conflictRetryDelay: conflictRetryDelay ?? this.conflictRetryDelay,
     skipConflictingOps: skipConflictingOps ?? this.skipConflictingOps,
     maxOutboxTryCount: maxOutboxTryCount ?? this.maxOutboxTryCount,
+    skipInvalidPulledRows: skipInvalidPulledRows ?? this.skipInvalidPulledRows,
     retryTransportErrorsInEngine:
         retryTransportErrorsInEngine ?? this.retryTransportErrorsInEngine,
     pushOnEnqueue: pushOnEnqueue ?? this.pushOnEnqueue,

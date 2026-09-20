@@ -369,44 +369,60 @@ void main() {
       },
     );
 
-    test('throws SyncOperationException when item is missing updatedAt', () async {
-      when(
-        () => transport.pull(
-          kind: any(named: 'kind'),
-          updatedSince: any(named: 'updatedSince'),
-          pageSize: any(named: 'pageSize'),
-          pageToken: any(named: 'pageToken'),
-          afterId: any(named: 'afterId'),
-          includeDeleted: any(named: 'includeDeleted'),
-        ),
-      ).thenAnswer(
-        (_) async => PullPage(
-          items: [
-            // Missing updated_at, but a name + id that the fromJson would
-            // otherwise consume → the service should reject and throw.
-            {
-              'id': 'a',
-              'updated_at': DateTime.utc(2024).toIso8601String(),
-              'name': 'A',
-            },
-            const {'id': 'b', 'name': 'B'},
-          ],
-        ),
+    group('an item without updatedAt', () {
+      setUp(() {
+        when(
+          () => transport.pull(
+            kind: any(named: 'kind'),
+            updatedSince: any(named: 'updatedSince'),
+            pageSize: any(named: 'pageSize'),
+            pageToken: any(named: 'pageToken'),
+            afterId: any(named: 'afterId'),
+            includeDeleted: any(named: 'includeDeleted'),
+          ),
+        ).thenAnswer(
+          (_) async => PullPage(
+            items: [
+              // Missing updated_at, but a name + id that the fromJson would
+              // otherwise consume → the service should reject and throw.
+              {
+                'id': 'a',
+                'updated_at': DateTime.utc(2024).toIso8601String(),
+                'name': 'A',
+              },
+              const {'id': 'b', 'name': 'B'},
+            ],
+          ),
+        );
+      });
+
+      test(
+        'is skipped; the cursor goes to the last row that has one',
+        () async {
+          await buildService().pullKind('test_item');
+
+          final stored = await db.select(db.testItems).get();
+          expect(stored.map((item) => item.id), ['a']);
+          expect((await cursorService.get('test_item'))!.lastId, 'a');
+        },
       );
 
-      final service = buildService();
+      test('fails the pull with skipInvalidPulledRows: false', () async {
+        final service = buildService(
+          config: const SyncConfig(pageSize: 100, skipInvalidPulledRows: false),
+        );
 
-      expect(
-        () => service.pullKind('test_item'),
-        throwsA(
-          // ParseException is rethrown unchanged because it's a SyncException;
-          // however items are processed before the timestamp check, and
-          // fromJson runs first — if fromJson throws on the missing
-          // updated_at, it gets wrapped in SyncOperationException. Either
-          // outcome is a SyncException.
-          isA<SyncException>(),
-        ),
-      );
+        await expectLater(
+          service.pullKind('test_item'),
+          // ParseException is rethrown unchanged because it's a
+          // SyncException; however items are processed before the timestamp
+          // check, and fromJson runs first — if fromJson throws on the
+          // missing updated_at, it gets wrapped in SyncOperationException.
+          // Either outcome is a SyncException.
+          throwsA(isA<SyncException>()),
+        );
+        expect(await cursorService.get('test_item') == null, isTrue);
+      });
     });
 
     test('treats a zone-less server timestamp as UTC for the cursor', () async {
@@ -443,49 +459,62 @@ void main() {
       );
     });
 
-    test('rejects an item without any id instead of storing the cursor id '
-        '"null"', () async {
-      // A model whose fromJson tolerates a missing id (e.g. it derives the
-      // key from other fields) used to get `null.toString()` == "null"
-      // persisted as the keyset-pagination id.
-      tables = {
-        'test_item': SyncableTable<TestItem>(
-          kind: 'test_item',
-          table: db.testItems,
-          fromJson: (json) =>
-              TestItem.fromJson({...json, 'id': json['id'] ?? 'derived'}),
-          toJson: (e) => e.toJson(),
-          toInsertable: (e) => e.toInsertable(),
-          getId: (e) => e.id,
-          getUpdatedAt: (e) => e.updatedAt,
-        ),
-      };
-      when(
-        () => transport.pull(
-          kind: any(named: 'kind'),
-          updatedSince: any(named: 'updatedSince'),
-          pageSize: any(named: 'pageSize'),
-          pageToken: any(named: 'pageToken'),
-          afterId: any(named: 'afterId'),
-          includeDeleted: any(named: 'includeDeleted'),
-        ),
-      ).thenAnswer(
-        (_) async => PullPage(
-          items: [
-            {
-              'updated_at': DateTime.utc(2024).toIso8601String(),
-              'name': 'no id',
-            },
-          ],
-        ),
-      );
+    test(
+      'never stores the cursor id "null" for an item without any id',
+      () async {
+        // A model whose fromJson tolerates a missing id (e.g. it derives the
+        // key from other fields) used to get `null.toString()` == "null"
+        // persisted as the keyset-pagination id.
+        tables = {
+          'test_item': SyncableTable<TestItem>(
+            kind: 'test_item',
+            table: db.testItems,
+            fromJson: (json) =>
+                TestItem.fromJson({...json, 'id': json['id'] ?? 'derived'}),
+            toJson: (e) => e.toJson(),
+            toInsertable: (e) => e.toInsertable(),
+            getId: (e) => e.id,
+            getUpdatedAt: (e) => e.updatedAt,
+          ),
+        };
+        when(
+          () => transport.pull(
+            kind: any(named: 'kind'),
+            updatedSince: any(named: 'updatedSince'),
+            pageSize: any(named: 'pageSize'),
+            pageToken: any(named: 'pageToken'),
+            afterId: any(named: 'afterId'),
+            includeDeleted: any(named: 'includeDeleted'),
+          ),
+        ).thenAnswer(
+          (_) async => PullPage(
+            items: [
+              {
+                'updated_at': DateTime.utc(2024).toIso8601String(),
+                'name': 'no id',
+              },
+            ],
+          ),
+        );
 
-      await expectLater(
-        buildService().pullKind('test_item'),
-        throwsA(isA<ParseException>()),
-      );
-      expect(await cursorService.get('test_item') == null, isTrue);
-    });
+        // The row is one the app could read, so it is stored — but it cannot
+        // be a cursor position: the cursor stays where it was.
+        await buildService().pullKind('test_item');
+        expect(await cursorService.get('test_item') == null, isTrue);
+
+        // Strict mode: the error it always was.
+        await expectLater(
+          buildService(
+            config: const SyncConfig(
+              pageSize: 100,
+              skipInvalidPulledRows: false,
+            ),
+          ).pullKind('test_item'),
+          throwsA(isA<ParseException>()),
+        );
+        expect(await cursorService.get('test_item') == null, isTrue);
+      },
+    );
 
     test('wraps non-SyncException errors in SyncOperationException', () async {
       when(

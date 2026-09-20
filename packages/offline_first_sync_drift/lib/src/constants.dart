@@ -60,4 +60,10 @@ abstract final class TableNames {
 abstract final class CursorKinds {
   /// Cursor key for storing timestamp of last full resync.
   static const fullResync = '__full_resync__';
+
+  /// Cursor key present while a full resync is under way: written when its
+  /// pull starts (after the cursors were reset), removed when it completes.
+  /// If it is still there when the next sync begins, that resync was
+  /// interrupted and is continued from the cursors it reached.
+  static const fullResyncInProgress = '__full_resync_in_progress__';
 }

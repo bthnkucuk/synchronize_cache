@@ -161,7 +161,10 @@ void main() {
     await writer.insertAndEnqueue(
       TestItem(id: id, name: 'created', updatedAt: DateTime.now().toUtc()),
     );
-    await engine.sync(pullKinds: const {});
+    // A full sync, not a push-only one: the first sync that pulls is the
+    // database's initial full resync (which pushes whatever is queued), and
+    // the tests below must not have it fire in the middle of their steps.
+    await engine.sync();
     final synced = await local(id);
     expect(synced.updatedAt, server.versionOf(id), reason: 'write-back');
     return synced;

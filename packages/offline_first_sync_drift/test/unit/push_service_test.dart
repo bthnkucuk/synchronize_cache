@@ -181,54 +181,52 @@ void main() {
       },
     );
 
-    test(
-      'treats PushNotFound as success (acks) and PushError as failure',
-      () async {
-        final ok = _upsert(id: 'ok');
-        final nf = _upsert(id: 'nf');
-        final er = _upsert(id: 'er');
-        await outbox.enqueue(ok);
-        await outbox.enqueue(nf);
-        await outbox.enqueue(er);
+    test('treats PushNotFound for a delete as success (acks) and PushError as '
+        'failure', () async {
+      final ok = _upsert(id: 'ok');
+      // A delete of something that is already gone has what it wanted.
+      final nf = DeleteOp(
+        opId: 'op-nf',
+        kind: 'test_item',
+        id: 'nf',
+        localTimestamp: DateTime.utc(2024, 6, 1, 12),
+      );
+      final er = _upsert(id: 'er');
+      await outbox.enqueue(ok);
+      await outbox.enqueue(nf);
+      await outbox.enqueue(er);
 
-        when(() => transport.push(any())).thenAnswer((invocation) async {
-          final ops = invocation.positionalArguments[0] as List<Op>;
-          return BatchPushResult(
-            results: ops.map((o) {
-              if (o.id == 'ok') {
-                return OpPushResult(opId: o.opId, result: const PushSuccess());
-              }
-              if (o.id == 'nf') {
-                return OpPushResult(opId: o.opId, result: const PushNotFound());
-              }
-              return OpPushResult(
-                opId: o.opId,
-                result: const PushError('boom'),
-              );
-            }).toList(),
-          );
-        });
-
-        final captured = <SyncEvent>[];
-        final sub = events.stream.listen(captured.add);
-
-        final stats = await buildService().pushAll();
-
-        expect(stats.pushed, 1);
-        expect(stats.errors, 1);
-
-        // After break-on-error, the failed op stays in outbox; ok+nf acked.
-        final pending = await outbox.take(
-          limit: 100,
-          maxTryCountExclusive: null,
+      when(() => transport.push(any())).thenAnswer((invocation) async {
+        final ops = invocation.positionalArguments[0] as List<Op>;
+        return BatchPushResult(
+          results: ops.map((o) {
+            if (o.id == 'ok') {
+              return OpPushResult(opId: o.opId, result: const PushSuccess());
+            }
+            if (o.id == 'nf') {
+              return OpPushResult(opId: o.opId, result: const PushNotFound());
+            }
+            return OpPushResult(opId: o.opId, result: const PushError('boom'));
+          }).toList(),
         );
-        expect(pending.map((o) => o.id), ['er']);
+      });
 
-        await Future<void>.delayed(Duration.zero);
-        await sub.cancel();
-        expect(captured.whereType<OperationFailedEvent>(), hasLength(1));
-      },
-    );
+      final captured = <SyncEvent>[];
+      final sub = events.stream.listen(captured.add);
+
+      final stats = await buildService().pushAll();
+
+      expect(stats.pushed, 1);
+      expect(stats.errors, 1);
+
+      // After break-on-error, the failed op stays in outbox; ok+nf acked.
+      final pending = await outbox.take(limit: 100, maxTryCountExclusive: null);
+      expect(pending.map((o) => o.id), ['er']);
+
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
+      expect(captured.whereType<OperationFailedEvent>(), hasLength(1));
+    });
 
     test('rethrows existing SyncException without wrapping', () async {
       await outbox.enqueue(_upsert());

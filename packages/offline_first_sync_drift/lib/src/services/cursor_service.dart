@@ -56,6 +56,32 @@ final class const CursorService(final SyncDatabaseMixin _db) {
     }
   }
 
+  /// Whether a full resync started and did not finish (the app was closed,
+  /// the connection dropped, a page failed).
+  Future<bool> isFullResyncInProgress() async {
+    try {
+      return await _db.getCursor(CursorKinds.fullResyncInProgress) != null;
+    } catch (e, st) {
+      throw DatabaseException.fromError(e, st);
+    }
+  }
+
+  /// Marks a full resync as under way, or as finished.
+  Future<void> setFullResyncInProgress({required bool inProgress}) async {
+    try {
+      if (inProgress) {
+        await _db.setCursor(
+          CursorKinds.fullResyncInProgress,
+          Cursor(ts: DateTime.now().toUtc(), lastId: ''),
+        );
+      } else {
+        await _db.resetAllCursors({CursorKinds.fullResyncInProgress});
+      }
+    } catch (e, st) {
+      throw DatabaseException.fromError(e, st);
+    }
+  }
+
   /// Save timestamp of the last full resync.
   Future<void> setLastFullResync(DateTime timestamp) async {
     try {
